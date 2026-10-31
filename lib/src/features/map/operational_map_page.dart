@@ -2171,7 +2171,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final can=b.canEdit(widget.deviceId,isPco(widget.deviceId)), pco=isPco(widget.deviceId);
     final zone=bearingZoneStatus(b,_bearings.all);
     final l=b.takenAt.toLocal(); String two(int v)=>v.toString().padLeft(2,'0');
-    final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,0,20,12),
+    // Scrolls and grows (31 Oct 2026, 23 h 46: « Supprimer » pushed off an
+    // iPhone screen by the zone actions of the PCO).
+    final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,isScrollControlled:true,
+      constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(context).height*0.9),builder:(c)=>SafeArea(child:SingleChildScrollView(key:const ValueKey('bearing-sheet'),padding:const EdgeInsets.fromLTRB(20,0,20,12),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
         // « vrai » at the size of the lines below, on the baseline of the
         // azimuth (card « Fiche d'un relevé, « vrai » trop grand », 17 h 38).
@@ -2189,10 +2192,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(zone!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text(zone,key:const ValueKey('bearing-zone-status'),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.tertiary))),
         const SizedBox(height:8),
         ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),title:Text(S.t('bearings.fromOrigin')),onTap:()=>Navigator.pop(c,'origin')),
-        // The PCO decides by hand when the automatic rule is wrong.
-        if(pco&&b.search.isNotEmpty)for(final z in const ['out','in','auto'])if(z!=b.zone)ListTile(key:ValueKey('bearing-zone-$z'),contentPadding:EdgeInsets.zero,
-          leading:Icon(z=='out'?Icons.remove_circle_outline:z=='in'?Icons.push_pin_outlined:Icons.auto_mode),title:Text(S.t(z=='out'?'bearings.zoneOut':z=='in'?'bearings.zoneIn':'bearings.zoneAuto')),
-          onTap:()=>Navigator.pop(c,'zone:$z')),
+        // The PCO decides by hand when the automatic rule is wrong: one line,
+        // Auto / Écarter / Garder.
+        if(pco&&b.search.isNotEmpty)Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Row(children:[
+          Expanded(child:Text(S.t('bearings.zoneTitle'),style:Theme.of(c).textTheme.bodyMedium)),
+          SegmentedButton<String>(key:const ValueKey('bearing-zone-choice'),showSelectedIcon:false,
+            style:const ButtonStyle(visualDensity:VisualDensity.compact,tapTargetSize:MaterialTapTargetSize.shrinkWrap),
+            segments:[for(final z in const ['auto','out','in'])ButtonSegment(value:z,label:Text(S.t('bearings.zoneShort.$z'),key:ValueKey('bearing-zone-$z')))],
+            selected:{b.zone},onSelectionChanged:(v){if(v.first!=b.zone)Navigator.pop(c,'zone:${v.first}');}),
+        ])),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.open_with),title:Text(S.t('bearings.adjust')),onTap:()=>Navigator.pop(c,'adjust')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.edit_outlined),title:Text(S.t('bearings.edit')),onTap:()=>Navigator.pop(c,'edit')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.delete_outline,color:Theme.of(c).colorScheme.error),title:Text(S.t('bearings.delete')),onTap:()=>Navigator.pop(c,'delete')),

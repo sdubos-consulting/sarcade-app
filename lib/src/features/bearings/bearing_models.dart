@@ -128,6 +128,8 @@ LatLng? crossing(Bearing a,Bearing b){
 /// - radius: distance holding ~90 % of the weighted crossings (≥ 50 m).
 /// [robust] false: the plain rule (résection: every crossing, farthest).
 const minCrossingAngleDeg=20.0, minZoneToleranceM=100.0, minZoneRadiusM=50.0, zoneShare=0.9;
+/// The automatic setting aside never keeps fewer bearings (server: MIN_KEPT).
+const minKeptBearings=3;
 
 double _weight(Bearing b)=>(1+b.strength/9)/math.pow(math.max(1.0,b.coneDeg),2);
 double _angleBetween(Bearing a,Bearing b){final d=(a.azimuthDeg-b.azimuthDeg).abs()%180;return math.min(d,180-d);}
@@ -168,7 +170,7 @@ double _wRadius(LatLng c,List<({LatLng p,double w})> pts){
 ({List<LatLng> crossings,LatLng? centre,double radiusM,int bearings,List<String> excluded,List<String> autoExcluded}) probableZone(List<Bearing> list,{bool robust=true}){
   final used=<int>{for(var i=0;i<list.length;i++)if(!robust||list[i].zone!='out')i};
   final auto=<int>[];
-  while(robust&&used.length>=3){
+  while(robust&&used.length>minKeptBearings){
     int? worst; var worstRatio=1.0;
     for(final i in used.toList()..sort()){
       if(list[i].zone=='in')continue;
@@ -191,8 +193,10 @@ double _wRadius(LatLng c,List<({LatLng p,double w})> pts){
 }
 
 /// « ±700 m · 4 relevés · 1 écarté » (server: tv.zone_label).
+/// Two bearings make one crossing, not a measured precision:
+/// « zone approximative · 2 relevés ».
 String zoneLabel(double radiusM,int used,int excluded)=>[
-  '±${roundedDistance(radiusM)}',
+  used<minKeptBearings?S.t('bearings.zoneApprox'):'±${roundedDistance(radiusM)}',
   S.t(used==1?'bearings.zoneOne':'bearings.zoneMany',{'n':used}),
   if(excluded>0)S.t(excluded==1?'bearings.zoneExcludedOne':'bearings.zoneExcludedMany',{'n':excluded}),
 ].join(' · ');
