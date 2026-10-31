@@ -70,4 +70,12 @@ void main() {
     expect(y.copyWith(zone: 'auto', updatedBy: 'B', updatedAt: DateTime.utc(2026, 11, 1)).zone, 'auto');
     expect(towards('2', 3000, 200).toJson().toString().contains('zone'), isFalse);
   });
+  test('never fewer than 3 bearings kept; 2 bearings: approximate zone', () {
+    final wild1 = towards('w1', 3500, 20, offsetDeg: 40), wild2 = towards('w2', 3000, 120, offsetDeg: -35);
+    final z = probableZone([good[0], good[1], wild1, wild2]);
+    expect(z.bearings, greaterThanOrEqualTo(minKeptBearings));
+    expect(z.excluded.length, lessThanOrEqualTo(1));
+    expect(probableZone([good[0], good[1], wild1]).excluded, isEmpty);
+    expect(zoneLabel(50, 2, 2), 'zone approximative · 2 relevés · 2 écartés');
+  });
 }
