@@ -229,7 +229,7 @@ class SarcadeApi {
   /// null keeps the screen's own choice (1 Nov 2026).
   Future<void> sendDisplayView(String eventId,String displayId,Map<String,dynamic>? view,{bool live=false,bool? messages}) async {
     final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/view'),headers:_json,
-      body:jsonEncode({'view':view,if(live)'live':true,if(messages!=null)'messages':messages}));
+      body:jsonEncode({'view':view,if(live)'live':true,'messages':?messages}));
     if(r.statusCode!=200) throw SarcadeHttpException('display_view',r.statusCode,r.body);
   }
   /// « Messages : afficher / masquer » of one screen, applied at once.
