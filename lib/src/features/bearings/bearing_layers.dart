@@ -14,6 +14,8 @@ import 'bearing_models.dart';
 List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? draft,bool byOperator=false,LayerHitNotifier<Bearing>? hits,
     required void Function(Bearing) onTapBearing,required void Function(LatLng centre,String search) onTapZone}){
   final groups=bySearch(bearings);
+  final names=searchNames(bearings);
+  String shown(Bearing b)=>names[searchKey(b.search)]??b.search;
   final zones={for(final e in groups.entries)e.key:probableZone(e.value)};
   final excluded={for(final z in zones.values)...z.excluded};
   final cones=<Polygon>[], lines=<Polyline<Bearing>>[], markers=<Marker>[], circles=<CircleMarker>[];
@@ -23,14 +25,14 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
       lines.add(Polyline<Bearing>(points:[b.origin,b.end],color:const Color(0xFF8A8F98),strokeWidth:2,pattern:StrokePattern.dashed(segments:const [10,8]),hitValue:b));
       return;
     }
-    final c=Color(byOperator?(b.operatorColor??operatorColor(b.createdBy)):searchColor(b.search)); final (l,r)=b.cone;
+    final c=Color(byOperator?(b.operatorColor??operatorColor(b.createdBy)):searchColor(shown(b))); final (l,r)=b.cone;
     cones.add(Polygon(points:[b.origin,l,r],color:c.withValues(alpha:live?0.16:0.10),borderColor:c.withValues(alpha:0.35),borderStrokeWidth:1));
     lines.add(Polyline<Bearing>(points:[b.origin,b.end],color:c,strokeWidth:live?3.5:2.2,hitValue:live?null:b));
   }
   for(final b in bearings){add(b);}
   if(draft!=null)add(draft,live:true);
   for(final b in bearings){
-    final op=Color(b.operatorColor??operatorColor(b.createdBy)), line=byOperator?op:Color(searchColor(b.search));
+    final op=Color(b.operatorColor??operatorColor(b.createdBy)), line=byOperator?op:Color(searchColor(shown(b)));
     markers.add(Marker(point:b.origin,width:30,height:30,child:Tooltip(message:['${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',b.createdBy,if(b.search.isNotEmpty)b.search,if(b.exercise)'EXERCICE'].join(' · '),
       child:GestureDetector(onTap:()=>onTapBearing(b),child:Container(alignment:Alignment.center,
         decoration:BoxDecoration(color:op,shape:BoxShape.circle,border:Border.all(color:line,width:2.5)),
