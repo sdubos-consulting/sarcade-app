@@ -27,7 +27,7 @@ void main() {
 
   test('the start text is written with escapes', () {
     final src = File('tool/windows_runner/splash_window.cpp').readAsStringSync();
-    expect(src, contains(r'L"Démarrage…"'));
-    expect(src, contains(r'L"Starting…"'));
+    expect(src, contains(r'L"D\u00E9marrage\u2026"'));
+    expect(src, contains(r'L"Starting\u2026"'));
   });
 }
