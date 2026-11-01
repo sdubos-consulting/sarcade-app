@@ -1,7 +1,8 @@
 /// MeshCore companion radio protocol, the few frames of the Bluetooth trial
 /// (card « Essai : SARCADE parle en Bluetooth à un module MeshCore »,
 /// 1 Nov 2026). Source: docs.meshcore.io/companion_protocol. Read only:
-/// nothing here sends anything on the LoRa network. Pure code, testable
+/// nothing here sends anything on the LoRa network (contacts and adverts
+/// are read, lot D, 1 Nov 2026). Pure code, testable
 /// without Bluetooth.
 library;
 
@@ -26,6 +27,39 @@ Uint8List appStart([String app='SARCADE'])=>Uint8List.fromList([0x01,0,0,0,0,0,0
 
 /// Battery and storage (0x14). Answer: 0x0C.
 Uint8List batteryQuery()=>Uint8List.fromList([0x14]);
+
+/// CMD_GET_CONTACTS (0x04): the nodes the module knows. Answers:
+/// CONTACTS_START (0x02), one CONTACT (0x03) each, END_OF_CONTACTS (0x04).
+Uint8List contactsQuery()=>Uint8List.fromList([0x04]);
+
+/// A node of the MeshCore network known by the module (its contact list):
+/// companion, repeater, room server or sensor.
+class MeshCoreContact {
+  final String key; final int type; final int flags;
+  /// Hops of the known route; null when the route is not known yet (flood).
+  final int? hops;
+  final String name;
+  final DateTime? lastAdvert;
+  final double? lat, lon;
+  const MeshCoreContact({required this.key,required this.type,this.flags=0,this.hops,required this.name,this.lastAdvert,this.lat,this.lon});
+  /// 'companion', 'repeater', 'room', 'sensor' or 'other'.
+  String get kind=>switch(type){1=>'companion',2=>'repeater',3=>'room',4=>'sensor',_=>'other'};
+  String get shortKey=>key.length>8?key.substring(0,8):key;
+}
+
+/// CONTACT frame (0x03, 148 bytes): public key (32), type, flags, path
+/// length (signed, -1 = unknown), path (64), name (32), last advert (u32,
+/// seconds), latitude and longitude (i32, millionths), last change (u32).
+MeshCoreContact? readMeshCoreContact(Uint8List f){
+  if(f.length<144||f[0]!=0x03)return null;
+  final key=[for(final b in f.sublist(1,33))b.toRadixString(16).padLeft(2,'0')].join();
+  final pathLen=_i8(f[35]);
+  final advert=_u32(f,132);
+  final lat=_i32(f,136)/1e6, lon=_i32(f,140)/1e6;
+  final none=lat==0&&lon==0;
+  return MeshCoreContact(key:key,type:f[33],flags:f[34],hops:pathLen<0?null:pathLen,name:_text(f,100,132),
+    lastAdvert:advert==0?null:DateTime.fromMillisecondsSinceEpoch(advert*1000,isUtc:true),lat:none?null:lat,lon:none?null:lon);
+}
 
 /// What the module said about itself, filled as answers arrive.
 class MeshCoreInfo {
@@ -79,6 +113,11 @@ String readMeshCoreFrame(Uint8List f,MeshCoreInfo info){
       return 'battery';
     case 0x00: return 'ok';
     case 0x01: return 'error';
+    case 0x02: return 'contactsStart';
+    case 0x03: return 'contact';
+    case 0x04: return 'contactsEnd';
+    // ADVERT (0x80) and NEW_ADVERT (0x8A): a node was heard.
+    case 0x80: case 0x8A: return 'advert';
     default: return 'other';
   }
 }

@@ -1,0 +1,81 @@
+/// Outils › MeshCore (lot D, card « MeshCore comme transport », 1 Nov
+/// 2026): the module, its metrics and the nodes of the MeshCore network it
+/// knows (companions, repeaters, room servers, sensors). Core.
+library;
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../../l10n/strings.dart';
+import '../../ui/link_status.dart';
+import 'meshcore_link.dart';
+import 'meshcore_link_card.dart';
+import 'meshcore_protocol.dart';
+
+/// « il y a 3 min », « il y a 2 h », « il y a 4 j ».
+String meshCoreAge(DateTime? at,DateTime now){
+  if(at==null)return S.t('mesh.never');
+  final d=now.difference(at);
+  if(d.inMinutes<1)return S.t('mesh.ageNow');
+  if(d.inHours<1)return S.t('mesh.ageMin',{'n':'${d.inMinutes}'});
+  if(d.inDays<1)return S.t('mesh.ageHour',{'n':'${d.inHours}'});
+  return S.t('mesh.ageDay',{'n':'${d.inDays}'});
+}
+
+/// « direct », « 2 sauts », « route inconnue ».
+String meshCoreHops(int? hops)=>hops==null?S.t('mesh.hopsUnknown'):hops==0?S.t('mesh.hopsDirect'):S.t('mesh.hops',{'n':'$hops'});
+
+IconData meshCoreKindIcon(String kind)=>switch(kind){
+  'repeater'=>Icons.cell_tower,'room'=>Icons.forum_outlined,'sensor'=>Icons.sensors,_=>Icons.person_pin_circle_outlined};
+
+class MeshCorePage extends StatefulWidget {
+  const MeshCorePage({super.key});
+  @override State<MeshCorePage> createState()=>_MeshCorePageState();
+}
+
+class _MeshCorePageState extends State<MeshCorePage> {
+  final link=MeshCoreLink.instance;
+  @override void initState(){super.initState();link.addListener(_changed);unawaited(link.refresh());}
+  @override void dispose(){link.removeListener(_changed);super.dispose();}
+  void _changed(){if(mounted)setState((){});}
+
+  Widget _metric(String label,String value)=>Padding(padding:const EdgeInsets.symmetric(vertical:3),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+    SizedBox(width:150,child:Text(label,style:Theme.of(context).textTheme.bodySmall)),Expanded(child:Text(value))]));
+
+  @override Widget build(BuildContext context){
+    final t=Theme.of(context), now=DateTime.now();
+    final nodes=link.contacts;
+    return Scaffold(
+      appBar:LinkedAppBar(title:Text(S.t('mesh.tool')),actions:[
+        IconButton(tooltip:S.t('mesh.refresh'),onPressed:link.state==MeshCoreState.connected?()=>unawaited(link.refresh()):null,icon:const Icon(Icons.refresh)),
+      ]),
+      body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),child:ListView(padding:const EdgeInsets.all(16),children:[
+        if(!link.remembered)...[
+          Text(S.t('mesh.noModule')),
+          const MeshCoreLinkCard(),
+        ]else Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          Text(link.info.name??link.deviceName??link.deviceId??'',style:t.textTheme.titleMedium),
+          _metric(S.t('mesh.field.state'),meshCoreStateText(link.state)),
+          for(final (k,v) in meshCoreLines(link.info))if(k!='name')_metric(S.t('mesh.field.$k'),v),
+          if(link.linkRssi!=null)_metric(S.t('mesh.field.link'),'${link.linkRssi} dBm'),
+          if(link.connectedSince!=null)_metric(S.t('mesh.field.since'),meshCoreAge(link.connectedSince,now)),
+          _metric(S.t('mesh.field.frames'),S.t('mesh.framesValue',{'in':'${link.framesIn}','out':'${link.framesOut}'})),
+          if(link.lastFrameAt!=null)_metric(S.t('mesh.field.lastFrame'),meshCoreAge(link.lastFrameAt,now)),
+          Align(alignment:Alignment.centerLeft,child:TextButton.icon(onPressed:()=>unawaited(link.forget()),
+            icon:const Icon(Icons.bluetooth_disabled),label:Text(S.t('mesh.forget')))),
+        ]))),
+        if(link.remembered)...[
+          Padding(padding:const EdgeInsets.fromLTRB(4,16,4,6),child:Text(S.t('mesh.nodes',{'n':'${nodes.length}'}),style:t.textTheme.titleSmall)),
+          if(nodes.isEmpty)Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.noNodes'),style:t.textTheme.bodySmall)),
+          for(final n in nodes)ListTile(key:ValueKey('mesh-node-${n.shortKey}'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
+            leading:Icon(meshCoreKindIcon(n.kind)),
+            title:Text(n.name.isEmpty?n.shortKey:n.name),
+            subtitle:Text([S.t('mesh.kind.${n.kind}'),meshCoreHops(n.hops),meshCoreAge(n.lastAdvert,now),
+              if(n.lat!=null)'${n.lat!.toStringAsFixed(4)}, ${n.lon!.toStringAsFixed(4)}'].join(' · '))),
+          Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.readOnly'),style:t.textTheme.bodySmall)),
+        ],
+      ]))),
+    );
+  }
+}

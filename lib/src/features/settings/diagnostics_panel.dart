@@ -24,7 +24,8 @@ import 'package:geolocator/geolocator.dart';
 import '../../access/access_manager.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
-import '../meshcore/meshcore_trial.dart';
+import '../meshcore/meshcore_link.dart';
+import '../meshcore/meshcore_link_card.dart';
 import '../../models/comm_group.dart' show myRoles;
 import '../../offline/sync_service.dart';
 import '../../offline/unsent_page.dart';
@@ -274,6 +275,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       if(_device.isNotEmpty)_block(S.t('diag.device'),_device),
       if(links.isNotEmpty)_block(S.t('diag.links'),links,
         footer:sync==null?null:UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});})),
+      // Liaisons: the MeshCore module, remembered (lot D, 1 Nov 2026).
+      if(MeshCoreLink.instance.supported)const MeshCoreLinkCard(),
       if(_pco&&(_server.isNotEmpty||_serverError!=null))_block(S.t('diag.server'),_server,
         footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!))),
       // Every « Connexion requise » of Cloudflare on this device (1 Nov 2026).
@@ -284,8 +287,6 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
           for(final c in AccessManager.instance.challenges.reversed)Padding(padding:const EdgeInsets.symmetric(vertical:2),
             child:Text(accessChallengeLine(c),style:Theme.of(context).textTheme.bodySmall)),
         ]))),
-      // Trial: does SARCADE talk to a MeshCore module over Bluetooth? (1 Nov 2026)
-      const MeshCoreTrialCard(),
     ]);
   }
 }
