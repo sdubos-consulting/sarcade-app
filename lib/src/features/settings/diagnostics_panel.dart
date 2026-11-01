@@ -21,7 +21,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../access/access_login_page.dart' show signInToServer;
 import '../../access/access_manager.dart';
+import '../../access/access_session.dart' show AccessSession;
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart' show eventModules;
@@ -124,7 +126,8 @@ class DiagnosticsPanel extends StatefulWidget {
   final String? actorId;
   /// « Envoyer » of the red banner failed again: Supprimer and Exporter shown.
   final bool failedAgain;
-  /// « Se reconnecter » when Cloudflare Access asks for a sign-in.
+  /// « Se reconnecter » when Cloudflare Access asks for a sign-in; without
+  /// it (Paramètres › Diagnostic) the panel signs in itself.
   final VoidCallback? onSignIn;
   const DiagnosticsPanel({super.key,required this.api,required this.server,required this.eventId,this.actorId,this.failedAgain=false,this.onSignIn});
   @override State<DiagnosticsPanel> createState()=>_DiagnosticsPanelState();
@@ -188,9 +191,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     final links=<DiagLine>[
       (block:lk,label:S.t('diag.response'),value:reached?'${sw.elapsedMilliseconds} ms':S.t('diag.unreachable'),state:!reached?'red':sw.elapsedMilliseconds>1500?'orange':'green'),
       (block:lk,label:S.t('diag.realtime'),value:S.t(rt?.connected==true?'diag.connected':'diag.disconnected'),state:rt==null?null:rt.connected?'green':'red'),
-      (block:lk,label:S.t('diag.access'),value:access==null?S.t(client?['via_cloudflare']==true?'diag.accessNone':'diag.accessLocal')
-        :[S.t('diag.connected'),if(access.email!=null)access.email!,if(client?['email']!=null)S.t('diag.emailChecked')].join(' · '),
-        state:access==null?(client?['via_cloudflare']==true?'orange':null):'green'),
+      accessDiagLine(lk,web:isWebPlatform,session:access,client:client,
+        refused:AccessManager.instance.requiredFor(widget.server),online:!isWebPlatform||browserOnline),
       // Itinerary computation: server, device, or straight line (31 Oct 2026).
       (block:lk,label:S.t('diag.routing'),value:S.t('diag.routing.${routingWhere(server:engine,device:RoadGraphService.active?.graph!=null)}'),
         state:switch(routingWhere(server:engine,device:RoadGraphService.active?.graph!=null)){'server'=>'green','device'=>'orange',_=>'red'}),
@@ -216,6 +218,19 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     return (block:S.t('diag.links'),label:S.t('diag.pending'),value:'$n',state:n>0?'red':'green');
   }
 
+  /// « Se reconnecter » (card « Diagnostic : bouton « Se reconnecter » à
+  /// Cloudflare dans Paramètres », 1 Nov 2026): the same from the map and
+  /// from Paramètres. Web: the page is loaded again, Cloudflare shows its
+  /// sign-in if the session of the browser ended.
+  Future<void> _reconnect() async {
+    if(isWebPlatform){reloadApp();return;}
+    final fromMap=widget.onSignIn;
+    if(fromMap!=null){fromMap();return;}
+    if(await signInToServer(context,widget.server)&&mounted)unawaited(_load());
+  }
+
+  Widget _reconnectButton()=>TextButton(key:const ValueKey('diag-access-reconnect'),onPressed:_reconnect,child:Text(S.t('links.signInAgain')));
+
   Future<void> _retryAll() async {
     final sync=OfflineSyncService.active; if(sync==null)return;
     await sync.retryAll();
@@ -236,7 +251,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     final pending=S.t('diag.pending'), access=S.t('diag.access');
     Widget? action(DiagLine l)=>l.label==pending&&OfflineSyncService.active!=null
       ?TextButton(onPressed:_retryAll,child:Text(S.t('unsent.retryAll')))
-      :l.label==access&&widget.onSignIn!=null?TextButton(onPressed:widget.onSignIn,child:Text(S.t('links.signInAgain'))):null;
+      :l.label==access?_reconnectButton():null;
     return Card(key:const ValueKey('diag-problems'),elevation:0,margin:const EdgeInsets.only(top:12),color:t.colorScheme.errorContainer.withValues(alpha:0.5),
       child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Padding(padding:const EdgeInsets.fromLTRB(14,6,14,4),child:Text(S.t('diag.problems',{'n':problems.length}),
@@ -249,7 +264,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       ])));
   }
 
-  Widget _block(String title,List<DiagLine> lines,{Widget? footer}){
+  Widget _block(String title,List<DiagLine> lines,{Widget? footer,Widget? Function(DiagLine)? action}){
     final t=Theme.of(context);
     return Card(elevation:0,margin:const EdgeInsets.only(top:12),color:t.colorScheme.surfaceContainerLow,child:Padding(
       padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -263,6 +278,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
             Text(l.label,softWrap:false),
             const SizedBox(width:12),
             Expanded(child:SelectableText(l.value,textAlign:TextAlign.end)),
+            ?action?.call(l),
           ])),
         ?footer,
       ])));
@@ -286,6 +302,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       if(!_loading||all.isNotEmpty)_summary(all),
       if(_device.isNotEmpty)_block(S.t('diag.device'),_device),
       if(links.isNotEmpty)_block(S.t('diag.links'),links,
+        action:(l)=>l.label==S.t('diag.access')&&showsAccessReconnect(l,web:isWebPlatform)?_reconnectButton():null,
         footer:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           if(MeshCoreLink.instance.supported)Align(alignment:Alignment.centerLeft,child:Padding(padding:const EdgeInsets.symmetric(horizontal:8),
             child:TextButton.icon(key:const ValueKey('diag-open-meshcore'),onPressed:()=>showOverlayPage<void>(context,(_)=>const MeshCorePage()),
@@ -342,3 +359,29 @@ String accessChallengeLine(AccessChallenge c){
     c.tokenUntil==null?S.t('diag.accessNoToken'):S.t('diag.accessTokenUntil',{'d':d(c.tokenUntil!)}),
     if(c.recovered)S.t('diag.accessRecovered') else if(c.retried)S.t('diag.accessRetried')].join(' · ');
 }
+
+/// Line « Cloudflare Access » of Liaisons (card « Diagnostic : bouton « Se
+/// reconnecter » à Cloudflare dans Paramètres », 1 Nov 2026). Installed
+/// apps: the token of the app, as before. Web: the page itself goes through
+/// Cloudflare (session of the browser) and the app keeps no token: green
+/// « par le navigateur » when the server answers through Cloudflare, orange
+/// only when it does not answer while the browser is online.
+DiagLine accessDiagLine(String block,{required bool web,required AccessSession? session,required Map<String,dynamic>? client,
+    bool refused=false,bool online=true}){
+  final label=S.t('diag.access');
+  final viaCloudflare=client?['via_cloudflare']==true;
+  if(web){
+    if((client==null||refused)&&online)return (block:block,label:label,value:S.t('diag.accessBrowserRefused'),state:'orange');
+    if(client==null)return (block:block,label:label,value:S.t('diag.unknown'),state:null);
+    return viaCloudflare?(block:block,label:label,value:S.t('diag.accessBrowser'),state:'green')
+      :(block:block,label:label,value:S.t('diag.accessLocal'),state:null);
+  }
+  if(session==null)return (block:block,label:label,value:S.t(viaCloudflare?'diag.accessNone':'diag.accessLocal'),state:viaCloudflare?'orange':null);
+  return (block:block,label:label,value:[S.t('diag.connected'),if(session.email!=null)session.email!,if(client?['email']!=null)S.t('diag.emailChecked')].join(' · '),
+    state:'green');
+}
+
+/// « Se reconnecter » next to the Cloudflare Access line: always on the
+/// installed apps when Access is used (to renew the token), on the web only
+/// when the server does not answer.
+bool showsAccessReconnect(DiagLine l,{required bool web})=>web?l.state=='orange':l.state=='orange'||l.state=='green';

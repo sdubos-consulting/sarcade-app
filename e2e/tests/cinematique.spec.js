@@ -143,6 +143,39 @@ for (const size of SIZES) {
       await expectMapFree(page, size, 'drawing bar › Échap');
     });
 
+    test('drawing: a touch on TEL-01 places a point, « Close the tools » closes its sheet (L1)', async () => {
+      // Lot 17, card L1: while drawing, the markers ignore touches.
+      const sheetShown = () => textShown(page, 'to favourites');
+      const centre = () => page.evaluate(() => {
+        const e = [...document.querySelectorAll('flt-semantics')].find((x) => x.childElementCount === 0 && /TEL-01/.test(x.textContent || '')
+          && x.getBoundingClientRect().width < 300 && x.getBoundingClientRect().height < 120);
+        if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+      // TEL-01 brought to the middle of the map, clear of the drawing bar.
+      let at = await centre();
+      expect(at, 'TEL-01 on the map').not.toBeNull();
+      const mid = { x: size.width * 0.5, y: size.height * 0.55 };
+      await page.mouse.move(at.x, at.y); await page.mouse.down(); await page.mouse.move(mid.x, mid.y, { steps: 20 }); await page.mouse.up();
+      await page.waitForTimeout(800);
+      at = await centre();
+      expect(at, 'TEL-01 moved to the middle').not.toBeNull();
+      await tapId(page, 'map.drawing-tools'); await tapId(page, 'map.draw-line');
+      await page.mouse.click(at.x - 15, at.y); await page.waitForTimeout(800);
+      await page.mouse.click(at.x + 15, at.y); await page.waitForTimeout(800);
+      await expect.poll(() => textShown(page, '2 points'), { timeout: 5_000 }).toBe(true);
+      expect(await sheetShown(), 'drawing: the sheet of TEL-01 stays closed').toBe(false);
+      await tapName(page, 'Close the tools');
+      await expect(page.getByRole('button', { name: 'Close the tools' })).toHaveCount(0);
+      // Sheet open (a first touch may only unpin the trace), then the tools
+      // opened and closed: the sheet goes with them.
+      for (let i = 0; i < 2 && !(await sheetShown()); i++) { await page.mouse.click(at.x, at.y); await page.waitForTimeout(1000); }
+      expect(await sheetShown(), 'out of a drawing, a touch opens the sheet').toBe(true);
+      await tapId(page, 'map.drawing-tools');
+      await tapName(page, 'Close the tools');
+      await expect.poll(sheetShown, { timeout: 5_000 }).toBe(false);
+      await expectMapFree(page, size, 'drawing › Close the tools');
+    });
+
     test('point menu and base map sheet close with Escape', async () => {
       if (compact) test.skip(true, 'no keyboard on a phone');
       await pointMenu(page, size);
@@ -151,6 +184,39 @@ for (const size of SIZES) {
       await tapId(page, 'map.map-layers');
       await page.keyboard.press('Escape'); await page.waitForTimeout(700);
       await expectMapFree(page, size, 'base map › Échap');
+    });
+
+    test('Escape closes the sheet of TEL-01, then a shape being drawn and the bar (L2, L3)', async () => {
+      if (compact) test.skip(true, 'no keyboard on a phone');
+      // Lot 17, card « Échap : fiche d'opérateur et forme en cours ».
+      const sheetShown = () => textShown(page, 'to favourites');
+      const tel01 = () => page.evaluate(() => {
+        const e = [...document.querySelectorAll('flt-semantics')].find((x) => x.childElementCount === 0 && /TEL-01/.test(x.textContent || '')
+          && x.getBoundingClientRect().width < 300 && x.getBoundingClientRect().height < 120);
+        if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+      // L2: a touch on TEL-01 opens its sheet (a first touch may only unpin
+      // its trace), Escape closes it.
+      for (let i = 0; i < 2 && !(await sheetShown()); i++) {
+        const at = await tel01(); expect(at, 'TEL-01 on the map').not.toBeNull();
+        await page.mouse.click(at.x, at.y); await page.waitForTimeout(1000);
+      }
+      expect(await sheetShown(), 'sheet of TEL-01 open').toBe(true);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expect.poll(sheetShown, { timeout: 5_000 }).toBe(false);
+      await expectMapFree(page, size, 'sheet of TEL-01 › Échap');
+      // L3: a line with two points; 1st Escape drops it, 2nd closes the bar.
+      await tapId(page, 'map.drawing-tools'); await tapId(page, 'map.draw-line');
+      const y = size.height * 0.4;
+      await page.mouse.click(size.width * 0.35, y); await page.waitForTimeout(800);
+      await page.mouse.click(size.width * 0.45, y); await page.waitForTimeout(800);
+      await expect.poll(() => textShown(page, '2 points'), { timeout: 5_000 }).toBe(true);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expect.poll(() => textShown(page, '2 points'), { timeout: 5_000 }).toBe(false);
+      await expect(page.getByRole('button', { name: 'Close the tools' }).first(), '1st Escape: the bar stays').toBeVisible();
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expect(page.getByRole('button', { name: 'Close the tools' })).toHaveCount(0);
+      await expectMapFree(page, size, 'drawing › Échap › Échap');
     });
   });
 }
