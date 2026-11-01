@@ -63,6 +63,8 @@ import 'drawing/map_feature.dart';
 import '../../services/wakeup_fcm.dart';
 import '../car/car_background.dart' show CarContext, saveCarContext, takePendingReplies;
 import '../car/car_messaging.dart' show carConversation;
+import '../car/car_screen.dart' show CarScreenActions, CarScreenInput;
+import '../car/car_screen_channel.dart';
 import '../../services/wakeup_state.dart';
 import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
@@ -247,7 +249,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initAdsb();_initTvDiscovery();_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initAdsb();_initTvDiscovery();_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_carScreen.start();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));}
 
   /// « Découverte automatique des écrans », remembered on this device.
   void _initTvDiscovery(){
@@ -732,15 +734,33 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(mounted){setState((){});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('distress.sent'))));}
   }
 
+  Future<void> _endDistress() async {
+    await _sendQuick(S.t('distress.endBody',{'who':widget.deviceId}),priority:'urgent');
+    await widget.store.setPreference('distress:${widget.eventId}',null);
+    if(mounted)setState((){});
+  }
+
+  // Android Auto screen with tabs (lot 17): data and actions, see car_screen.dart.
+  late final _carScreen=CarScreenBridge(read:()=>CarScreenInput(me:widget.deviceId,eventId:widget.eventId,
+      messages:widget.store.messages().map(SarcadeMessage.fromJson).toList(),
+      groups:{for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)},
+      acks:widget.store.acks().map(SarcadeAck.fromJson).toList(),orders:_moveOrders,pois:_pois.values.toList(),
+      references:_adrasec?[for(final r in _references.values)if(r.isHighPoint||r.isRelay)(id:r.id,name:r.name,relay:r.isRelay,lat:r.lat,lon:r.lon,mhz:r.txMhz,altM:r.altM)]:const [],positions:_positions.values.toList(),devices:_devices,
+      here:_me??_positionOf(widget.deviceId),inDistress:_inDistress,now:DateTime.now()),
+    actions:CarScreenActions(
+      order:(o,s)=>_routes.setMoveOrderStatus(o.json,s),
+      ack:(a,m) async {await widget.store.cacheAck(a.toJson());await _sync.queue(objectId:a.id,objectType:'ack',payload:a.toJson());
+        await _notifications.answered(m.id,'read',key:messageNotificationKey(m));if(mounted)setState((){});},
+      send:(m) async {await widget.store.cacheMessage(m.toJson());await _sync.queue(objectId:m.id,objectType:'message',payload:m.toJson());if(mounted)setState((){});},
+      sos:_sendDistress,sosEnd:_endDistress));
+
   Future<void> _distress() async {
     if(_inDistress){
       final end=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('distress.endTitle')),
         actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
           FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('distress.end')))]));
       if(end!=true)return;
-      await _sendQuick(S.t('distress.endBody',{'who':widget.deviceId}),priority:'urgent');
-      await widget.store.setPreference('distress:${widget.eventId}',null);
-      if(mounted)setState((){});
+      await _endDistress();
       return;
     }
     // Held button: no distress sent by a stray touch.
@@ -2512,7 +2532,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
+  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).

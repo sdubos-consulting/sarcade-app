@@ -1,13 +1,16 @@
 group 'org.sarcade.car'
 version '1.0'
 
+// Android Auto (card « Voiture : vraie interface SARCADE avec onglets »,
+// lot 17, 1 Nov 2026): Kotlin with the built-in Kotlin of the Android Gradle
+// plugin, as the other Kotlin plugins of the application (universal_ble 3).
 buildscript {
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.1.0'
+        classpath 'com.android.tools.build:gradle:8.3.2'
     }
 }
 
@@ -22,7 +25,7 @@ apply plugin: 'com.android.library'
 
 android {
     namespace 'org.sarcade.car'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         minSdk 21
@@ -32,4 +35,21 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+    }
+}
+
+dependencies {
+    // Car App Library, last stable version (16 Jul 2025): TabTemplate from
+    // the car API level 6, older hosts get a list with an action strip.
+    implementation 'androidx.car.app:app:1.7.0'
+    implementation 'androidx.car.app:app-projected:1.7.0'
 }

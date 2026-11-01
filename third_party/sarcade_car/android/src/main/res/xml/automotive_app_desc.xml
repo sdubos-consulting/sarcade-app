@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <automotiveApp>
+    <!-- Lot 1b: messages read aloud and answered from the notifications. -->
     <uses name="notification" />
+    <!-- Lot 17: SARCADE screen with tabs (Car App Library templates). -->
+    <uses name="template" />
 </automotiveApp>
