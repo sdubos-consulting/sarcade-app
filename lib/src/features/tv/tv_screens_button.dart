@@ -21,6 +21,7 @@ import '../../l10n/strings.dart';
 import '../../models/comm_group.dart' show myActorId;
 import '../../services/sarcade_api.dart';
 import '../../ui/theme.dart' show themeMode;
+import 'tv_theme.dart';
 import 'tv_view.dart';
 
 /// A screen is « connected » when the TV asked for its state less than
@@ -159,15 +160,9 @@ class TvScreensButton extends StatelessWidget {
       child:fab(S.t('tvb.title'),const Icon(Icons.screen_share_outlined),()=>_tap(context),controller.isFollowing));
   });
 
-  Future<void> _tap(BuildContext context) async {
-    unawaited(controller.refresh(pco:controller._pco));
-    final s=controller.screens;
-    if(s.length==1&&!controller.isFollowing){
-      await _send(context,[s.single]);
-    }else{
-      await _openList(context);
-    }
-  }
+  /// Always the menu, even with a single screen (1 Nov 2026, 8 h 01):
+  /// « Suivre ma vue », messages and the settings stay within reach.
+  Future<void> _tap(BuildContext context)=>_openList(context);
 
   Future<void> _send(BuildContext context,List<Map<String,dynamic>> to) async {
     final r=await controller.send([for(final d in to)'${d['id']}']);
@@ -230,6 +225,7 @@ class TvScreensSheet extends StatelessWidget {
         _followButton(context,[id],on),
         PopupMenuButton<String>(tooltip:S.t('tvb.settings'),onSelected:(a)=>_act(context,d,a),itemBuilder:(_)=>[
           PopupMenuItem(value:'messages',child:Text(S.t(d['messages']==false?'tv.messagesShow':'tv.messagesHide'))),
+          PopupMenuItem(value:'theme',child:Text('${S.t('tv.theme')} : ${S.t('tv.theme.${tvThemeOf(d)}')}')),
           if(d['alert']==true&&d['can_clear_alert']==true)PopupMenuItem(value:'sos',child:Text(S.t('tv.clearSos'))),
           PopupMenuItem(value:'revoke',child:Text(S.t('tvb.disconnect'))),
         ]),
@@ -246,6 +242,10 @@ class TvScreensSheet extends StatelessWidget {
           await api.setDisplayMessages(ev,id,show);key=show?'tv.messagesShown':'tv.messagesHidden';
         case 'sos':
           await api.clearDisplayAlert(ev,id);key='tv.sosCleared';
+        case 'theme':
+          final t=await chooseTvTheme(context,d);
+          if(t==null)return;
+          await api.setDisplayTheme(ev,id,t);key='tv.themeSet';
         default:
           controller.stop([id]);
           await api.revokeDisplay(ev,id);key='tvb.disconnected';

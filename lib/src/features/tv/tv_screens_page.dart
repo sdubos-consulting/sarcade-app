@@ -8,6 +8,7 @@ import '../../ui/theme.dart' show themeMode;
 import 'tv_code.dart';
 import 'tv_nearby.dart';
 import 'tv_qr_scan_page.dart';
+import 'tv_theme.dart';
 import 'tv_view.dart';
 import '../../ui/link_status.dart';
 
@@ -23,7 +24,11 @@ class TvScreensPage extends StatelessWidget {
   @override Widget build(BuildContext context)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tv.menu'))),
     body:ListView(padding:const EdgeInsets.all(16),children:[
       Text(S.t('tv.help'),style:Theme.of(context).textTheme.bodyLarge),
-      const SizedBox(height:16),
+      // « Découverte automatique des écrans » (1 Nov 2026, 8 h 01).
+      ValueListenableBuilder<bool>(valueListenable:tvDiscovery,builder:(_,on,_)=>SwitchListTile(key:const ValueKey('tv-discovery'),
+        contentPadding:EdgeInsets.zero,value:on,onChanged:(v)=>tvDiscovery.value=v,
+        title:Text(S.t('tv.discovery')),subtitle:Text(S.t('tv.discoveryHelp')))),
+      const SizedBox(height:8),
       TvScreensPanel(api:api,eventId:eventId,scanOnOpen:scanOnOpen),
     ]));
 }
@@ -203,6 +208,21 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
         FilledButton(onPressed:()=>Navigator.pop(c,m),child:Text(S.t('tv.send')))])));
   }
 
+  /// « Jour / Nuit / Automatique » of this screen.
+  Future<void> _theme(Map<String,dynamic> d) async {
+    final t=await chooseTvTheme(context,d);
+    if(t==null)return;
+    try{
+      await widget.api.setDisplayTheme(widget.eventId,'${d['id']}',t);
+      _say('tv.themeSet');
+      await _load();
+    }on SarcadeHttpException catch(e){
+      _say(e.statusCode==401||e.statusCode==403?'tv.signIn':'event.offline');
+    }catch(_){
+      _say('event.offline');
+    }
+  }
+
   /// « Messages : afficher / masquer » of this screen, at once, without
   /// sending the view again.
   Future<void> _messages(Map<String,dynamic> d) async {
@@ -273,12 +293,14 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
               style:t.textTheme.bodySmall),
           ]),
           trailing:d['active']==true?PopupMenuButton<String>(
-            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='messages')_messages(d);if(a=='revoke')_revoke(d);if(a=='sos')_clearSos(d);if(a=='rename')_rename(d);if(a=='identify')_identify(d);},
+            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='messages')_messages(d);if(a=='revoke')_revoke(d);if(a=='sos')_clearSos(d);if(a=='rename')_rename(d);if(a=='identify')_identify(d);if(a=='theme')_theme(d);},
             itemBuilder:(_)=>[
               PopupMenuItem(value:'view',child:ListTile(leading:const Icon(Icons.cast),title:Text(S.t('tv.sendView')),subtitle:Text(S.t('tv.sendViewHelp2')))),
               PopupMenuItem(value:'identify',child:ListTile(leading:const Icon(Icons.highlight_alt),title:Text(S.t('tv.identify')))),
               PopupMenuItem(value:'rename',child:ListTile(leading:const Icon(Icons.edit_outlined),title:Text(S.t('tv.rename')))),
               PopupMenuItem(value:'auto',child:ListTile(leading:const Icon(Icons.fit_screen),title:Text(S.t('tv.auto')))),
+              PopupMenuItem(value:'theme',child:ListTile(leading:const Icon(Icons.brightness_6_outlined),title:Text(S.t('tv.theme')),
+                subtitle:Text(S.t('tv.theme.${tvThemeOf(d)}')))),
               PopupMenuItem(value:'messages',child:ListTile(leading:Icon(d['messages']==false?Icons.chat_outlined:Icons.speaker_notes_off_outlined),
                 title:Text(S.t(d['messages']==false?'tv.messagesShow':'tv.messagesHide')))),
               PopupMenuItem(value:'sos',enabled:d['can_clear_alert']!=false,
