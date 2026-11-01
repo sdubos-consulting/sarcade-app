@@ -36,6 +36,9 @@ dependencies:
   # Location), with its accuracy: card « Boussole instable », 30 Oct 2026.
   sarcade_compass:
     path: third_party/sarcade_compass
+  # Android Auto declaration (card « CarPlay et Android Auto », lot 1b).
+  sarcade_car:
+    path: third_party/sarcade_car
   # « Open in… » another map application (navigation level 1).
   url_launcher: ^6.3.1
   flutter_secure_storage: ^9.2.4

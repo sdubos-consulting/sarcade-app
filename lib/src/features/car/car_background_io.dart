@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../access/access_manager.dart';
 import '../../models/message.dart';
+import '../../offline/sync_operation.dart';
 import '../../services/notification_actions.dart';
 import 'car_context.dart';
 
@@ -15,6 +16,7 @@ import 'car_context.dart';
 /// car_context.dart. Every failure falls back on the former behaviour
 /// (answer kept for the application, generic wake-up notification).
 const _contextFileName='sarcade_car_context.json';
+const _repliesFileName='sarcade_car_replies.jsonl';
 const _timeout=Duration(seconds:8);
 /// Last messages read to find the one of a wake-up.
 const _wokenLookup=30;
@@ -96,4 +98,65 @@ Future<({SarcadeMessage message,String deviceId})?> fetchWokenMessage(Map<String
   }finally{
     client?.close();
   }
+}
+
+/// Sends at once the answer dictated in the car (Android Auto « Répondre »,
+/// lot 1b). True when the server has it; otherwise it waits in the replies
+/// file for the application (see [takePendingReplies]).
+Future<bool> sendReplyNow(SarcadeMessage reply) async {
+  final c=await loadCarContext();
+  if(c==null||c.eventId!=reply.eventId)return false;
+  AccessHttpClient? client;
+  try{
+    client=await _client();
+    final op=SyncOperation(operationId:const Uuid().v4(),eventId:reply.eventId,objectId:reply.id,objectType:'message',
+      action:'create',clientTime:reply.createdAt,payload:reply.toJson());
+    final r=await client.post(Uri.parse('${c.base}/api/v0.1/sync'),headers:const {'content-type':'application/json'},
+      body:jsonEncode([op.toJson()])).timeout(_timeout);
+    if(r.statusCode!=200)return false;
+    final results=jsonDecode(r.body);
+    return results is List&&results.isNotEmpty&&operationDelivered(results.first);
+  }catch(e){
+    debugPrint('SARCADE car reply kept for later: $e');
+    return false;
+  }finally{
+    client?.close();
+  }
+}
+
+Future<File> _repliesFile() async =>
+  File('${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}$_repliesFileName');
+
+/// Keeps a dictated answer for the application (sent again by its Outbox;
+/// the server keeps one message per identifier).
+Future<void> appendPendingReply(SarcadeMessage reply) async {
+  try{
+    final f=await _repliesFile();
+    await f.parent.create(recursive:true);
+    await f.writeAsString('${jsonEncode(reply.toJson())}\n',mode:FileMode.append,flush:true);
+  }catch(e){
+    debugPrint('SARCADE car reply not kept: $e');
+  }
+}
+
+/// Answers dictated since the last call (renamed before reading, as the
+/// notification answers).
+Future<List<SarcadeMessage>> takePendingReplies() async {
+  final out=<SarcadeMessage>[];
+  try{
+    final f=await _repliesFile();
+    final draining=File('${f.path}.draining');
+    if(!await draining.exists()){
+      if(!await f.exists())return out;
+      await f.rename(draining.path);
+    }
+    for(final line in (await draining.readAsString()).split('\n')){
+      if(line.trim().isEmpty)continue;
+      try{out.add(SarcadeMessage.fromJson(Map<String,dynamic>.from(jsonDecode(line) as Map)));}catch(_){/* damaged line */}
+    }
+    await draining.delete();
+  }catch(e){
+    debugPrint('SARCADE car replies not read: $e');
+  }
+  return out;
 }
