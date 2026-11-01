@@ -2600,7 +2600,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             if(_drawingTools)...[
               const SizedBox(width:8),
               // Hidden while an object is edited: its card stays visible (13 h 25).
-              if(_drawing.selection.isEmpty)Flexible(child:DrawingToolbar(controller:_drawing,onClose:_toggleDrawingTools)),
+              if(_drawing.selection.isEmpty)Flexible(child:DrawingToolbar(controller:_drawing,onClose:_toggleDrawingTools,
+                hintSeen:(k)=>int.tryParse(widget.store.preference('draw_hint:${k.name}')??'')??0,
+                onHintShown:(k){final n=(int.tryParse(widget.store.preference('draw_hint:${k.name}')??'')??0)+1;
+                  if(n<=fullHintTimes+1)unawaited(widget.store.setPreference('draw_hint:${k.name}','$n'));})),
             ]else...[
               const SizedBox(width:8),
               // Computer (29 Oct 2026): « Suivi de position » right after the
@@ -2618,7 +2621,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ]),
           // Phone: filters in one button; computer: chips visible.
           if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[?_staleBanner(),?_orderBanner()])),
-          if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
+          // The help is now a thin line of the drawing bar (1 Nov 2026);
+          // the bubble stays only if the bar is hidden by a selection.
+          if(_drawing.isDrawing&&!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selectMode&&!_drawing.hasSelection)Padding(padding:const EdgeInsets.only(top:8),child:SelectionHint(controller:_drawing)),
           if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:(f)=>_exportGeoJson(only:_drawing.selection,format:f))),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
