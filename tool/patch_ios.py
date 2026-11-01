@@ -15,9 +15,15 @@ and this script applies the SARCADE-specific settings to Runner/Info.plist:
 - push notifications (wake-up by Firebase / APNs): aps-environment
   entitlement and the remote-notification background mode
 
+- CarPlay (lot 17, step 2b), only with SARCADE_CARPLAY=1 in the environment,
+  once Apple grants the « public safety » CarPlay entitlement: the CarPlay
+  scene of the plugin sarcade_car in the scene manifest and the entitlement.
+  Without it nothing changes (the Swift code is compiled, never called).
+
 Idempotent, and fails loudly if the template changed shape.
 """
 import json
+import os
 import plistlib
 import sys
 from pathlib import Path
@@ -53,6 +59,30 @@ USAGE = {
 }
 
 
+CARPLAY_ROLE = "CPTemplateApplicationSceneSessionRoleApplication"
+CARPLAY_SCENE = {
+    "UISceneClassName": "CPTemplateApplicationScene",
+    "UISceneConfigurationName": "CarPlay",
+    # @objc name of the Swift class of the plugin (no module prefix).
+    "UISceneDelegateClassName": "SarcadeCarPlaySceneDelegate",
+}
+CARPLAY_ENTITLEMENT = "com.apple.developer.carplay-public-safety"
+
+
+def patch_carplay(info: dict) -> bool:
+    """CarPlay scene beside the Flutter one (UIScene template, Flutter 3.41+)."""
+    if os.environ.get("SARCADE_CARPLAY") != "1":
+        print("carplay: SARCADE_CARPLAY not set, CarPlay stays inactive")
+        return True
+    manifest = info.get("UIApplicationSceneManifest")
+    if not isinstance(manifest, dict) or "UISceneConfigurations" not in manifest:
+        print("error: no UIApplicationSceneManifest in Info.plist (template without UIScene?)", file=sys.stderr)
+        return False
+    manifest["UISceneConfigurations"][CARPLAY_ROLE] = [CARPLAY_SCENE]
+    print("carplay: CarPlay scene declared")
+    return True
+
+
 def main() -> int:
     if not PLIST.exists():
         print(f"error: {PLIST} not found, run flutter create first", file=sys.stderr)
@@ -72,6 +102,8 @@ def main() -> int:
     ats = info.setdefault("NSAppTransportSecurity", {})
     ats["NSAllowsArbitraryLoads"] = True
     ats["NSAllowsLocalNetworking"] = True
+    if not patch_carplay(info):
+        return 1
     with PLIST.open("wb") as f:
         plistlib.dump(info, f)
     print(f"patched {PLIST}")
@@ -80,7 +112,10 @@ def main() -> int:
     if BUNDLE_LINE not in proj:
         print(f"error: {BUNDLE_LINE} not found in {PBXPROJ}", file=sys.stderr)
         return 1
-    ENTITLEMENTS.write_text(ENTITLEMENTS_XML)
+    entitlements = ENTITLEMENTS_XML
+    if os.environ.get("SARCADE_CARPLAY") == "1":
+        entitlements = entitlements.replace("</dict></plist>", f"  <key>{CARPLAY_ENTITLEMENT}</key><true/>\n</dict></plist>")
+    ENTITLEMENTS.write_text(entitlements)
     if f"DEVELOPMENT_TEAM = {TEAM};" not in proj:
         lines = []
         for line in proj.splitlines(keepends=True):

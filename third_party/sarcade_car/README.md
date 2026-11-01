@@ -26,6 +26,19 @@ Carte « Voiture : vraie interface SARCADE avec onglets », choix 1 à 7 validé
   les actions du conducteur attendent dans les préférences privées de
   l'application jusqu'à ce qu'elle les lise (aucune perte si elle ne tourne pas).
 
+## Lot 17, étape 2b : CarPlay (inactif tant qu'Apple n'a pas accordé l'autorisation)
+- `ios/Classes/SarcadeCarPlaySceneDelegate.swift` : mêmes onglets (`CPTabBarTemplate`,
+  listes), « SOS » dans la barre de navigation de chaque onglet avec
+  confirmation (`CPAlertTemplate`), fiches (`CPInformationTemplate`) ; « Naviguer »
+  ouvre Plans ; « Lire » par la synthèse vocale ; pas de dictée (CarPlay ne la
+  donne pas à cette catégorie : réponse par Siri, lot 1c).
+- `ios/Classes/SarcadeCarPlugin.swift` : même canal que sur Android.
+- La scène CarPlay et l'autorisation `com.apple.developer.carplay-public-safety`
+  ne sont déclarées par `tool/patch_ios.py` qu'avec `SARCADE_CARPLAY=1`, à
+  activer dans la CI quand Apple aura accordé l'autorisation (profil
+  d'approvisionnement à régénérer) ; d'ici là, le code est compilé mais iOS ne
+  l'appelle jamais.
+
 ## Essai
 Desktop Head Unit (DHU) sur PC, téléphone en USB, puis voiture : mode
 développeur d'Android Auto, « Sources inconnues » pour un APK hors Play.

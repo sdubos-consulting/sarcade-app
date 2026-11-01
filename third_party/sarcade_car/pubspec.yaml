@@ -4,7 +4,8 @@ description: >-
   « CarPlay et Android Auto », lot 1b) and the SARCADE screen with tabs,
   « points of interest » category of the Car App Library (card « Voiture :
   vraie interface SARCADE avec onglets », lot 17, 1 Nov 2026). Kotlin code
-  and the Car App Library dependency stay in this plugin.
+  and the Car App Library dependency stay in this plugin. CarPlay (step 2b):
+  same tabs in Swift, inactive until Apple grants the CarPlay entitlement.
 version: 1.0.0
 publish_to: none
 
@@ -21,4 +22,6 @@ flutter:
     platforms:
       android:
         package: org.sarcade.car
+        pluginClass: SarcadeCarPlugin
+      ios:
         pluginClass: SarcadeCarPlugin
