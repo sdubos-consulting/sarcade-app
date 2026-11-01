@@ -36,6 +36,7 @@ import '../compass/shared_compass.dart';
 import '../compass/compass_status.dart';
 import '../measure/wmm.dart' show magneticDeclination;
 import 'drawing/export_formats.dart';
+import 'cinematique_escape.dart';
 import '../../ui/theme.dart';
 import 'stations.dart';
 import 'cinematique_touch.dart';
@@ -2471,17 +2472,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         LogicalKeyboardKey.keyY when ctrl=>run(_drawing.redo),
         LogicalKeyboardKey.keyD when ctrl&&_drawing.hasSelection=>run(()=>_drawing.duplicateSelected()),
         LogicalKeyboardKey.enter||LogicalKeyboardKey.numpadEnter when _drawing.canFinish=>run(()=>_drawing.finish()),
-        // Constat L3 (1 Nov 2026): Échap first drops the shape being drawn,
+        // Constat L3 (lot 17): Échap first drops the shape being drawn,
         // then leaves the tool and closes the drawing bar.
-        LogicalKeyboardKey.escape when _drawing.isDrawing&&_drawing.draft.isNotEmpty=>run(_drawing.cancelDraft),
-        LogicalKeyboardKey.escape when _drawing.isDrawing=>run((){_drawing.selectTool(null);if(_drawingTools)_toggleDrawingTools();}),
+        LogicalKeyboardKey.escape when _drawing.isDrawing=>escapeDrawing(_drawing,closeBar:(){if(_drawingTools)_toggleDrawingTools();}),
         LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run(_drawing.endSelection),
         // Card N1 of the cinématique review (31 Oct 2026): Échap also ends
         // « Toucher la carte » (converter), then closes the last window, then
         // clears the measure, then closes an empty drawing bar.
         LogicalKeyboardKey.escape when _pickPoint!=null=>run(_cancelPick),
-        // Constat L2 (1 Nov 2026): Échap closes the sheet of an operator.
-        LogicalKeyboardKey.escape when _selectedDevice!=null||_trace.isNotEmpty=>run(()=>setState((){_selectedDevice=null;_trace=[];})),
+        // Constat L2 (lot 17): Échap closes the sheet of an operator, as its ✕.
+        LogicalKeyboardKey.escape when _selectedDevice!=null||_trace.isNotEmpty=>run(()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;})),
         LogicalKeyboardKey.escape when _mapPanelOpen=>_escapePanel(),
         LogicalKeyboardKey.escape when _measure.active=>run((){unawaited(_measure.clear());setState((){});}),
         LogicalKeyboardKey.escape when _drawingTools&&_drawing.selection.isEmpty=>run(_toggleDrawingTools),
