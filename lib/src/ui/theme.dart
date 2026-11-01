@@ -56,6 +56,9 @@ ThemeData dayTheme()=>_base(ColorScheme.fromSeed(seedColor:PlayBlue.primary,brig
 ThemeData _base(ColorScheme scheme){
   final day=scheme.brightness==Brightness.light;
   return ThemeData(useMaterial3:true,colorScheme:scheme,
+  // Sheets at the bottom of the map: at most 560 px wide on a tablet or a
+  // computer (1 Nov 2026, a bearing sheet across a whole screen).
+  bottomSheetTheme:const BottomSheetThemeData(constraints:BoxConstraints(maxWidth:bottomSheetMaxWidth)),
   scaffoldBackgroundColor:day?scheme.surface:SarcadeColors.ground,
   // Cards and groups: grey-blue background, round corners (no border by day).
   cardTheme:CardThemeData(color:scheme.surfaceContainer,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16),
@@ -109,3 +112,6 @@ BoxDecoration glass(BuildContext context,{double radius=20,Color? border}){
 final ColorScheme mapMarkerScheme=dayTheme().colorScheme;
 const Color mapInkBackground=Color(0xF2FFFFFF);
 const Color mapInkText=Color(0xFF1F1F1F);
+
+/// Widest sheet at the bottom of the screen (tablet, computer).
+const bottomSheetMaxWidth=560.0;

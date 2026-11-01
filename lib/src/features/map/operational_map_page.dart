@@ -2060,7 +2060,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _bearingTakeSheet(){
     final s=Theme.of(context).colorScheme;
     final draft=_bearingDraft();
-    final same=_bearings.all.where((b)=>b.search==_brgSearch).toList();
+    final same=_bearings.all.where((b)=>searchKey(b.search)==searchKey(_brgSearch)).toList();
     final before=probableZone(same), after=draft==null?null:probableZone([...same,draft]);
     final effect=before.centre!=null&&after?.centre!=null?S.t('bearings.effect',{'a':geo.formatDistance(before.radiusM),'b':geo.formatDistance(after!.radiusM)})
       :after?.centre!=null?S.t('bearings.firstZone',{'b':geo.formatDistance(after!.radiusM)}):null;
@@ -2176,7 +2176,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Scrolls and grows (31 Oct 2026, 23 h 46: « Supprimer » pushed off an
     // iPhone screen by the zone actions of the PCO).
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,isScrollControlled:true,
-      constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(context).height*0.9),builder:(c)=>SafeArea(child:SingleChildScrollView(key:const ValueKey('bearing-sheet'),padding:const EdgeInsets.fromLTRB(20,0,20,12),
+      constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(context).height*0.9,maxWidth:bottomSheetMaxWidth),builder:(c)=>SafeArea(child:SingleChildScrollView(key:const ValueKey('bearing-sheet'),padding:const EdgeInsets.fromLTRB(20,0,20,12),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
         // « vrai » at the size of the lines below, on the baseline of the
         // azimuth (card « Fiche d'un relevé, « vrai » trop grand », 17 h 38).
@@ -2196,8 +2196,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),title:Text(S.t('bearings.fromOrigin')),onTap:()=>Navigator.pop(c,'origin')),
         // The PCO decides by hand when the automatic rule is wrong: one line,
         // Auto / Écarter / Garder.
-        if(pco&&b.search.isNotEmpty)Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Row(children:[
-          Expanded(child:Text(S.t('bearings.zoneTitle'),style:Theme.of(c).textTheme.bodyMedium)),
+        // Choice under its title, aligned left (1 Nov 2026).
+        if(pco&&b.search.isNotEmpty)Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(S.t('bearings.zoneTitle'),style:Theme.of(c).textTheme.bodyMedium),
+          const SizedBox(height:6),
           SegmentedButton<String>(key:const ValueKey('bearing-zone-choice'),showSelectedIcon:false,
             style:const ButtonStyle(visualDensity:VisualDensity.compact,tapTargetSize:MaterialTapTargetSize.shrinkWrap),
             segments:[for(final z in const ['auto','out','in'])ButtonSegment(value:z,label:Text(S.t('bearings.zoneShort.$z'),key:ValueKey('bearing-zone-$z')))],
