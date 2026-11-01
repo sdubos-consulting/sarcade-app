@@ -15,6 +15,7 @@ import 'package:sarcade_app/src/features/search/map_search.dart';
 import 'package:sarcade_app/src/features/search/map_search_sources.dart';
 import 'package:sarcade_app/src/l10n/strings.dart';
 import 'package:sarcade_app/src/modules/adrasec/adsb/adsb_controller.dart';
+import 'package:sarcade_app/src/modules/adrasec/adsb/adsb_search.dart';
 import 'package:sarcade_app/src/services/sarcade_api.dart';
 
 final now=DateTime.utc(2026,11,1,21,0);
@@ -87,7 +88,8 @@ void main(){
       c.onRealtime('adsb.updated',{'aircraft':[plane()]});
       expect(c.on,isFalse);
       final r=searchLocal('AFR92SC',aircraftSearchables(c.received(DateTime.now()))).single;
-      expect(openFoundOnMap(r,map:MapController(),adsb:c,openNodeInTool:(_){}),isTrue);
+      expect(openFoundOnMap(r,map:MapController(),openNodeInTool:(_){}),isFalse,reason:'not a MeshCore node');
+      expect(openAircraftFound(r,map:MapController(),adsb:c),isTrue);
       await Future<void>.delayed(Duration.zero);
       expect(c.on,isTrue);
       expect(c.selectedId,'3c6444');

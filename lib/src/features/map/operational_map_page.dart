@@ -124,6 +124,7 @@ import '../../modules/adrasec/adsb/adsb_controller.dart';
 import '../../modules/adrasec/adsb/adsb_layer.dart';
 import '../../modules/adrasec/adsb/adsb_models.dart';
 import '../../modules/adrasec/adsb/adsb_page.dart';
+import '../../modules/adrasec/adsb/adsb_search.dart';
 import '../meshcore/meshcore_link.dart';
 import '../meshcore/meshcore_link_card.dart' show meshCoreStateText, MeshCoreReconnectBanner;
 import '../meshcore/meshcore_page.dart';
@@ -1669,7 +1670,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     addressResults(await widget.api.geocode(q,lat:near?.latitude,lon:near?.longitude));
   LatLng? _mapCentre(){try{return _map.camera.center;}catch(_){return null;}}
   void _onSearchPick(SearchResult r){
-    if(openFoundOnMap(r,map:_map,adsb:_adrasec?_adsb:null,openNodeInTool:_openMeshCoreOn))return;
+    if(openFoundOnMap(r,map:_map,openNodeInTool:_openMeshCoreOn)||(_adrasec&&openAircraftFound(r,map:_map,adsb:_adsb)))return;
     setState(()=>_searchPin=r.point);
     _map.move(r.point,r.kind==SearchKind.address||r.kind==SearchKind.coordinates?16:15);
   }
