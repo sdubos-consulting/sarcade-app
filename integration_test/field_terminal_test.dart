@@ -211,7 +211,10 @@ void main() {
     await onMap('messages › back');
     // Itinéraires and Résection (blocked on a phone before lot 12).
     for (final tool in ['tool.routes', 'tool.resection']) {
-      await t.tap(byId('nav.tools')); await pumpUntil(t, byId(tool));
+      await t.tap(byId('nav.tools')); await pumpUntil(t, byId('tool.files'));
+      // The grid is lazy: a tile below the fold (Fichiers joined Outils,
+      // 1 Nov 2026) is built only once scrolled to.
+      await t.scrollUntilVisible(byId(tool), 200, scrollable: find.byType(Scrollable).last);
       await t.tap(byId(tool)); await t.pump(const Duration(seconds: 1));
       await back();
       await onMap('$tool › back');
