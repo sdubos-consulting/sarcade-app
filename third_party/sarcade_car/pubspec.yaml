@@ -1,0 +1,24 @@
+name: sarcade_car
+description: >-
+  SARCADE in the car, Android Auto (card « CarPlay et Android Auto », lot 1b,
+  1 Nov 2026): declares the application to Android Auto as a messaging
+  application (notifications read aloud, dictated answer). The declaration
+  lives in the manifest of this plugin, merged into the application one, so
+  that tool/patch_android.py stays unchanged.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.3.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: org.sarcade.car
+        pluginClass: SarcadeCarPlugin
