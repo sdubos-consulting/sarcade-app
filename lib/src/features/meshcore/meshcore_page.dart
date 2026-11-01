@@ -39,13 +39,19 @@ String meshCoreAge(DateTime? at,DateTime now){
 /// « direct », « 2 sauts », « route inconnue ».
 String meshCoreHops(int? hops)=>hops==null?S.t('mesh.hopsUnknown'):hops==0?S.t('mesh.hopsDirect'):S.t('mesh.hops',{'n':'$hops'});
 
+/// Text put in the search field for a node chosen elsewhere (lot 19).
+String? meshCoreFocusQuery(MeshCoreContact? c)=>c==null?null:c.name.isEmpty?c.shortKey:c.name;
+
 IconData meshCoreKindIcon(String kind)=>switch(kind){
   'repeater'=>Icons.cell_tower,'room'=>Icons.forum_outlined,'sensor'=>Icons.sensors,_=>Icons.person_pin_circle_outlined};
 
 class MeshCorePage extends StatefulWidget {
   /// « Voir sur la carte »: the map shows the node (lot 17).
   final void Function(MeshCoreContact)? onShowOnMap;
-  const MeshCorePage({super.key,this.onShowOnMap});
+  /// Opened on this node (search of the map, lot 19): its name already in
+  /// the search field of the list.
+  final MeshCoreContact? focus;
+  const MeshCorePage({super.key,this.onShowOnMap,this.focus});
   @override State<MeshCorePage> createState()=>_MeshCorePageState();
 }
 
@@ -89,7 +95,7 @@ class _MeshCorePageState extends State<MeshCorePage> {
           SwitchListTile(key:const ValueKey('mesh-show-map'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             title:Text(S.t('mesh.showOnMap')),value:link.showOnMap,onChanged:(v)=>unawaited(link.setShowOnMap(v))),
           // Lot 19: search field and filters above the nodes.
-          MeshCoreNodeList(nodes:nodes,tile:(n)=>ListTile(key:ValueKey('mesh-node-${n.shortKey}'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
+          MeshCoreNodeList(nodes:nodes,initialQuery:meshCoreFocusQuery(widget.focus),tile:(n)=>ListTile(key:ValueKey('mesh-node-${n.shortKey}'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             leading:Icon(meshCoreKindIcon(n.kind)),
             title:Text(n.name.isEmpty?n.shortKey:n.name),
             subtitle:Text([S.t('mesh.kind.${n.kind}'),meshCoreHops(n.hops),meshCoreAge(n.lastAdvert,now),

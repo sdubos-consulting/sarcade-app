@@ -57,6 +57,7 @@ class _MapSearchBarState extends State<MapSearchBar> {
 
   static IconData _icon(SearchKind k)=>switch(k){
     SearchKind.coordinates=>Icons.pin_drop_outlined, SearchKind.operator=>Icons.person_pin_circle_outlined,
+    SearchKind.aircraft=>Icons.flight, SearchKind.meshNode=>Icons.settings_input_antenna,
     SearchKind.reference=>Icons.cell_tower, SearchKind.poi=>Icons.place_outlined,
     SearchKind.drawing=>Icons.draw_outlined, SearchKind.address=>Icons.home_work_outlined};
 
