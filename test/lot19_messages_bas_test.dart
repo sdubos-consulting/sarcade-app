@@ -118,10 +118,12 @@ void main(){
     await t.tap(find.byKey(const ValueKey('unread-up')));
     await t.pumpAndSettle();
     expect(find.text('200 messages non lus').hitTestable(),findsOneWidget);
-    // A message received while reading higher up does not pull down.
+    // A message received while reading higher up does not pull down (the
+    // thread keeps 200 messages: the first one goes).
     chats.onReceived(readMeshCoreMessage(_incoming('Nouveau'))!,nameOf:(_)=>'Alice');
     await t.pumpAndSettle();
-    expect(find.text('200 messages non lus').hitTestable(),findsOneWidget);
+    expect(find.text('Nouveau').hitTestable(),findsNothing);
+    expect(find.text('Message 2').hitTestable(),findsOneWidget);
     await t.pumpWidget(const SizedBox());
   });
 }
