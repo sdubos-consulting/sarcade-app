@@ -86,7 +86,7 @@ class AdsbFilters {
   String get rangeText=>'${_grouped(minFt)} ft – ${maxFt==null?'∞':'${_grouped(maxFt!)} ft'}';
   /// Options pushed to a TV with the view (no ADS-B setting of its own).
   Map<String,dynamic> tvJson()=>{'aircraft_min_ft':minFt,'aircraft_max_ft':maxFt,'aircraft_ground':ground,'aircraft_labels':labels};
-  @override bool operator==(Object o)=>o is AdsbFilters&&o.minFt==minFt&&o.maxFt==maxFt&&o.ground==ground&&o.labels==labels;
+  @override bool operator==(Object other)=>other is AdsbFilters&&other.minFt==minFt&&other.maxFt==maxFt&&other.ground==ground&&other.labels==labels;
   @override int get hashCode=>Object.hash(minFt,maxFt,ground,labels);
 }
 
