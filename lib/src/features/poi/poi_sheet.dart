@@ -14,6 +14,7 @@ import '../../models/poi.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
 import '../../ui/operator_color.dart';
+import '../map/rename_dialog.dart';
 import '../measure/coordinates.dart';
 import 'poi_icons.dart';
 
@@ -58,8 +59,9 @@ Widget poiSymbol(SarcadePoi p,{double size=38}){
     boxShadow:const [BoxShadow(blurRadius:3,color:Colors.black45)]),child:Icon(poiIconData(p.icon),size:size*0.46,color:Colors.white));
 }
 
-Marker poiMarker(SarcadePoi p,VoidCallback onTap)=>Marker(point:LatLng(p.lat,p.lon),width:44,height:44,
-  child:Tooltip(message:poiName(p),child:GestureDetector(key:ValueKey('poi-${p.id}'),behavior:HitTestBehavior.opaque,onTap:onTap,
+/// Pin of a point; [onDoubleTap] (lot 19) also keeps the map from zooming.
+Marker poiMarker(SarcadePoi p,VoidCallback onTap,{VoidCallback? onDoubleTap})=>Marker(point:LatLng(p.lat,p.lon),width:44,height:44,
+  child:Tooltip(message:poiName(p),child:GestureDetector(key:ValueKey('poi-${p.id}'),behavior:HitTestBehavior.opaque,onTap:onTap,onDoubleTap:onDoubleTap,
     child:Center(child:poiSymbol(p)))));
 
 /// New point of the event, by [actor] in his drawing colour.
@@ -102,15 +104,18 @@ Future<void> deletePoi(Map<String,SarcadePoi> pois,LocalStore store,OfflineSyncS
     'updated_at':DateTime.now().toUtc().toIso8601String()});
 }
 
-Future<String?> askPoiName(BuildContext context,SarcadePoi p) async {
-  final ctl=TextEditingController(text:p.label??'');
-  final r=await showDialog<String>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('poi.rename')),
-    content:TextField(key:const ValueKey('poi-name'),controller:ctl,autofocus:true,maxLength:160,decoration:InputDecoration(labelText:S.t('poi.name')),
-      onSubmitted:(v)=>Navigator.pop(c,v.trim())),
-    actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-      FilledButton(onPressed:()=>Navigator.pop(c,ctl.text.trim()),child:Text(S.t('common.save')))]));
-  ctl.dispose();
-  return r;
+/// « Modifier le nom »: the current name selected, Entrée saves, Échap
+/// cancels (lot 19).
+Future<String?> askPoiName(BuildContext context,SarcadePoi p)=>
+  askNewName(context,title:S.t('poi.rename'),initial:p.label??'',label:S.t('poi.name'),fieldKey:const ValueKey('poi-name'));
+
+/// Double click or double touch on a point (card « Point d'intérêt :
+/// double-clic pour le renommer », lot 19, choices 1 and 2): the rename
+/// window for the PCO or the author of the point, else the usual sheet.
+Future<void> doubleTapPoi(BuildContext context,SarcadePoi p,{required String actor,required Future<void> Function(String name) rename,required VoidCallback openSheet}) async {
+  if(!canEditPoi(p,actor)){openSheet();return;}
+  final name=await askPoiName(context,p);
+  if(name!=null)await rename(name);
 }
 
 Future<bool> confirmPoiDelete(BuildContext context,SarcadePoi p) async =>await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
