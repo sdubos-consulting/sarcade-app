@@ -21,7 +21,16 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - run: flutter pub get
+      - name: Dependencies
+        shell: bash
+        run: |
+          # The job log is not always readable: dependency errors as annotations.
+          if ! flutter pub get > pub.log 2>&1; then
+            cat pub.log
+            msg=$(tail -40 pub.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=flutter pub get::${msg}"
+            exit 1
+          fi
       - name: Analyze
         shell: bash
         run: |
@@ -49,6 +58,9 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      # Empty until the signing account is set (steps « Azure Trusted Signing »).
+      AZURE_TS_ACCOUNT: ${{ secrets.AZURE_TS_ACCOUNT }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -69,22 +81,72 @@ jobs:
         run: |
           set -o pipefail
           flutter build windows --release --dart-define=SARCADE_BUILD_NUMBER=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA:0:7}" 2>&1 | tee windows-build.log
+      - name: Start test of the Windows client (smoke)
+        # Card « Client Windows : écran gris au démarrage » (31 Oct 2026): the
+        # built app is started with SARCADE_SMOKE_FILE; it writes a report
+        # once its first screen is up (errors included) and quits. A capture
+        # of the screen and the startup log are kept as an artifact.
+        shell: pwsh
+        run: |
+          $exe = "build\windows\x64\runner\Release\sarcade_app.exe"
+          $out = "smoke"; New-Item -ItemType Directory -Force $out | Out-Null
+          & tool\windows_smoke.ps1 -Exe $exe -Out $out
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-smoke
+          path: smoke
+          retention-days: 30
       - name: Report Windows build errors
         if: failure()
         shell: bash
         run: |
           grep -n -B2 -A6 -E "error|Error|FAILED|fatal" windows-build.log \
             | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done || true
+      # Code signing with Azure Trusted Signing (card « Windows, installeur
+      # bloqué par Defender : signer le code », 31 Oct 2026): off until the
+      # owner puts the six AZURE_* secrets of his signing account in GitHub.
+      # Only what is published (after a merge on main), and only the program
+      # and the installer, the files SmartScreen and Defender check: about
+      # 2 signatures per merge, far under the 5 000 of the Basic offer (card
+      # « Signature Windows : limiter le nombre de signatures », 31 Oct 2026).
+      - name: Sign the program (Azure Trusted Signing)
+        if: env.AZURE_TS_ACCOUNT != '' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: azure/trusted-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_TS_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_TS_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_TS_PROFILE }}
+          files: ${{ github.workspace }}\build\windows\x64\runner\Release\sarcade_app.exe
       - name: Installer (Inno Setup)
         shell: pwsh
         run: |
           $v = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
           $env:SARCADE_VERSION = $v
+          # Latest Inno Setup, not the one of the GitHub machine: its wizard
+          # cut the check boxes on a 200 % screen (Surface, 31 Oct 2026).
+          choco upgrade innosetup -y --no-progress | Out-Null
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { $iscc = (Get-ChildItem "${env:ProgramFiles(x86)}","${env:ProgramFiles}" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
+          Write-Host "::notice title=Inno Setup::$((Get-Item $iscc).VersionInfo.ProductVersion)"
           & $iscc tool\windows_installer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\installer\sarcade-windows-portable.zip
+      - name: Sign the installer (Azure Trusted Signing)
+        if: env.AZURE_TS_ACCOUNT != '' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: azure/trusted-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_TS_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_TS_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_TS_PROFILE }}
+          files: ${{ github.workspace }}\build\installer\sarcade-windows-setup.exe
       - name: Sign the installer (when the certificate is in the secrets)
         shell: pwsh
         env:
@@ -443,7 +505,9 @@ jobs:
           flutter build web --release --no-web-resources-cdn --dart-define=SARCADE_BUILD_NUMBER=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee web-build.log
           # Build served next to the app: open clients compare it with theirs
           # and offer « Mettre à jour » (lib/src/models/web_update.dart).
-          printf '{"build":"%s"}\n' "${SARCADE_BRANCH}@${GITHUB_SHA::7}" > build/web/sarcade_build.json
+          # With the version (« 0.1.0+560 ») for « (0.1.0+535 → 0.1.0+560) ».
+          V=$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' pubspec.yaml)
+          printf '{"build":"%s","version":"%s"}\n' "${SARCADE_BRANCH}@${GITHUB_SHA::7}" "${V}+${{ github.run_number }}" > build/web/sarcade_build.json
           # Code file named after the build: no copy of an older one can run.
           python3 tool/version_web.py build/web "${SARCADE_BRANCH}@${GITHUB_SHA::7}"
       - name: Report web build errors

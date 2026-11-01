@@ -25,6 +25,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 WizardStyle=modern
+; A little larger wizard: room for the check boxes on high-DPI screens
+; (Surface, 200 %), where they were cut on the left (31 Oct 2026).
+WizardSizePercent=110
 UninstallDisplayIcon={app}\sarcade_app.exe
 ; An update closes the running client before replacing its files.
 CloseApplications=yes
@@ -44,4 +47,7 @@ Name: "{autoprograms}\SARCADE"; Filename: "{app}\sarcade_app.exe"
 Name: "{autodesktop}\SARCADE"; Filename: "{app}\sarcade_app.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\sarcade_app.exe"; Description: "{cm:LaunchProgram,SARCADE}"; Flags: nowait postinstall skipifsilent
+; Started with the rights of the person, never as administrator: the Windows
+; notification plugin stops an elevated SARCADE (card « Client Windows :
+; écran gris », 31 Oct 2026).
+Filename: "{app}\sarcade_app.exe"; Description: "{cm:LaunchProgram,SARCADE}"; Flags: nowait postinstall skipifsilent runasoriginaluser

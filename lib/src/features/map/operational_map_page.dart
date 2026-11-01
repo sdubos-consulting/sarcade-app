@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
-import 'dart:convert';
+import '../messages/conversations.dart' show avatarInitials;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -27,10 +29,12 @@ import '../aprs/aprs_page.dart';
 import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
 import '../../ui/map_view.dart';
+import '../../ui/test_ids.dart';
 import '../../ui/compass_follow.dart';
 import '../compass/shared_compass.dart';
 import '../compass/compass_status.dart';
 import '../measure/wmm.dart' show magneticDeclination;
+import 'drawing/export_formats.dart';
 import '../../ui/theme.dart';
 import 'stations.dart';
 import 'sos_placement.dart';
@@ -83,12 +87,15 @@ import '../measure/measure_controller.dart';
 import '../measure/measure_widgets.dart';
 import '../navigation/navigation_widgets.dart';
 import '../navigation/follow_mode.dart';
+import '../navigation/point_label.dart';
 import '../routes/route_models.dart';
 import '../routes/routes_controller.dart';
 import '../routes/routes_layers.dart';
+import '../routes/route_entry_bar.dart';
 import '../routes/routes_panel.dart';
 import '../tv/tv_view.dart';
 import '../tv/tv_nearby.dart';
+import '../tv/tv_screens_button.dart';
 import 'fixed_stations.dart';
 import '../orders/move_orders.dart';
 import '../bearings/signals.dart';
@@ -113,6 +120,7 @@ import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
 import '../routes/waypoint_sheet.dart';
 import '../../ui/action_buttons.dart';
+import '../../ui/link_status.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
@@ -132,13 +140,20 @@ class OperationalMapPage extends StatefulWidget {
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={}; final Map<String,ReferenceSite> _references={};
-  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=false; /* closed at start on every screen: the map first (bug of 29 Oct 2026) */ bool _showReferencePanel=false; bool _showHighPoints=false; bool _showRelays=false; /* off at start: decision of the project owner, 28 Oct 2026 */ String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
+  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=false; /* closed at start on every screen: the map first (bug of 29 Oct 2026) */ bool _showReferencePanel=false; bool _showHighPointsPref=false; bool _showRelaysPref=false; /* off at start: decision of the project owner, 28 Oct 2026 */ String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
   late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
   late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
   late final RoutesController _routes; late final NavigationController _nav; late final RoadGraphService _graphs;
   List<Basemap> _catalog=builtInBasemaps;
   /// APRS stations followed by the event (the server only sends those).
-  bool _showAprs=true;
+  bool _showAprsPref=true;
+  /// ADRASEC module of the event (card « Séparer le Core et les modules »,
+  /// 31 Oct 2026): without it, no bearing, resection, APRS, fixed stations
+  /// nor reference sites (high points, relays) anywhere on this screen.
+  bool get _adrasec=>_ops.settings.moduleOn('adrasec');
+  bool get _showAprs=>_showAprsPref&&_adrasec;
+  bool get _showHighPoints=>_showHighPointsPref&&_adrasec;
+  bool get _showRelays=>_showRelaysPref&&_adrasec;
   late final MeasureController _measure; bool _pickingOrigin=false;
   CoordFormat get _coordFormat=>coordFormatFrom(widget.store.preference('coord_format'));
   int get _mgrsDigits=>widget.store.preference('mgrs_digits')=='5'?5:4;
@@ -205,17 +220,20 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// new screen as before.
   Widget? _deskPage; String? _deskId;
   void _openDesk(String id,Widget Function() build){
+    if(_drawing.selectMode)_drawing.endSelection();
     if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(_)=>build()));return;}
     setState((){
       if(_deskId==id){_deskId=null;_deskPage=null;return;}
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
     myActorId=widget.deviceId;
+    // Link pill of every screen: a touch opens the Diagnostic (31 Oct 2026).
+    linkStatusOnTap=()=>_openDiagnostics();
     try{
       final me=await widget.api.me();
       myRoles={for(final r in (me?['roles'] as List?)??const [])'$r'};
@@ -288,8 +306,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _onAccessChanged(){if(mounted)setState((){});}
 
   void _toggleDrawingTools(){
+    Tooltip.dismissAllToolTips();
     // Each opening of the tools starts from the profile colour.
-    if(_drawingTools){_drawing.selectTool(null);}else{
+    // Closing the bar ends any selection: the map is never left blocked
+    // (bug of 30 Oct 2026, 17 h 35).
+    if(_drawingTools){_drawing.selectTool(null);_drawing.endSelection();}else{
       _drawing.color=_profileDrawColor;
       _bearings.operatorColor=_profileDrawColor;
       // Drawing with the drawings hidden shows nothing (28 Oct 2026): shown again.
@@ -379,7 +400,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // Realtime and synchronisation may both bring the message: only the
       // first arrival notifies; an old message caught up later stays silent.
       if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
-        await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority,
+        await _notifications.message(title:'SARCADE · ${S.t(priorityKey(m.priority))} · ${m.senderId}',body:m.body,priority:m.priority,
           payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m)));
       }
     }
@@ -422,19 +443,35 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adjusting!=null){_adjustOrigin(point);return;}
     final wide=MediaQuery.sizeOf(context).width>=_compactWidth;
     final me=_me??_positionOf(widget.deviceId);
-    if(gesture&&nearOwnPosition(point,me)){await _bearings.startTaking();if(wide&&mounted)_startAim(BearingAim(me!));return;}
+    if(gesture&&_adrasec&&nearOwnPosition(point,me)){await _bearings.startTaking();if(!mounted)return;if(wide){_startAim(BearingAim(me!));}else{_focusBearing(me!);}return;}
+    // Long press on a line, a point, a text or the outline of a shape:
+    // « Sélectionner » it. Inside a shape the point menu opens, the shape
+    // offered at its top (card « Appui long dans une zone dessinée », 31 Oct
+    // 2026: a bearing could not be taken inside a sector any more).
+    var under=const <MapFeature>[];
+    if(gesture&&_showDrawings){
+      final cam=_map.camera; final at=cam.latLngToScreenOffset(point);
+      final hit=hitOutline(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
+      if(hit!=null&&_drawing.canSelect(hit)){_drawing.startSelection(hit.id);return;}
+      under=shapesUnder(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).where(_drawing.canSelect).toList();
+    }
+    // Shown in the language of each device wherever it is displayed
+    // (pointLabel, 31 Oct 2026).
     final label=S.t('nav.point');
-    final choice=await showPointMenu(context,point:point,places:_places,pco:isPco(widget.deviceId),
-      coordinates:formatCoordinates(point,_coordFormat,mgrsDigits:_mgrsDigits));
+    final choice=await showPointMenu(context,point:point,places:_places,pco:isPco(widget.deviceId),adrasec:_adrasec,
+      coordinates:formatCoordinates(point,_coordFormat,mgrsDigits:_mgrsDigits),
+      objects:[for(final f in under)(id:f.id,label:f.label.trim().isEmpty?f.kind.label:f.label.trim())],
+      onSelectObject:_drawing.startSelection);
     if(choice==null||!mounted)return;
     switch(choice){
-      case PointAction.bearing: await _bearings.startTaking(from:point);if(wide&&mounted)_startAim(BearingAim(point));
+      case PointAction.bearing: await _bearings.startTaking(from:point);if(!mounted)return;if(wide){_startAim(BearingAim(point));}else{_focusBearing(point);}
       case PointAction.poi: await _createPoiHere(point);
       case PointAction.order: await _sendOperatorHere(point);
       case PointAction.measure: await _measureTo(point,label);
       case PointAction.navigate: await _navigateTo(point,label);
       case PointAction.route: await _routeToHere(point);
       case PointAction.external: await _openElsewhere(point,label);
+      case PointAction.select: if(!_showDrawings)await _setShown('show_draw',true);_drawing.startSelection();
       case PointAction.weather: _openWeather(point:(lat:point.latitude,lon:point.longitude,label:label));
       case PointAction.info: await openPointInfo(context,point:point,places:_places,from:me,onSendMessage:_sendText);
     }
@@ -458,7 +495,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ..sort((a,b)=>a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     final d=await showMoveOrderDialog(context,ops);
     if(d==null||!mounted)return;
-    final label=d.label.isEmpty?S.t('order.point'):d.label;
+    // No default name stored: each device shows its own (31 Oct 2026).
+    final label=d.label.trim();
     for(final t in d.targets){await _routes.sendMoveOrder(targetId:t,destination:point,label:label,note:d.note);}
     if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('order.sent',{'n':d.targets.length}))));
   }
@@ -467,6 +505,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       ListTile(leading:Icon(Icons.flag,color:moveOrderColor(o.status)),title:Text('${S.t('order.title')} · ${o.targetId}'),
         subtitle:Text('« ${o.label} » · ${S.t('order.status.${o.status}')}${o.note.isEmpty?'':'\n${o.note}'}')),
+      // « Ouvrir dans… » Waze, Google Maps… (31 Oct 2026).
+      ListTile(key:const ValueKey('order-open-in'),leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),
+        onTap:(){Navigator.pop(c);unawaited(_openElsewhere(o.destination,o.label));}),
       if(o.open&&(isPco(widget.deviceId)||o.createdBy==widget.deviceId))ListTile(leading:const Icon(Icons.cancel_outlined),
         title:Text(S.t('order.cancel')),onTap:(){Navigator.pop(c);unawaited(_routes.setMoveOrderStatus(o.json,'cancelled'));}),
       if(canRemoveMoveOrder(o,widget.deviceId,pco:isPco(widget.deviceId)))ListTile(key:const ValueKey('order-remove'),leading:const Icon(Icons.wrong_location_outlined),
@@ -673,7 +714,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _openPoiList(){
     Widget list(VoidCallback? close)=>PoiListView(pois:_pois.values.toList(),from:_me??_positionOf(widget.deviceId)??_mapCentre(),onClose:close,
       onOpen:(p){if(_isCompact)Navigator.pop(context);_onMapNow((){_fitPoints([LatLng(p.lat,p.lon)]);unawaited(_openPoi(p));});});
-    if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(c)=>Scaffold(appBar:AppBar(title:Text(S.t('poi.layer'))),body:list(null))));return;}
+    if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(c)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('poi.layer'))),body:list(null))));return;}
     _openDesk('pois',()=>Material(child:list(()=>setState((){_deskId=null;_deskPage=null;}))));
   }
 
@@ -743,14 +784,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// from the point menu (30 Oct 2026, 1 h 48). Phone: the « Outils » tab.
   List<ToolItem> _toolItems()=>[
     // Ordered by use (card « Outils, ordre par usage », 30 Oct 2026, 12 h 50).
-    ToolItem(icon:Icons.cloud_outlined,title:S.t('weather.menu'),subtitle:S.t('tools.weatherHelp'),color:Colors.orange,onTap:()=>_openWeather()),
-    ToolItem(icon:Icons.pin_drop_outlined,title:S.t('converter.title'),subtitle:S.t('tools.converterHelp'),color:Colors.blue,
+    ToolItem(id:'weather',icon:Icons.cloud_outlined,title:S.t('weather.menu'),subtitle:S.t('tools.weatherHelp'),color:Colors.orange,onTap:()=>_openWeather()),
+    ToolItem(id:'converter',icon:Icons.pin_drop_outlined,title:S.t('converter.title'),subtitle:S.t('tools.converterHelp'),color:Colors.blue,
       onTap:()=>_openConverter()),
-    ToolItem(icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
-    ToolItem(icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
-    ToolItem(icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
-      onTap:()=>_openDesk('tv',()=>TvScreensPage(key:const ValueKey('desk-tv'),api:widget.api,eventId:widget.eventId))),
-    if(isPco(widget.deviceId))ToolItem(icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
+    ToolItem(id:'routes',icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
+    if(_adrasec)ToolItem(id:'resection',icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
+    ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
+      onTap:_openTvScreens),
+    if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
       onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
   ];
@@ -761,7 +802,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       show:(p)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);}),
       measure:(p)=>_onMapNow(()=>_measureTo(p,S.t('nav.point'))),
       poi:(p)=>_onMapNow(()=>_createPoiHere(p)),
-      bearing:(p)=>_onMapNow(()=>_bearings.startTaking(from:p)),
+      bearing:_adrasec?(p)=>_onMapNow(() async {await _bearings.startTaking(from:p);if(mounted)_focusBearing(p);}):null,
       order:isPco(widget.deviceId)?((p)=>_onMapNow(()=>_sendOperatorHere(p))):null,
       message:_sendText,
       pickOnMap:()=>_startPick(S.t('converter.touchMap'),(p,_)=>_openConverter(initial:p)))));
@@ -777,8 +818,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:measureMessage(_measure,_coordFormat,mgrsDigits:_mgrsDigits))));
 
   /// « Open in… » with the navigation app chosen by the organisation.
-  Future<void> _openElsewhere(LatLng p,String label)=>openInOtherApp(context,p,label,
-    app:widget.store.preference('nav_app')??'operator',hideTracking:widget.store.preference('nav_hide_tracking')=='1');
+  Future<void> _openElsewhere(LatLng p,String label)=>openInOtherApp(context,p,pointLabel(label),
+    app:widget.store.preference('nav_app')??'operator',hideTracking:widget.store.preference('nav_hide_tracking')=='1',
+    readPref:widget.store.preference,writePref:widget.store.setPreference);
 
   void _initRoutes(){
     _routes=RoutesController(api:widget.api,store:widget.store,sync:_sync,eventId:widget.eventId,actorId:widget.deviceId);
@@ -877,6 +919,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _navigateTo(LatLng point,String label) async {
+    // A graph published since the event opened is fetched now (Wi-Fi).
+    if(_graphs.graph==null)unawaited(_graphs.check());
     final mode=await chooseNavigationMode(context,label);
     if(mode==null)return;
     if(_follow)_setFollow(false);
@@ -900,13 +944,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Web client: checks every 5 minutes (and 20 s after start) whether the
   /// server publishes a newer build than the one running.
-  Timer? _webUpdateTimer; bool _webUpdate=false;
+  Timer? _webUpdateTimer; bool _webUpdate=false; String? _servedVersion, _servedBuild;
+  static const _expectedVersionKey='web_update_expected';
   void _initWebUpdate(){
     if(!isWebPlatform||appBuild.isEmpty)return;
+    // After « Mettre à jour »: « Version 0.1.0+560 chargée » once.
+    final expected=widget.store.preference(_expectedVersionKey);
+    if(expected!=null){
+      unawaited(widget.store.setPreference(_expectedVersionKey,null));
+      WidgetsBinding.instance.addPostFrameCallback((_){
+        if(!mounted)return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:Text(S.t(expected==appVersionFull||expected==appBuild?'webUpdate.loaded':'webUpdate.notLoaded',{'v':appVersionFull,'e':expected}))));
+      });
+    }
     Future<void> check() async {
       final served=await fetchServedBuild();
-      final available=webUpdateAvailable(appBuild,served);
-      if(mounted&&available!=_webUpdate)setState(()=>_webUpdate=available);
+      final available=webUpdateAvailable(appBuild,served.build);
+      if(mounted&&(available!=_webUpdate||served.version!=_servedVersion))setState((){_webUpdate=available;_servedVersion=served.version;_servedBuild=served.build;});
     }
     Timer(const Duration(seconds:20),check);
     _webUpdateTimer=Timer.periodic(const Duration(minutes:5),(_)=>check());
@@ -1332,6 +1387,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _mapEvents??=_map.mapEventStream.listen((e){
       if((_followMe||_locate!=LocateMode.idle)&&e.source!=MapEventSource.mapController&&e.source!=MapEventSource.nonRotatedSizeChange&&e is MapEventMove)_stopFollowing();
       if(e is MapEventRotate||e is MapEventRotateEnd)setState((){});
+      // « Suivre ma vue » (lot 11): the followed screens get the new view.
+      if(e is MapEventMoveEnd||e is MapEventRotateEnd||e is MapEventFlingAnimationEnd||e is MapEventDoubleTapZoomEnd||(e is MapEventMove&&e.source==MapEventSource.mapController))_tvScreens.mapMoved();
     });
   }
 
@@ -1355,13 +1412,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ],
       LocateButton(mode:_locate,fab:(tip,icon,active)=>_fab('map-me',tip,icon,_myPosition,
         background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null)),
+      // « Écrans » (lot 11): shown once a screen is allowed, blue while followed.
+      TvScreensButton(controller:_tvScreens,onManage:_openTvScreens,
+        fab:(tip,icon,onPressed,active)=>Padding(padding:const EdgeInsets.only(top:10),child:_fab('map-screens',tip,icon,onPressed,
+          background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null))),
       if(_sosVisible)...[const SizedBox(height:16),_sosButton()],
     ]);
   }
 
   bool get _showOrders=>widget.store.preference('show_orders:${widget.eventId}')!='0';
   bool get _allTraces=>widget.store.preference('traces_all:${widget.eventId}')=='1';
-  bool get _aprsTraces=>widget.store.preference('traces_aprs:${widget.eventId}')=='1';
+  bool get _aprsTraces=>aprsTracesFrom(widget.store.preference('traces_aprs:${widget.eventId}'));
   int get _traceWindow=>traceWindowFrom(widget.store.preference('trace_window'));
   Future<void> _setFlag(String key,bool v) async {await widget.store.setPreference('$key:${widget.eventId}',v?'1':null);if(mounted)setState((){});}
   late final TracesStore _traces=TracesStore(load:(id)=>widget.api.positionHistory(widget.eventId,id,limit:2000),onChanged:(){if(mounted)setState((){});});
@@ -1382,8 +1443,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Floating button of 48 × 48 px (the small ones were 40 px).
   Widget _fab(String tag,String tooltip,Widget icon,VoidCallback onPressed,{Color? background,Color? foreground})=>
-    SizedBox(width:48,height:48,child:FloatingActionButton(heroTag:tag,tooltip:tooltip,onPressed:onPressed,
-      backgroundColor:background,foregroundColor:foreground,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),child:icon));
+    withId('map.$tag',SizedBox(width:48,height:48,child:FloatingActionButton(heroTag:tag,tooltip:tooltip,onPressed:onPressed,
+      backgroundColor:background,foregroundColor:foreground,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),child:icon)));
 
   /// Map search (request of 26 Oct 2026): what the device knows, then the
   /// addresses from the server. The chosen result gets a red pin; a tap on
@@ -1395,10 +1456,50 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   final _escapes=EscapeStack();
   bool _shiftDown=false;
   /// Maj + glisser (computer) or « Sélection » (phone): selection rectangle.
+  /// A touch on the map places something: drawing a shape, picking a point.
+  bool get _placingOnMap=>_drawing.isDrawing||_pickPoint!=null;
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
-  void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null)_drawing.toggle(hit.id);}
+  /// Selection mode: a drag moves the map, a pinch or the wheel zooms
+  /// (card C1); the rectangle needs a long press first, or Maj.
+  double _selZoom=0;
+  void _onSelectionMoveStart(ScaleStartDetails d){_selZoom=_map.camera.zoom;}
+  void _onSelectionMove(ScaleUpdateDetails d){
+    final cam=_map.camera;
+    final zoom=(_selZoom+math.log(d.scale)/math.ln2).clamp(cam.minZoom??1.0,cam.maxZoom??20.0).toDouble();
+    final mid=cam.latLngToScreenOffset(cam.center);
+    _map.move(cam.screenOffsetToLatLng(mid-d.focalPointDelta),zoom);
+  }
+  void _onSelectionWheel(PointerScrollEvent e){
+    final cam=_map.camera;
+    _map.move(cam.center,(cam.zoom-e.scrollDelta.dy/200).clamp(cam.minZoom??1.0,cam.maxZoom??20.0).toDouble());
+  }
+  void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null){_drawing.toggle(hit.id);}else{_drawing.endSelection();}}
   void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
+  /// A window open over the map (side panel, page beside the rail).
+  bool get _mapPanelOpen=>mapPanelOpen(teams:_showPanel,reference:_showReferencePanel,routes:_showRoutesPanel,resection:_showResection,chat:_chatPeer!=null,desk:_deskId!=null);
+
+  /// « Carte » (tab bar of a phone, rail of a computer; decision of the
+  /// porteur, 31 Oct 2026, 1 h 14): every window closes and the map shows.
+  /// What runs on the map itself (bearing, navigation, drawing, measure)
+  /// goes on; drafts are kept.
+  void _showMapOnly(){
+    final nav=Navigator.of(context); final me=ModalRoute.of(context);
+    nav.popUntil((r)=>r==me||r.isFirst);
+    // The selection is not a work in progress like a bearing or a
+    // navigation: « Carte » leaves it (card C1, 31 Oct 2026).
+    if(_drawing.selectMode||_drawing.hasSelection)_drawing.endSelection();
+    // « Toucher la carte » of the converter is a mode of a moment too (card
+    // N2, 31 Oct 2026).
+    if(_pickPoint!=null){_pickPoint=null;_pickHint=null;_resectionCtl.pick(null);}
+    setState((){
+      _tab=0;_builtTabs.add(0);_deskPage=null;_deskId=null;_chatPeer=null;
+      _showPanel=false;_showReferencePanel=false;_selectedReference=null;
+      _showRoutesPanel=false;_drawingRouteId=null;
+      _showResection=false;_resectionCtl.result=null;
+    });
+  }
+
   bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
     case 'teams':_showPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
     case 'reference':_showReferencePanel=false;_selectedReference=null; case 'chat':_chatPeer=null; case 'resection':_showResection=false;_resectionCtl.result=null;
@@ -1408,8 +1509,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _startPick(String hint,void Function(LatLng point,ReferenceSite? site) done)=>setState((){_tab=0;_deskPage=null;_deskId=null;_pickHint=hint;_pickPoint=done;});
   void _cancelPick()=>setState((){_pickPoint=null;_pickHint=null;_resectionCtl.pick(null);});
   Iterable<Searchable> _searchables()=>[
-    for(final p in _positions.values)Searchable(SearchKind.operator,p.deviceId.replaceFirst('aprs:',''),p.deviceId.startsWith('aprs:')?'APRS':S.t('search.kind.operator'),LatLng(p.lat,p.lon)),
-    for(final r in _references.values)Searchable(SearchKind.reference,r.name,[r.callsign,r.subtype,r.description].whereType<String>().join(' '),LatLng(r.lat,r.lon)),
+    for(final p in _positions.values)// Subtitle: the label of the device, never « Opérateur » twice (revue n° 10).
+    Searchable(SearchKind.operator,p.deviceId.replaceFirst('aprs:',''),p.deviceId.startsWith('aprs:')?'APRS':(p.label.trim()!=p.deviceId?p.label.trim():''),LatLng(p.lat,p.lon)),
+    if(_adrasec)for(final r in _references.values)Searchable(SearchKind.reference,r.name,[r.callsign,r.subtype,r.description].whereType<String>().join(' '),LatLng(r.lat,r.lon)),
     for(final p in _pois.values)Searchable(SearchKind.poi,p.label??p.kind,p.kind,LatLng(p.lat,p.lon)),
     for(final f in _drawing.features)if(f.label.trim().isNotEmpty&&f.points.isNotEmpty)Searchable(SearchKind.drawing,f.label,f.kind.name,f.points.first),
   ];
@@ -1425,7 +1527,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Last view of this event, taken back at the next opening (Plex).
   late final ({double lat,double lon,double zoom})? _savedView=decodeView(widget.store.preference('view:${widget.eventId}'));
-  Timer? _saveViewTimer; double _camZoom=11, _camLat=48.85;
+  // Revue d'ergonomie n° 1 (bloquant): the scale starts from the saved view,
+  // not from zoom 11, then reads the camera once the map is ready.
+  Timer? _saveViewTimer; late double _camZoom=_savedView?.zoom??11, _camLat=_savedView?.lat??48.8566;
   void _onCameraChanged(MapCamera camera){
     final zoomChanged=(camera.zoom-_camZoom).abs()>0.01||(camera.center.latitude-_camLat).abs()>0.05;
     _camZoom=camera.zoom; _camLat=camera.center.latitude;
@@ -1462,25 +1566,34 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return [
       layerSectionTitle(c,S.t('layers.teams'),first:true),
       row(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v),op:'ops'),
-      row('APRS',_showAprs,(v) async =>setState(()=>_showAprs=v),op:'aprs'),
-      row(S.t('fixed.layer'),_showFixed,(v)=>_setFlag('show_fixed',v)),
+      if(_adrasec)...[
+        row('APRS',_showAprs,(v) async =>setState(()=>_showAprsPref=v),op:'aprs'),
+        row(S.t('fixed.layer'),_showFixed,(v)=>_setFlag('show_fixed',v)),
+      ],
       // A filter, not a layer: no slider.
       row(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
       layerSectionTitle(c,S.t('layers.operation')),
       row(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v),op:'draw'),
-      row(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v),op:'brg'),
-      _bearingColorBy(refresh),
+      if(_adrasec)...[
+        row(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v),op:'brg'),
+        _bearingColorBy(refresh),
+      ],
       row('${S.t('poi.layer')} (${_pois.length})',_showPois,(v)=>_setShown('show_poi',v),op:'poi',
         trailing:poiSeeListLink(_pois.length,onTap:(){Navigator.pop(c);_openPoiList();})),
       row(S.t('order.layer'),_showOrders,(v)=>_setShown('show_orders',v)),
       if(_showOrders)...moveOrderList(c,isPco(widget.deviceId)?_moveOrders:_moveOrders.where((o)=>o.targetId==widget.deviceId||o.createdBy==widget.deviceId).toList(),
         onOpen:(o){Navigator.pop(c);_fitPoints([o.destination]);_showMoveOrder(o);}),
       row(S.t('traces.layer'),_allTraces,(v)=>_setFlag('traces_all',v),op:'traces'),
-      if(_allTraces)row(S.t('traces.aprs'),_aprsTraces,(v)=>_setFlag('traces_aprs',v)),
+      // « Toutes les traces » → « Durée des traces » → « Inclure les stations
+      // APRS » as a sub-option, indented (card of 30 Oct 2026, 17 h 45).
       if(_allTraces||_traces.pinned.isNotEmpty)traceWindowChips(_traceWindow,(w) async {await widget.store.setPreference('trace_window',w==defaultTraceWindow?null:'$w');refresh((){});if(mounted)setState((){});}),
-      layerSectionTitle(c,S.t('layers.reference')),
-      row(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v),op:'high'),
-      row(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v),op:'relay'),
+      if(_allTraces&&_adrasec)Padding(padding:const EdgeInsets.only(left:24),child:row(S.t('traces.aprsInclude'),_aprsTraces,
+        (v) async {await widget.store.setPreference('traces_aprs:${widget.eventId}',v?null:'0');if(mounted)setState((){});})),
+      if(_adrasec)...[
+        layerSectionTitle(c,S.t('layers.reference')),
+        row(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPointsPref=v),op:'high'),
+        row(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelaysPref=v),op:'relay'),
+      ],
       const SizedBox(height:12),
     ];
   }
@@ -1530,26 +1643,28 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Wrap(spacing:6,children:[
         FilterChip(avatar:const Icon(Icons.star_border,size:18),label:Text(S.t('favourites.only')),selected:_favouritesOnly,
           onSelected:(v)=>setState(()=>_favouritesOnly=v)),
-        if(_positions.values.any((p)=>p.isAprs))Tooltip(message:S.t('operators.aprsHint'),
-          child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v))),
+        if(_adrasec&&_positions.values.any((p)=>p.isAprs))FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprsPref=v)),
       ])),
+      // Fixed help under the filters, never over the list (revue n° 46).
+      if(_showAprs&&_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.fromLTRB(14,4,14,0),
+        child:Text(S.t('operators.aprsHint'),style:Theme.of(context).textTheme.bodySmall?.copyWith(color:Theme.of(context).colorScheme.onSurfaceVariant))),
       Expanded(child:_teamsList(sorted)),
     ]);
     final tabs=DefaultTabController(length:2,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       // Count of the stations above the two tabs (as the former panel).
-      Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(S.t('operators.title',{'n':sorted.length}),style:Theme.of(context).textTheme.titleMedium)),
+      Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(operatorsTitle(sorted.where((p)=>!_isFixed(p)).length,sorted.where(_isFixed).length),style:Theme.of(context).textTheme.titleMedium)),
       TabBar(tabs:[Tab(text:S.t('teams.list')),Tab(text:S.t('nearby.title'))]),
       Expanded(child:TabBarView(children:[list,_nearbyPanel(closable:false)])),
     ]));
     if(!screen)return tabs;
-    return Scaffold(appBar:AppBar(title:Text(S.t('tabs.teams'))),body:tabs);
+    return Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.teams'))),body:tabs);
   }
 
   /// Phone « Plus »: a normal screen, a list of large buttons.
-  Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:AppBar(title:Text(S.t('tabs.more'))),
+  Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.more'))),
     body:ListView(padding:const EdgeInsets.symmetric(vertical:8),children:[
-      for(final a in items)ListTile(minTileHeight:64,leading:Badge(isLabelVisible:a.alert,smallSize:10,child:Icon(a.icon,size:28)),
-        title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap),
+      for(final a in items)withId('more.${a.id}',ListTile(minTileHeight:64,leading:Badge(isLabelVisible:a.alert,smallSize:10,child:Icon(a.icon,size:28)),
+        title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap)),
     ]));
 
 
@@ -1570,7 +1685,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return LinkWeatherPill(dot:colour,linkTooltip:'${S.t('links.serverLink')} : $label',
       linkWord:state==ServerLink.slowed||state==ServerLink.cut?label:null,
       weatherIcon:h==null?null:weatherIcon(weatherKey(h.weatherCode)),
-      weatherText:h==null?null:[if(h.temperatureC!=null)'${h.temperatureC!.round()}°',if(h.windKmh!=null)'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'].join(' · '),
+      weatherText:h==null?null:pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
+        wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'),
+      compact:_isCompact,
       alert:alert?vigilanceColor(r!.vigilance!.colorId):null,
       onLinks:_openDiagnostics,onWeather:()=>_openWeather());
   }
@@ -1582,7 +1699,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return Material(color:Colors.transparent,child:InkWell(borderRadius:BorderRadius.circular(pillHeight/2),onTap:_openTracking,
       child:Container(height:pillHeight,padding:const EdgeInsets.symmetric(horizontal:12),
         decoration:BoxDecoration(color:on?scheme.primaryContainer:scheme.surface.withValues(alpha:0.92),borderRadius:BorderRadius.circular(pillHeight/2),
-          border:Border.all(color:on?scheme.primary.withValues(alpha:0.6):scheme.outline)),
+          // Tonal pill without outline (revue n° 11, charte « autre action »).
+          ),
         child:Row(mainAxisSize:MainAxisSize.min,children:[
           Icon(on?Icons.my_location:Icons.location_disabled_outlined,size:16,color:on?scheme.primary:scheme.onSurfaceVariant),const SizedBox(width:6),
           Text(on?S.t('tracking.on',{'interval':intervalLabel(_tracking.intervalS,S.t)}):S.t('tracking.start'),
@@ -1593,12 +1711,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Scale bar (OsmAnd), from the current zoom and latitude.
   Widget _scaleBar(){
     final b=scaleBar(_camZoom,_camLat);
-    final c=Theme.of(context).colorScheme.onSurface;
-    final shadow=[Shadow(blurRadius:3,color:Theme.of(context).colorScheme.surface)];
-    return Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
-      Text(b.label,style:TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:c,shadows:shadow)),
-      Container(width:b.px,height:6,decoration:BoxDecoration(border:Border(left:BorderSide(color:c,width:2),right:BorderSide(color:c,width:2),bottom:BorderSide(color:c,width:2)))),
-    ]);
+    // Own light background, dark ink, whatever the theme (revue n° 5).
+    const c=mapInkText;
+    return Container(padding:const EdgeInsets.fromLTRB(6,2,6,4),decoration:BoxDecoration(color:mapInkBackground,borderRadius:BorderRadius.circular(6)),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+        Text(b.label,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:c)),
+        Container(width:b.px,height:6,decoration:const BoxDecoration(border:Border(left:BorderSide(color:c,width:2),right:BorderSide(color:c,width:2),bottom:BorderSide(color:c,width:2)))),
+      ]));
   }
 
   // --- Stations V2: freshness, source, APRS symbols, favourites, trace, proximity ---
@@ -1645,7 +1764,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   final MovementTracker _moves=MovementTracker();
   Map<String,String> get _forced=>parseForced(widget.store.preference('fixed_forced:${widget.eventId}'));
   bool _isFixed(SarcadePosition p)=>isFixedStation(p,forced:_forced[p.deviceId],moved:_moves.moved(p.deviceId),still:_moves.still(p.deviceId,DateTime.now().toUtc()));
-  bool get _showFixed=>widget.store.preference('show_fixed:${widget.eventId}')=='1';
+  bool get _showFixed=>widget.store.preference('show_fixed:${widget.eventId}')=='1'&&_adrasec;
   bool _showFixedList=false;
   Future<void> _saveForced(Map<String,String> m) async {await widget.store.setPreference('fixed_forced:${widget.eventId}',encodeForced(m));if(mounted)setState((){});}
   Future<void> _forceFixed(String id,String v) async {
@@ -1664,22 +1783,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Color _stationColor(SarcadePosition p){
-    final s=Theme.of(context).colorScheme;
+    // Day colours on the map and in the lists, both themes (revue n° 5, 45).
+    final s=mapMarkerScheme;
     if(p.deviceId==widget.deviceId)return s.tertiary;
     return p.isAprs?s.secondary:s.primary;
   }
 
   Widget _stationIcon(SarcadePosition p,{double size=34}){
-    final s=Theme.of(context).colorScheme; final now=DateTime.now().toUtc();
+    final s=mapMarkerScheme; final now=DateTime.now().toUtc();
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
     final color=f==Freshness.stale?s.outline:_stationColor(p);
     final sym=p.isAprs?aprsSymbol(p.aprsSymbol):null;
-    final initials=p.label.replaceAll(RegExp(r'[^A-Za-z0-9]'),'');
+    // Same letters as the avatars of the lists and Messages (revue n° 8).
+    final initials=avatarInitials(p.label.trim().isEmpty?p.deviceId:p.label);
     return Stack(clipBehavior:Clip.none,alignment:Alignment.center,children:[
       Container(width:size,height:size,alignment:Alignment.center,
         decoration:BoxDecoration(color:s.surface,shape:sym?.overlay!=null?BoxShape.rectangle:BoxShape.circle,borderRadius:sym?.overlay!=null?BorderRadius.circular(8):null,
           border:Border.all(color:color,width:f==Freshness.stale?1.5:2.5)),
-        child:sym==null?Text(initials.length>3?initials.substring(initials.length-3):initials,style:TextStyle(fontSize:size*0.3,fontWeight:FontWeight.w800,color:color))
+        child:sym==null?Text(initials,style:TextStyle(fontSize:size*0.3,fontWeight:FontWeight.w800,color:color))
           :sym.overlay!=null?Text(sym.overlay!,style:TextStyle(fontSize:size*0.45,fontWeight:FontWeight.w800,color:color))
           :Icon(sym.icon,size:size*0.58,color:color)),
       // Heading of a moving station (aprs.fi).
@@ -1690,7 +1811,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Station markers, grouped with a number when they overlap (Tesla).
   List<Marker> _stationMarkers(List<SarcadePosition> list){
-    final now=DateTime.now().toUtc(); final s=Theme.of(context).colorScheme;
+    final now=DateTime.now().toUtc(); final s=mapMarkerScheme;
     MapCamera? cam; try{cam=_map.camera;}catch(_){}
     final groups=cam==null||cam.zoom>=15?[for(final p in list)[p]]:clusterOnScreen(list,(p)=>cam!.latLngToScreenOffset(LatLng(p.lat,p.lon)));
     return [for(final g in groups)
@@ -1703,7 +1824,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Marker _stationMarker(SarcadePosition p,DateTime now){
-    final s=Theme.of(context).colorScheme;
+    final s=mapMarkerScheme;
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
     return Marker(point:LatLng(p.lat,p.lon),width:170,height:64,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_tapStation(p),
       child:Opacity(opacity:f==Freshness.ageing?0.75:1,child:Column(mainAxisSize:MainAxisSize.min,children:[
@@ -1725,8 +1846,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin); final fav=_favourites.contains(p.deviceId);
     return ListTile(selected:_selectedDevice==p.deviceId,leading:p.isAprs?_stationIcon(p,size:32):operatorAvatar(p.deviceId,label:p.label,radius:16,stale:f==Freshness.stale),
       title:Text(p.label,style:TextStyle(decoration:f==Freshness.stale?TextDecoration.lineThrough:null)),
-      subtitle:Text([_sourceLabel(p),ageLabel(p.time.toUtc(),now),
-          if(!_isCompact&&isPco(widget.deviceId)&&'${_devices[p.deviceId]?['app_version']??''}'.isNotEmpty)'v${_devices[p.deviceId]!['app_version']}'].join(' · '),
+      // Version in the sheet only, not in the list (revue n° 43).
+      subtitle:Text([_sourceLabel(p),ageLabel(p.time.toUtc(),now)].join(' · '),
         style:TextStyle(color:f==Freshness.fresh?null:s.tertiary)),
       trailing:IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),
         visualDensity:VisualDensity.compact,iconSize:20,
@@ -1778,7 +1899,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           for(final h in const [1,6,24])Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text('$h h'),selected:_traceHours==h,onSelected:(_)=>_setTraceHours(h),visualDensity:VisualDensity.compact)),
           if(_traceLoading)const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)),
         ]),
-        if(_trace.length>1)...[
+        // Hidden when every point has the same minute (revue n° 34).
+        if(_trace.length>1&&hm(_trace.first.time)!=hm(_trace.last.time))...[
           Slider(min:0,max:(_trace.length-1).toDouble(),divisions:_trace.length-1,
             value:(_scrub==null?_trace.length-1:_trace.indexOf(_scrub!).clamp(0,_trace.length-1)).toDouble(),
             label:hm((_scrub??_trace.last).time),
@@ -1835,7 +1957,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   // --- Bearings (note « Relevés et croisements », screen V2) ---
   late final BearingController _bearings;
   int _brgStrength=0;
-  bool get _showBearings=>widget.store.preference('show_brg:${widget.eventId}')!='0';
+  bool get _showBearings=>widget.store.preference('show_brg:${widget.eventId}')!='0'&&_adrasec;
   String get _brgSearch=>widget.store.preference('brg_search:${widget.eventId}')??'';
   /// Default frequencies of the server, cached for offline use.
   List<SignalChoice> get _signalDefaults=>decodeSignals(widget.store.preference('signal_defaults'));
@@ -1891,7 +2013,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     a.fix(p,snap:HardwareKeyboard.instance.isShiftPressed);_bearings.setManual(a.azimuthDeg);}
   void _cancelAim(){_aim=null;_bearings.stopTaking();}
   /// Mouse bearing started (new or changed): map centred on its origin (30 Oct 2026, 12 h 44).
-  void _startAim(BearingAim a){setState(()=>_aim=a);glideMapTo(_map,a.origin);}
+  void _startAim(BearingAim a){setState(()=>_aim=a);_focusBearing(a.origin);}
+  /// Bearing started (finger, mouse, « Modifier »): the map glides once so
+  /// that its origin sits in the middle of the visible part, never under
+  /// the bearing sheet (31 Oct 2026); afterwards the map is free.
+  void _focusBearing(LatLng origin){
+    Size size; try{size=Size(_map.camera.nonRotatedSize.width,_map.camera.nonRotatedSize.height);}catch(_){return;}
+    final wide=MediaQuery.sizeOf(context).width>=_compactWidth;
+    glideMapTo(_map,origin,focus:bearingFocus(size,phone:!wide,rightSheetPx:wide&&_aim!=null?bearingSheetWidth+24:0));
+  }
   /// « Modifier » on a computer: mouse arrow from the same origin, panel
   /// prefilled; Échap or a right click leaves the bearing as it was.
   Future<void> _editWithMouse(Bearing b) async {
@@ -1910,29 +2040,22 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _bearingHud(){
     final s=Theme.of(context).colorScheme; final b=_bearings; final az=b.trueDeg; final p=b.position;
     final mouse=_aim!=null, decl=b.declinationDeg, mag=mouse?(az==null||decl==null?null:normDeg(az-decl)):b.magneticDeg;
-    final t=DateTime.now(); String two(int v)=>v.toString().padLeft(2,'0');
+    final t=DateTime.now();
     if(mouse){return MouseBearingHud(trueDeg:az,magneticDeg:mag,position:p,accuracyM:b.accuracyM,time:t,onClose:_cancelAim,
       decoration:glass(context,border:s.primary.withValues(alpha:0.6)));}
-    return Container(padding:const EdgeInsets.fromLTRB(14,10,8,10),decoration:glass(context,border:s.primary.withValues(alpha:0.6)),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
-        Row(children:[
-          Expanded(child:Text(S.t(b.hasCompass||b.manualDeg!=null?'bearings.aim':'bearings.noCompass'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w700,letterSpacing:0.8,color:s.primary))),
-          IconButton(tooltip:S.t('common.cancel'),onPressed:_cancelAim,icon:const Icon(Icons.close)),
-        ]),
-        Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
-          Text(az==null?'—':'${az.toStringAsFixed(0).padLeft(3,'0')}°',style:const TextStyle(fontSize:60,fontWeight:FontWeight.w500,height:1,fontFeatures:[FontFeature.tabularFigures()])),
-          const SizedBox(width:10),
-          Padding(padding:const EdgeInsets.only(bottom:6),child:Text([S.t(b.manualDeg!=null&&!mouse?'bearings.typed':'bearings.true'),
-            if(mag!=null&&(mouse||b.manualDeg==null))'(${S.t('bearings.magnetic',{'v':mag.toStringAsFixed(0).padLeft(3,'0')})})'].join('\n'),
-            style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
-        ]),
-        if(!mouse&&b.manualDeg==null&&(b.hasCompass||b.needsCalibration||b.averaging))Padding(padding:const EdgeInsets.only(top:4),
-          child:CompassStatus(accuracyDeg:b.compassAccuracyDeg,calibrate:b.needsCalibration,averaging:b.averaging)),
-        const SizedBox(height:4),
-        Text([p==null?S.t('bearings.noPosition'):'${p.latitude.toStringAsFixed(4)}° N · ${p.longitude.toStringAsFixed(4)}° E',
-          if(b.accuracyM!=null)'±${b.accuracyM!.toStringAsFixed(0)} m','${two(t.hour)}:${two(t.minute)}:${two(t.second)}'].join(' · '),
-          style:TextStyle(fontSize:12,fontFamily:'monospace',color:s.onSurfaceVariant)),
-      ]));
+    final deco=glass(context,border:s.primary.withValues(alpha:0.6));
+    // No compass: « Relevé » with a visible field.
+    // The field stays while the azimuth is typed (no compass).
+    if(!b.hasCompass){
+      return TypedBearingHud(position:p,accuracyM:b.accuracyM,time:t,onClose:_cancelAim,decoration:deco,
+        onAzimuth:(d)=>setState(()=>_bearings.setManual(d)));
+    }
+    // Compass (card « Relevé à la boussole, bandeau compact », 16 h 25):
+    // the same compact line as with the mouse, help in the ⓘ.
+    final typed=b.manualDeg!=null;
+    return MouseBearingHud(trueDeg:az,magneticDeg:typed?null:mag,position:p,accuracyM:b.accuracyM,time:t,onClose:_cancelAim,decoration:deco,
+      help:S.t('bearings.aimHelp'),trueLabel:S.t(typed?'bearings.typed':'bearings.true'),
+      below:!typed&&(b.hasCompass||b.needsCalibration||b.averaging)?CompassStatus(accuracyDeg:b.compassAccuracyDeg,calibrate:b.needsCalibration,averaging:b.averaging):null);
   }
 
   /// Bottom of the screen while taking a bearing: target, strength S1–S9,
@@ -1940,7 +2063,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _bearingTakeSheet(){
     final s=Theme.of(context).colorScheme;
     final draft=_bearingDraft();
-    final same=_bearings.all.where((b)=>b.search==_brgSearch).toList();
+    final same=_bearings.all.where((b)=>searchKey(b.search)==searchKey(_brgSearch)).toList();
     final before=probableZone(same), after=draft==null?null:probableZone([...same,draft]);
     final effect=before.centre!=null&&after?.centre!=null?S.t('bearings.effect',{'a':geo.formatDistance(before.radiusM),'b':geo.formatDistance(after!.radiusM)})
       :after?.centre!=null?S.t('bearings.firstZone',{'b':geo.formatDistance(after!.radiusM)}):null;
@@ -1957,7 +2080,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           child:InkWell(onTap:()=>setState(()=>_brgStrength=_brgStrength==i?0:i),child:Container(height:22,decoration:BoxDecoration(
             color:i<=_brgStrength?s.primary:s.surfaceContainerHighest,borderRadius:BorderRadius.circular(4)))))))])),
         const SizedBox(width:8),
-        SizedBox(width:28,child:Text(_brgStrength==0?'—':'S$_brgStrength',style:TextStyle(fontWeight:FontWeight.w700,color:s.primary))),
+        SizedBox(width:28,child:Text(_brgStrength==0?'':'S$_brgStrength',style:TextStyle(fontWeight:FontWeight.w700,color:s.primary))),
       ]),
       if(_aim!=null)Padding(padding:const EdgeInsets.only(top:10),child:AimFields(azimuthDeg:_aim!.azimuthDeg,takenAt:_aim!.takenAt,
         onAzimuth:(d){_aim!.type(d);_bearings.setManual(d);},onTime:(t)=>setState(()=>_aim!.takenAt=t))),
@@ -2050,25 +2173,51 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Details of a bearing; change or delete for its author or the PCO.
   Future<void> _showBearingSheet(Bearing b) async {
-    final can=b.canEdit(widget.deviceId,isPco(widget.deviceId));
+    final can=b.canEdit(widget.deviceId,isPco(widget.deviceId)), pco=isPco(widget.deviceId);
+    final zone=bearingZoneStatus(b,_bearings.all);
     final l=b.takenAt.toLocal(); String two(int v)=>v.toString().padLeft(2,'0');
-    final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,0,20,12),
+    // Scrolls and grows (31 Oct 2026, 23 h 46: « Supprimer » pushed off an
+    // iPhone screen by the zone actions of the PCO).
+    final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,isScrollControlled:true,
+      constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(context).height*0.9,maxWidth:bottomSheetMaxWidth),builder:(c)=>SafeArea(child:SingleChildScrollView(key:const ValueKey('bearing-sheet'),padding:const EdgeInsets.fromLTRB(20,0,20,12),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[Text('${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}° ${S.t('bearings.true')}',style:const TextStyle(fontSize:32,fontWeight:FontWeight.w600)),
+        // « vrai » at the size of the lines below, on the baseline of the
+        // azimuth (card « Fiche d'un relevé, « vrai » trop grand », 17 h 38).
+        Row(crossAxisAlignment:CrossAxisAlignment.baseline,textBaseline:TextBaseline.alphabetic,children:[
+          Text('${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',style:const TextStyle(fontSize:32,fontWeight:FontWeight.w600)),
+          const SizedBox(width:6),
+          Text(S.t('bearings.true'),style:Theme.of(c).textTheme.bodyMedium),
           if(b.exercise)...[const SizedBox(width:10),const ExerciseBadge()]]),
+        // Never cut: on two lines when needed.
         Text([if(b.search.isNotEmpty)b.search,b.createdBy,'${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}',if(b.strength>0)'S${b.strength}',
-          S.t('bearings.method.${b.method}')].join(' · ')),
+          S.t('bearings.method.${b.method}')].join(' · '),softWrap:true,maxLines:3),
         if(b.comment.isNotEmpty)Padding(padding:const EdgeInsets.only(top:6),child:Text(b.comment)),
         Text(S.t('bearings.lineCone',{'l':geo.formatDistance(b.lengthM),'c':b.coneDeg.toStringAsFixed(0)}),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant)),
         PlaceLine(describer:_places,point:b.origin),
+        if(zone!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text(zone,key:const ValueKey('bearing-zone-status'),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.tertiary))),
         const SizedBox(height:8),
         ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),title:Text(S.t('bearings.fromOrigin')),onTap:()=>Navigator.pop(c,'origin')),
+        // The PCO decides by hand when the automatic rule is wrong: one line,
+        // Auto / Écarter / Garder.
+        // Choice under its title, aligned left (1 Nov 2026).
+        if(pco&&b.search.isNotEmpty)Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(S.t('bearings.zoneTitle'),style:Theme.of(c).textTheme.bodyMedium),
+          const SizedBox(height:6),
+          SegmentedButton<String>(key:const ValueKey('bearing-zone-choice'),showSelectedIcon:false,
+            style:const ButtonStyle(visualDensity:VisualDensity.compact,tapTargetSize:MaterialTapTargetSize.shrinkWrap),
+            segments:[for(final z in const ['auto','out','in'])ButtonSegment(value:z,label:Text(S.t('bearings.zoneShort.$z'),key:ValueKey('bearing-zone-$z')))],
+            selected:{b.zone},onSelectionChanged:(v){if(v.first!=b.zone)Navigator.pop(c,'zone:${v.first}');}),
+        ])),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.open_with),title:Text(S.t('bearings.adjust')),onTap:()=>Navigator.pop(c,'adjust')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.edit_outlined),title:Text(S.t('bearings.edit')),onTap:()=>Navigator.pop(c,'edit')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.delete_outline,color:Theme.of(c).colorScheme.error),title:Text(S.t('bearings.delete')),onTap:()=>Navigator.pop(c,'delete')),
       ]))));
     if(!mounted)return;
     if(choice=='origin'){await _onLongPress(b.origin);return;}
+    if(choice!=null&&choice.startsWith('zone:')){
+      await _bearings.update(b.copyWith(zone:choice.substring(5),updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));
+      return;
+    }
     if(choice=='delete'){
       final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(content:Text(S.t('bearings.deleteConfirm')),actions:[
         TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('bearings.delete')))]));
@@ -2159,15 +2308,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Exports the event's drawn objects as GeoJSON: a local copy on the device,
   /// and an upload to the event's shared files so the PCO receives it.
-  Future<void> _exportGeoJson({List<MapFeature>? only}) async {
+  Future<void> _exportGeoJson({List<MapFeature>? only,ExportFormat format=ExportFormat.geojson}) async {
     final messenger=ScaffoldMessenger.of(context);
     final stamp=DateTime.now().toIso8601String().substring(0,16).replaceAll(RegExp(r'[:T]'),'-');
-    final name='sarcade-objets-${widget.eventId}-$stamp.geojson'.replaceAll(RegExp(r'[\\/:*?"<>|]'),'_');
-    final bytes=only==null?utf8.encode(const JsonEncoder.withIndent('  ').convert(featureCollection(_drawing.features))):selectionGeoJson(only);
+    final name='sarcade-objets-${widget.eventId}-$stamp.${format.extension}'.replaceAll(RegExp(r'[\\/:*?"<>|]'),'_');
+    final bytes=exportFeatures(only??_drawing.features,format);
     String? localPath;
-    try{localPath=await saveFile(name,bytes,mimeType:'application/geo+json');}catch(_){localPath=null;}
+    try{localPath=await saveFile(name,bytes,mimeType:format.mimeType);}catch(_){localPath=null;}
     var shared=false;
-    try{await widget.api.uploadFile(widget.eventId,widget.deviceId,name,'application/geo+json',bytes);shared=true;}catch(_){}
+    try{await widget.api.uploadFile(widget.eventId,widget.deviceId,name,format.mimeType,bytes);shared=true;}catch(_){}
     if(!mounted)return;
     final count=only?.length??_drawing.features.length;
     messenger.showSnackBar(SnackBar(
@@ -2201,8 +2350,20 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         LogicalKeyboardKey.keyY when ctrl=>run(_drawing.redo),
         LogicalKeyboardKey.keyD when ctrl&&_drawing.hasSelection=>run(()=>_drawing.duplicateSelected()),
         LogicalKeyboardKey.enter||LogicalKeyboardKey.numpadEnter when _drawing.canFinish=>run(()=>_drawing.finish()),
-        LogicalKeyboardKey.escape when _drawing.isDrawing=>run(()=>_drawing.selectTool(null)),
-        LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run((){_drawing.select(null);_drawing.setSelectMode(false);}),
+        // Constat L3 (1 Nov 2026): Échap first drops the shape being drawn,
+        // then leaves the tool and closes the drawing bar.
+        LogicalKeyboardKey.escape when _drawing.isDrawing&&_drawing.draft.isNotEmpty=>run(_drawing.cancelDraft),
+        LogicalKeyboardKey.escape when _drawing.isDrawing=>run((){_drawing.selectTool(null);if(_drawingTools)_toggleDrawingTools();}),
+        LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run(_drawing.endSelection),
+        // Card N1 of the cinématique review (31 Oct 2026): Échap also ends
+        // « Toucher la carte » (converter), then closes the last window, then
+        // clears the measure, then closes an empty drawing bar.
+        LogicalKeyboardKey.escape when _pickPoint!=null=>run(_cancelPick),
+        // Constat L2 (1 Nov 2026): Échap closes the sheet of an operator.
+        LogicalKeyboardKey.escape when _selectedDevice!=null||_trace.isNotEmpty=>run(()=>setState((){_selectedDevice=null;_trace=[];})),
+        LogicalKeyboardKey.escape when _mapPanelOpen=>_escapePanel(),
+        LogicalKeyboardKey.escape when _measure.active=>run((){unawaited(_measure.clear());setState((){});}),
+        LogicalKeyboardKey.escape when _drawingTools&&_drawing.selection.isEmpty=>run(_toggleDrawingTools),
         LogicalKeyboardKey.escape=>_escapePanel(),
         _=>false,
       };
@@ -2211,9 +2372,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
+  // « Écrans » button of the map (lot 11).
+  late final _tvScreens=TvScreensController(api:widget.api,eventId:widget.eventId);
+  void _openTvScreens()=>_openDesk('tv',()=>TvScreensPage(key:const ValueKey('desk-tv'),api:widget.api,eventId:widget.eventId));
   /// Current view, for « Envoyer ma vue » on a TV (Paramètres › Affichage › Écrans).
   TvView? _tvView(){
     try{final c=_map.camera;return (center:c.center,zoom:c.zoom,basemapId:_basemap.id,tileUrl:_basemap.url,attribution:_basemap.attribution,basemapName:_basemap.name);}
@@ -2242,10 +2406,27 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _syncEscapes();
     // On a phone a panel takes most of the width, leaving a strip of map visible.
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
+    // Phone (revue n° 52): Itinéraires and Résection on the whole screen,
+    // under the status bar; folded while points are added on the map.
+    final fullPanel=sidePanelFullScreen(screenWidth);
+    final routeEntry=fullPanel&&_showRoutesPanel&&_drawingRouteId!=null?_routes.route(_drawingRouteId!):null;
+    Widget routesPanel()=>RoutesPanel(onClose:_showMapOnly,onOpenIn:(p,l)=>unawaited(_openElsewhere(p,l)),
+          controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
+          groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
+          onSelect:(id)=>setState((){_selectedRouteId=id;if(id==null)_drawingRouteId=null;}),
+          onDraw:(id)=>setState((){_drawingRouteId=id;_drawingClosure=false;}),
+          onDrawClosure:()=>setState((){_drawingClosure=true;_drawingRouteId=null;_closureDraft.clear();}),
+          onNavigate:_navigateTo,
+          onFocus:_fitPoints,
+          onSend:(text)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+            actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:text))),
+        );
+    // Over the map, not beside it: the map keeps its size underneath.
+    Widget phonePanel(Widget child)=>Positioned.fill(child:Material(elevation:3,child:SafeArea(bottom:false,child:child)));
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
     void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store,drawings:DrawingFileActions(importFile:_importFile,exportAll:_exportGeoJson,count:()=>_drawing.features.length)));
     void openMessages()=>_openMessages(fromButton:true);
-    void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showResection=false;_drawingRouteId=null;});
+    void showMap()=>_showMapOnly();
     void openSettings(){
       final b=widget.settingsBuilder;
       if(!compact&&b!=null){_openDesk('settings',b);}else{widget.onSettings?.call();}
@@ -2253,24 +2434,29 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Phone « Plus » (decision of 30 Oct 2026, 3 h 10): Fichiers and
     // Paramètres; « Outils » is a tab, « Itinéraires » is in it.
     final more=<_RailAction>[
-      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
-      if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!,alert:diagnosticsAlert()),
+      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,id:'files'),
+      if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!,alert:diagnosticsAlert(),id:'settings'),
     ];
     // Computer: every entry visible, no « … » (decision of 29 Oct 2026,
     // 12 h 17); Carte and Messages are drawn by the rail itself, Paramètres
     // at the bottom.
     final rail=<_RailAction>[
-      _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel),
-      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,selected:_deskId=='files'),
+      _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel,id:'teams'),
+      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,selected:_deskId=='files',id:'files'),
       // « Itinéraires » moved into « Outils » (29 Oct 2026); wrench icon, the
       // handyman glyph did not show on the web.
       _RailAction(Icons.build_outlined,S.t('tools.title'),_openTools,
-        selected:_showResection||_showRoutesPanel||const {'tools','converter','tv','aprs','weather'}.contains(_deskId)),
+        selected:_showResection||_showRoutesPanel||const {'tools','converter','tv','aprs','weather'}.contains(_deskId),id:'tools'),
     ];
     final railBottom=(widget.onSettings!=null||widget.settingsBuilder!=null)
-      ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert()):null;
-    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon(),
-      style:IconButton.styleFrom(fixedSize:const Size(48,48)));
+      ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert(),id:'settings'):null;
+    // Blue while Messages is open, page or side panel (card « Bouton Messages
+    // pas mis en évidence », 30 Oct 2026, 16 h 13): one button in blue.
+    final messagesOn=messagesRailSelected(deskId:_deskId,chatPeer:_chatPeer);
+    final railScheme=Theme.of(context).colorScheme;
+    final messagesButton=IconButton(key:const ValueKey('rail-messages'),tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon(),isSelected:messagesOn,
+      style:IconButton.styleFrom(fixedSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),
+        backgroundColor:messagesOn?railScheme.primaryContainer:null,foregroundColor:messagesOn?railScheme.primary:railScheme.onSurfaceVariant));
     final sosAlert=_sosAlert();
     final banners=OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
@@ -2282,7 +2468,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline?reloadApp:null,
           onEnableNotifications:_notificationsBanner?_enableNotifications:null,
           onDismissNotifications:()=>setState(()=>_notificationsDismissed=true),
-          onWebUpdate:_webUpdate?()=>unawaited(reloadFresh()):null);
+          webUpdateChange:versionChange(appVersionFull,_servedVersion),webUpdateBuilds:'$appBuild → ${_servedBuild??'?'}',
+          onWebUpdate:_webUpdate?()async{await widget.store.setPreference(_expectedVersionKey,_servedVersion??_servedBuild);await reloadFresh();}:null);
     final graphBanner=_graphs.pendingMobileBytes!=null&&!_graphs.downloading?Material(color:Theme.of(context).colorScheme.secondaryContainer,child:Padding(
           padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),
           child:Row(children:[const Icon(Icons.alt_route,size:18),const SizedBox(width:8),
@@ -2293,8 +2480,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final fullBleed=compact&&_tab==0&&sosAlert==null&&!banners.visible&&graphBanner==null;
     return PopScope(
       // Phone: Back first returns to the Carte tab, then leaves the application.
-      canPop:!compact||_tab==0,
-      onPopInvokedWithResult:(didPop,_){if(!didPop&&_tab!=0)_goTab(0);},
+      // A panel over the map is closed first (31 Oct 2026).
+      canPop:!compact||(_tab==0&&!_mapPanelOpen&&!_drawing.selectMode&&!_drawing.hasSelection&&_pickPoint==null),
+      onPopInvokedWithResult:(didPop,_){if(didPop)return;if(_pickPoint!=null){_cancelPick();}else if(_drawing.selectMode||_drawing.hasSelection){_drawing.endSelection();}else if(_mapPanelOpen){_escapePanel();}else if(_tab!=0){_goTab(0);}},
       child:Scaffold(
       extendBody:fullBleed,
       body:SafeArea(top:!fullBleed,bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -2303,24 +2491,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ?graphBanner,
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
-        if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,mapSelected:_deskPage==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
+        if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,mapSelected:_deskPage==null&&_chatPeer==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
         // Computer: Messages, Fichiers, APRS… open beside the rail, which
         // stays visible (« rail toujours visible », 28 Oct 2026).
-        Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Row(children:[
-        if(_showResection&&_pickPoint==null)_resectionPanel(panelWidth(380)),
+        Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Stack(fit:StackFit.expand,children:[Row(children:[
+        if(!fullPanel&&_showResection&&_pickPoint==null)_resectionPanel(panelWidth(380)),
         if(_chatPeer!=null)chatSidePanel(width:panelWidth(420),child:MessagesPage(key:ValueKey('chat-$_chatPeer'),api:widget.api,eventId:widget.eventId,
           actorId:widget.deviceId,sync:_sync,store:widget.store,initialPeer:_chatPeer,onClose:()=>setState(()=>_chatPeer=null))),
-        if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
-          controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
-          groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
-          onSelect:(id)=>setState((){_selectedRouteId=id;if(id==null)_drawingRouteId=null;}),
-          onDraw:(id)=>setState((){_drawingRouteId=id;_drawingClosure=false;}),
-          onDrawClosure:()=>setState((){_drawingClosure=true;_drawingRouteId=null;_closureDraft.clear();}),
-          onNavigate:_navigateTo,
-          onFocus:_fitPoints,
-          onSend:(text)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
-            actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:text))),
-        ))),
+        if(!fullPanel&&_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:routesPanel())),
         // Reference: the detailed sheet of a high point or a relay only;
         // filters by the chips, search by the search bar.
         if(_showReferencePanel&&_selectedReference!=null)SizedBox(width:panelWidth(355),child:Material(elevation:3,child:Builder(builder:(context){final r=_selectedReference!;return SingleChildScrollView(padding:const EdgeInsets.fromLTRB(14,8,6,14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -2343,12 +2521,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ]));}))),
         // Computer: « Équipes » panel next to the map (list and nearby).
         if(_showPanel&&!compact)SizedBox(width:panelWidth(320),child:Material(elevation:3,child:_teams(sorted,screen:false))),
-        Expanded(child:Stack(key:_mapKey,children:[MouseRegion(onHover:_aimHover,opaque:false,child:FlutterMap(mapController:_map,options:MapOptions(
+        Expanded(child:Stack(key:_mapKey,children:[mapBottomMargin(context,fullBleed:fullBleed,child:MouseRegion(onHover:_aimHover,opaque:false,child:FlutterMap(mapController:_map,options:MapOptions(
           initialCenter:_savedView==null?const LatLng(48.8566,2.3522):LatLng(_savedView.lat,_savedView.lon),initialZoom:_savedView?.zoom??11,maxZoom:20,onTap:_onMapTap,
           onPositionChanged:(camera,_)=>_onCameraChanged(camera),
           onLongPress:(_,point)=>_onLongPress(point,gesture:true),
           onSecondaryTap:(_,point){if(_aim!=null){_cancelAim();}else{_onLongPress(point,gesture:true);}},
           onMapEvent:_onMapEvent,
+          onMapReady:(){if(mounted){_onCameraChanged(_map.camera);setState((){});}},
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
           interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
@@ -2372,8 +2551,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
           if(_showPois)_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)))),
-          _faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())])),
-          _faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList()))),
+          // Constat L1 (revue du lot 16, 1 Nov 2026): while a shape is drawn
+          // or a point is picked, a touch on an operator places the point
+          // instead of opening the operator.
+          IgnorePointer(ignoring:_placingOnMap,child:_faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())]))),
+          IgnorePointer(ignoring:_placingOnMap,child:_faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList())))),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
             onTap:()=>openMyPositionInfo(context,location:_location,places:_places,fallback:_me,onSendMessage:_sendText),
             child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)]))))]),
@@ -2384,20 +2566,27 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_searchPin!=null)MarkerLayer(markers:[Marker(point:_searchPin!,width:44,height:44,alignment:Alignment.topCenter,
             child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))]),
           buildHandleLayer(_drawing,_globalToLatLng),
-          // ⓘ with the licence notice of the base map, above the tab bar.
-          SafeArea(child:RichAttributionWidget(attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)])),
-        ])),
+          // ⓘ with the licence notice of the base map: on the left, under the
+          // scale, never under SOS (revue d'ergonomie n° 3).
+          SafeArea(child:Padding(padding:EdgeInsets.only(bottom:compact?mapAttributionLift:0),
+            child:RichAttributionWidget(alignment:AttributionAlignment.bottomLeft,
+              attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]))),
+        ]))),
         if(_drawing.tool==FeatureKind.freehand)Positioned.fill(child:GestureDetector(
           behavior:HitTestBehavior.opaque,
           onPanStart:_onFreehandStart,onPanUpdate:_onFreehandUpdate,onPanEnd:_onFreehandEnd,
           child:CustomPaint(painter:_StrokePainter(_stroke,Color(_drawing.color),_drawing.strokeWidth)),
         )),
-        if(_rectSelecting)Positioned.fill(child:SelectionRectOverlay(onRect:_onSelectionRect,onTap:_onSelectionTap)),
+        if(_rectSelecting)Positioned.fill(child:SelectionRectOverlay(onRect:_onSelectionRect,onTap:_onSelectionTap,
+          onMoveStart:_shiftDown?null:_onSelectionMoveStart,onMove:_shiftDown?null:_onSelectionMove,onWheel:_onSelectionWheel)),
         ShiftWatcher(onChanged:(v){if(mounted)setState(()=>_shiftDown=v);}),
         // Phone (card « Téléphone, carte en portrait », 1 h 32): the map goes
         // under the status bar and the floating tab bar; buttons stay in
         // the safe area.
         Positioned.fill(child:SafeArea(left:false,right:false,child:Stack(children:[
+        // Scale first: behind every panel, never over a button (decision of
+        // 30 Oct 2026, 16 h 25; revue n° 14, 18, 31); above the ⓘ.
+        Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
         if(_inDistress)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:Material(color:Theme.of(context).colorScheme.error,
           borderRadius:BorderRadius.circular(16),child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_distress,child:Padding(padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
             child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.sos,color:Theme.of(context).colorScheme.onError),const SizedBox(width:8),
@@ -2417,7 +2606,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // follow mode (navigation variants), like the toolbar before.
           // One line, everything centred (card « Carte web, barre du haut,
           // finitions », 30 Oct 2026, 1 h 02): pills 40 px, buttons 48 px.
-          if(!_follow)Row(crossAxisAlignment:CrossAxisAlignment.center,children:[
+          // Top-aligned (revue n° 9): the results of the search open below
+          // without moving the pencil and the link pill.
+          if(!_follow)Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
             _fab('drawing-tools',_drawingTools?S.t('draw.close'):S.t('draw.open'),Icon(_drawingTools?Icons.draw:Icons.draw_outlined),_toggleDrawingTools,
               background:_drawingTools?Theme.of(context).colorScheme.primary:null,
               foreground:_drawingTools?Theme.of(context).colorScheme.onPrimary:null),
@@ -2437,13 +2628,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
                 if(!compact)...[const SizedBox(width:8),_trackingBadge()],
               ])),
               const SizedBox(width:8),
-              _linkWeatherPill(),
+              withId('link.map',_linkWeatherPill()),
             ],
           ]),
           // Phone: filters in one button; computer: chips visible.
           if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[?_staleBanner(),?_orderBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
-          if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:()=>_exportGeoJson(only:_drawing.selection))),
+          if(_drawing.selectMode&&!_drawing.hasSelection)Padding(padding:const EdgeInsets.only(top:8),child:SelectionHint(controller:_drawing)),
+          if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:(f)=>_exportGeoJson(only:_drawing.selection,format:f))),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
             const Icon(Icons.block,color:Colors.red),const SizedBox(width:8),
@@ -2452,15 +2644,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             FilledButton(onPressed:_finishClosure,child:Text(S.t('closures.finish'))),
           ])))),
         ])),
+        // Phone, points added to an itinerary: compact bar at the bottom.
+        if(routeEntry!=null)Positioned(left:12,right:12,bottom:12,child:RouteEntryBar(controller:_routes,route:routeEntry,
+          onDone:()=>setState(()=>_drawingRouteId=null))),
         // Right column with SOS at its bottom (30 Oct 2026, 3 h 05).
-        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:compact?60:24,child:_mapButtons()),
+        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:compact?60:24,
+          panel:_measure.target!=null||_nav.state!=NavState.idle||_nav.notice!=null,
+          rightSheet:!compact&&_bearings.taking&&_aim!=null?bearingSheetWidth:0,child:_mapButtons()),
         // Phone: « Suivi actif » just above the tab bar.
         if(compact&&!_bearings.taking&&selected==null)Positioned(left:12,bottom:12,child:_trackingBadge()),
-        if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:380,child:_bearingTakeSheet())
+        if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:bearingSheetWidth,child:_bearingTakeSheet())
         else if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
           child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
-        Positioned(left:16,bottom:compact?56:24,child:IgnorePointer(child:_scaleBar())),
         Positioned(left:0,right:0,bottom:compact?60:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},
@@ -2469,6 +2665,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onMgrsDigits:(d) async {await widget.store.setPreference('mgrs_digits','$d');if(mounted)setState((){});},
             onFormat:(f) async {await widget.store.setPreference('coord_format',f.name);if(mounted)setState((){});}),
           NavigationCard(nav:_nav,following:_follow,onRecentre:()=>_setFollow(true),
+            onOpenIn:(){final d=_nav.destination;if(d!=null)unawaited(_openElsewhere(d,_nav.label));},
+            // No engine on the server and no road graph here: one touch (31 Oct 2026).
+            onDownloadGraph:_graphs.graph==null?()=>unawaited(_graphs.check(allowMobile:true)):null,
+            graphBytes:_graphs.pendingMobileBytes,graphDownloading:_graphs.downloading,
             rotate:_phoneOrTablet?null:_followRotates,
             onRotate:_phoneOrTablet?null:(v) async {
               await widget.store.setPreference('nav_rotate_desktop',v?'1':null);
@@ -2480,6 +2680,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ]))),
       ]))
       
+        ]),
+        if(fullPanel&&_showResection&&_pickPoint==null)phonePanel(_resectionPanel(screenWidth)),
+        if(fullPanel&&_showRoutesPanel&&routeEntry==null)phonePanel(routesPanel()),
         ]),
         _deskPage??const SizedBox.shrink(),
         ])),
@@ -2494,7 +2697,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ])),
       ])),
       // Phone: tab bar always visible, each tab a real screen.
-      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i)=>i==1?_openMessages(fromButton:true):_goTab(i),moreAlert:diagnosticsAlert()):null,
+      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i)=>i==1?_openMessages(fromButton:true):i==0?_showMapOnly():_goTab(i),moreAlert:diagnosticsAlert()):null,
     ));
   }
 }
@@ -2504,7 +2707,9 @@ class _RailAction {
   final IconData icon; final String label; final VoidCallback onTap; final bool selected;
   /// Red dot: a problem waits in the Diagnostic (Paramètres).
   final bool alert;
-  const _RailAction(this.icon,this.label,this.onTap,{this.selected=false,this.alert=false});
+  /// Test identifier (`nav.<id>` in the rail, `more.<id>` on the phone).
+  final String id;
+  const _RailAction(this.icon,this.label,this.onTap,{this.selected=false,this.alert=false,this.id=''});
 }
 
 /// Computer: vertical rail on the left, 9 entries (note « Navigation et
@@ -2514,21 +2719,21 @@ class _Rail extends StatelessWidget {
   const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected,this.bottom});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
-    Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false,bool alert=false})=>Padding(padding:const EdgeInsets.symmetric(vertical:2),
-      child:IconButton(tooltip:label,onPressed:onTap,isSelected:selected,
+    Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false,bool alert=false,String id=''})=>Padding(padding:const EdgeInsets.symmetric(vertical:2),
+      child:withId('nav.$id',IconButton(tooltip:label,onPressed:onTap,isSelected:selected,
         style:IconButton.styleFrom(fixedSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),
           backgroundColor:selected?scheme.primaryContainer:null,foregroundColor:selected?scheme.primary:scheme.onSurfaceVariant),
-        icon:Badge(isLabelVisible:alert,smallSize:10,child:Icon(icon))));
+        icon:Badge(isLabelVisible:alert,smallSize:10,child:Icon(icon)))));
     return Container(width:72,margin:const EdgeInsets.fromLTRB(8,8,0,8),decoration:glass(context),
       child:Column(children:[
         Expanded(child:SingleChildScrollView(padding:const EdgeInsets.symmetric(vertical:8),child:Column(children:[
-          button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected),
-          Padding(padding:const EdgeInsets.symmetric(vertical:2),child:messages),
-          for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected),
+          button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected,id:'map'),
+          Padding(padding:const EdgeInsets.symmetric(vertical:2),child:withId('nav.messages',messages)),
+          for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected,id:a.id),
         ]))),
         if(bottom!=null)...[
           const Divider(height:1,indent:14,endIndent:14),
-          Padding(padding:const EdgeInsets.symmetric(vertical:6),child:button(bottom!.icon,bottom!.label,bottom!.onTap,selected:bottom!.selected,alert:bottom!.alert)),
+          Padding(padding:const EdgeInsets.symmetric(vertical:6),child:button(bottom!.icon,bottom!.label,bottom!.onTap,selected:bottom!.selected,alert:bottom!.alert,id:bottom!.id)),
         ],
       ]));
   }
@@ -2540,9 +2745,10 @@ class _TabBar extends StatelessWidget {
   const _TabBar({required this.index,required this.messagesIcon,required this.onSelect,this.moreAlert=false});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
+    const ids=['map','messages','teams','tools','more'];
     Widget tab(int i,Widget icon,String label,{String? tooltip})=>Expanded(child:Tooltip(message:tooltip??label,excludeFromSemantics:true,child:InkWell(
       onTap:()=>onSelect(i),borderRadius:BorderRadius.circular(28),
-      child:Semantics(button:true,selected:index==i,label:tooltip??label,excludeSemantics:true,child:Container(height:60,
+      child:Semantics(identifier:'nav.${ids[i]}',button:true,selected:index==i,label:tooltip??label,excludeSemantics:true,child:Container(height:60,
         decoration:BoxDecoration(color:index==i?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(28)),
         child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
           IconTheme(data:IconThemeData(color:index==i?scheme.primary:scheme.onSurfaceVariant),child:icon),
@@ -2616,3 +2822,12 @@ class _HoldButtonState extends State<_HoldButton> with SingleTickerProviderState
         child:Text(widget.label,style:TextStyle(color:s.onError,fontWeight:FontWeight.w700)))));
   }
 }
+
+/// « Opérateurs (4) · Stations (2) » when fixed stations are listed too
+/// (revue d'ergonomie n° 42).
+String operatorsTitle(int operators,int stations)=>stations==0?S.t('operators.title',{'n':operators})
+  :S.t('operators.titleStations',{'n':operators,'m':stations});
+
+/// True when a window covers or flanks the map.
+bool mapPanelOpen({required bool teams,required bool reference,required bool routes,required bool resection,required bool chat,required bool desk})=>
+  teams||reference||routes||resection||chat||desk;

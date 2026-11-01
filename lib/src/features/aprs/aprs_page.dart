@@ -10,6 +10,7 @@ import '../../services/sarcade_api.dart';
 import '../measure/coordinates.dart';
 import 'aprs_models.dart';
 import '../../ui/action_buttons.dart';
+import '../../ui/link_status.dart';
 
 /// PCO screen « APRS de l'événement » (vault note « APRS »): callsign groups
 /// followed by the event, callsigns added for it, local radio transmission,
@@ -237,7 +238,7 @@ class _AprsPageState extends State<AprsPage> {
   Widget build(BuildContext context){
     final theme=Theme.of(context);
     return Scaffold(
-      appBar:AppBar(title:Text(S.t('aprs.title')),actions:[IconButton(tooltip:S.t('aprs.reload'),onPressed:_load,icon:const Icon(Icons.refresh))]),
+      appBar:LinkedAppBar(title:Text(S.t('aprs.title')),actions:[IconButton(tooltip:S.t('aprs.reload'),onPressed:_load,icon:const Icon(Icons.refresh))]),
       body:_loading&&_groups.isEmpty?const Center(child:CircularProgressIndicator())
         :_error!=null?Center(child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
             const Icon(Icons.cloud_off,size:40),const SizedBox(height:8),Text(_error!,textAlign:TextAlign.center),
@@ -278,7 +279,7 @@ class _AprsPageState extends State<AprsPage> {
           ])),
           Padding(padding:const EdgeInsets.fromLTRB(16,8,8,0),child:Row(children:[
             Expanded(child:TextField(controller:_addCtrl,enabled:!_ended,textCapitalization:TextCapitalization.characters,
-              decoration:InputDecoration(labelText:S.t('aprs.addCallsign'),helperText:S.t('aprs.ssidHelp'),helperMaxLines:1),
+              decoration:InputDecoration(labelText:S.t('aprs.addCallsign'),helperText:S.t('aprs.ssidHelp'),helperMaxLines:2),
               onSubmitted:(_)=>_addCallsigns())),
             RoundIconButton(tooltip:S.t('aprs.add'),onPressed:_ended?null:_addCallsigns,icon:Icons.add),
           ])),

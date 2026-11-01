@@ -53,6 +53,21 @@ List<String> directPeers(Iterable<SarcadeMessage> messages,String me,Map<String,
   return last.keys.toList()..sort((a,b)=>last[b]!.compareTo(last[a]!));
 }
 
+/// Operators a direct chat can be opened with (card « Destinataire direct
+/// choisi dans la liste des opérateurs », 31 Oct 2026): devices seen on the
+/// map for this event, senders of messages, explicit members of channels;
+/// never me nor an APRS station (no SARCADE inbox). PCO first, then by name.
+List<String> directCandidates({required Iterable<Map<String,dynamic>> positions,required Iterable<SarcadeMessage> messages,
+    required Iterable<CommGroup> groups,required String eventId,required String me}){
+  final ids=<String>{
+    for(final p in positions)if(p['event_id']==eventId&&p['source']!='aprs')'${p['device_id']}',
+    for(final m in messages)m.senderId,
+    for(final g in groups)...g.members,
+  }..removeWhere((id)=>id.isEmpty||id==me||id.startsWith('aprs:')||id.startsWith('group:'));
+  int rank(String id)=>id=='PCO'||id.startsWith('PCO-')?0:1;
+  return ids.toList()..sort((a,b){final r=rank(a).compareTo(rank(b));return r!=0?r:a.toLowerCase().compareTo(b.toLowerCase());});
+}
+
 /// Summary of the acknowledgements of a message sent to several people:
 /// how many read it and how many received it (« ✓✓ lu par 6 · reçu par 8 »).
 ({int read,int received}) ackSummary(String senderId,List<SarcadeAck> acks){
@@ -93,6 +108,11 @@ String avatarInitials(String id){
   final call=RegExp(r'^[A-Z0-9]{1,3}[0-9]([A-Z]{1,4})(-[0-9]{1,2})?$',caseSensitive:false).firstMatch(t);
   if(call!=null){final suf=call.group(1)!.toUpperCase();return suf.length>3?suf.substring(0,3):suf;}
   final words=t.split(RegExp(r'[^A-Za-z0-9]+')).where((w)=>w.isNotEmpty).toList();
+  // Numbered terminals (revue d'ergonomie n° 8, 36, 44): « TEL-01 » → « 01 »,
+  // the 2 last characters, so TEL-01 to TEL-04 differ; same rule on the map,
+  // in the lists and in Messages.
+  final alnum=words.join();
+  if(alnum.length>=2&&RegExp(r'[0-9]$').hasMatch(alnum))return alnum.substring(alnum.length-2).toUpperCase();
   if(words.length>=2)return words.take(3).map((w)=>w[0]).join().toUpperCase();
   final w=words.isEmpty?'?':words.first.toUpperCase();
   return w.length<=2?w:w.substring(0,2);

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../ui/overlay_page.dart';
 import '../../ui/choice_pills.dart';
@@ -27,6 +29,9 @@ import '../compass/shared_compass.dart';
 import '../../services/power_state.dart';
 import '../../ui/save_bar.dart';
 import '../../ui/action_buttons.dart';
+import '../../services/event_names.dart';
+import '../../ui/link_status.dart';
+import '../measure/external_maps.dart' show openInChoices, navAppMineKey;
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -163,32 +168,35 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Remembered servers (« Paramètres › Général au même style que
   /// l'onglet Événement »): the list, a pencil to rename, the bin to forget;
   /// a new address is typed in a small window (« + Ajouter un serveur »).
+  /// Rebuilds the list after « + Ajouter un serveur… » (back to the current one).
+  int _pickRev=0;
   bool get _serverList=>!widget.firstRun&&widget.readServers!=null&&_servers.isNotEmpty;
 
   Widget _serverPicker(){
     final current=findServer(_servers,_serverText);
-    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Row(children:[
-        Expanded(child:DropdownButtonFormField<String>(
-          key:ValueKey('servers|${current?.url}|${_servers.length}|$_serverText'),
+    return _withActions(DropdownButtonFormField<String>(
+          key:ValueKey('servers|${current?.url}|${_servers.length}|$_serverText|$_pickRev'),
           initialValue:current?.url??_serverText,
           isExpanded:true,
           // The row already says « Serveur » (29 Oct 2026: no word twice).
           decoration:_field(),
           items:[
-            for(final s in _servers)DropdownMenuItem(value:s.url,child:Text('${s.label} · ${s.shortAddress}',overflow:TextOverflow.ellipsis)),
+            // The address only when it differs from the name (revue n° 62).
+            for(final s in _servers)DropdownMenuItem(value:s.url,child:Text(s.label==s.shortAddress?s.label:'${s.label} · ${s.shortAddress}',overflow:TextOverflow.ellipsis)),
             if(current==null&&_serverText.isNotEmpty)DropdownMenuItem(value:_serverText,child:Text(S.t('servers.new',{'url':_serverText}),overflow:TextOverflow.ellipsis)),
+            // « + Ajouter un serveur… » at the bottom of the list (16 h 38).
+            DropdownMenuItem(key:const ValueKey('server-add'),value:addServerValue,child:Text(S.t('servers.addItem'),overflow:TextOverflow.ellipsis)),
           ],
-          onChanged:(v){final s=v==null?null:findServer(_servers,v);if(s!=null){_chooseServer(s);_touch();}},
+          onChanged:(v){
+            if(v==addServerValue){unawaited(_addServer());setState(()=>_pickRev++);return;}
+            final s=v==null?null:findServer(_servers,v);if(s!=null){_chooseServer(s);_touch();}},
           validator:(_)=>_url(_server.text),
-        )),
+        ),[
         if(current!=null)...[
           RoundIconButton(tooltip:S.t('servers.rename'),onPressed:()=>_renameServer(current),icon:Icons.edit_outlined),
           if(canRemoveServer(current))RoundIconButton(tooltip:S.t('servers.remove'),onPressed:()=>_removeServer(current),icon:Icons.delete_outline),
         ],
-      ]),
-      Align(alignment:Alignment.centerLeft,child:FilledButton.icon(onPressed:_addServer,icon:const Icon(Icons.add),label:Text(S.t('servers.add')))),
-    ]);
+      ]);
   }
 
   Future<void> _addServer() async {
@@ -257,8 +265,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final help=_eventsError!=null?S.t('settings.eventsError',{'error':_eventsError})
       :_eventsOffline?S.t('settings.eventsOffline')
       :(_events.isEmpty&&!_loadingEvents)?S.t('settings.eventsEmpty'):null;
-    return Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Expanded(child:DropdownButtonFormField<String>(
+    return _withActions(DropdownButtonFormField<String>(
         key:ValueKey('$current|${_events.length}'),
         initialValue:current.isEmpty?null:current,
         isExpanded:true,
@@ -266,13 +273,56 @@ class _SettingsPageState extends State<SettingsPage> {
         items:items,
         onChanged:(v)=>setState((){_event.text=v??'';_dirty=true;}),
         validator:(_)=>_required(_event.text),
-      )),
-      const SizedBox(width:8),
-      Padding(padding:const EdgeInsets.only(top:4),child:_loadingEvents
+      ),[
+      _loadingEvents
         ? const SizedBox(width:48,height:48,child:Padding(padding:EdgeInsets.all(12),child:CircularProgressIndicator(strokeWidth:2)))
-        : IconButton(tooltip:S.t('settings.eventsRefresh'),onPressed:_loadEvents,icon:Icon(_eventsOffline?Icons.cloud_off:Icons.refresh))),
+        : IconButton(tooltip:S.t('settings.eventsRefresh'),onPressed:_loadEvents,icon:Icon(_eventsOffline?Icons.cloud_off:Icons.refresh)),
+      if(_canCreateEvent)IconButton(key:const ValueKey('event-new'),tooltip:S.t('events.new'),onPressed:_createEvent,icon:const Icon(Icons.add)),
     ]);
   }
+
+  /// The PCO creates an event from the app, on the server it is linked to.
+  bool get _canCreateEvent=>widget.api!=null&&!widget.firstRun&&isPco(widget.initial.deviceId)
+    &&normalServer(_serverText)==normalServer(widget.initial.serverUrl);
+
+  Future<void> _createEvent() async {
+    final name=TextEditingController(); var kind='exercise';
+    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('events.new')),
+      content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        TextField(key:const ValueKey('event-new-name'),controller:name,autofocus:true,decoration:InputDecoration(labelText:S.t('events.name'))),
+        const SizedBox(height:12),
+        DropdownButtonFormField<String>(key:const ValueKey('event-new-kind'),initialValue:kind,isExpanded:true,decoration:InputDecoration(labelText:S.t('events.model')),
+          items:[for(final k in eventKinds)DropdownMenuItem(value:k,child:Text(S.t('events.kind.$k')))],onChanged:(v)=>set(()=>kind=v??kind)),
+        const SizedBox(height:6),
+        Text(S.t('events.modulesOf',{'m':eventKindModules(kind)}),style:Theme.of(c).textTheme.bodySmall),
+      ]),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+        FilledButton(key:const ValueKey('event-new-create'),onPressed:()=>Navigator.pop(c,true),child:Text(S.t('events.create')))])));
+    final n=name.text.trim(); name.dispose();
+    if(ok!=true||n.isEmpty||!mounted)return;
+    final m=ScaffoldMessenger.of(context);
+    try{
+      final e=await widget.api!.createEvent(n,kind);
+      if(!mounted)return;
+      await _loadEvents();
+      if(!mounted)return;
+      setState((){_event.text='${e['id']}';_dirty=true;});
+      m.showSnackBar(SnackBar(content:Text(S.t('events.created',{'n':n}))));
+    }on SarcadeHttpException catch(e){
+      m.showSnackBar(SnackBar(content:Text(S.t(e.statusCode==403?'events.pcoOnly':'events.createFailed',{'e':'HTTP ${e.statusCode}'}))));
+    }catch(_){
+      m.showSnackBar(SnackBar(content:Text(S.t('events.createFailed',{'e':S.t('settings.eventsOffline')}))));
+    }
+  }
+
+  /// « ADRASEC », « Course » or « aucun (Core seul) », for the dialog.
+  String eventKindModules(String kind){
+    final m=modulesOfKind(kind);
+    return m.isEmpty?S.t('modules.none'):m.map((id)=>S.t('modules.$id')).join(', ');
+  }
+
+  /// ADRASEC on for the event this device follows (Core and modules).
+  bool get _adrasec=>eventModules(widget.store?.eventSettings(widget.initial.eventId)).contains('adrasec');
 
   String? _required(String? v)=>(v==null||v.trim().isEmpty)?S.t('settings.required'):null;
 
@@ -325,10 +375,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// One setting per line: bold label and grey help on the left (under it
   /// on a phone), the control on the right.
-  Widget _row(String label,{String? help,required Widget child}){
+  Widget _row(String label,{String? help,String? tip,required Widget child}){
     final t=Theme.of(context);
     final head=Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600)),
+      Row(children:[
+        Flexible(child:Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600))),
+        // Fewer words (card « Paramètres › Général, mise en page », 16 h 38):
+        // the explanation in an ⓘ rather than grey text.
+        if(tip!=null)Tooltip(message:tip,triggerMode:TooltipTriggerMode.tap,child:Padding(padding:const EdgeInsets.only(left:6),
+          child:Icon(Icons.info_outline,size:16,color:t.colorScheme.onSurfaceVariant))),
+      ]),
       if(help!=null)Padding(padding:const EdgeInsets.only(top:2),child:Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
     ]);
     return Column(children:[
@@ -383,9 +439,9 @@ class _SettingsPageState extends State<SettingsPage> {
   ]);
 
   Widget _generalTab()=>widget.firstRun?_firstRunTab():Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-    _row(S.t('settings.serverRow'),help:S.t('settings.serverHelp'),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    _row(S.t('settings.serverRow'),tip:S.t('settings.serverHelp'),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       if(_serverList)_serverPicker()
-      else Focus(
+      else _withActions(Focus(
         // Leaving the server field reloads the events of that server.
         onFocusChange:(f){if(!f)_loadEvents();},
         child:TextFormField(
@@ -395,13 +451,21 @@ class _SettingsPageState extends State<SettingsPage> {
           onFieldSubmitted:(_)=>_loadEvents(),
           onChanged:(_)=>setState((){}),
         ),
-      ),
+      )),
       _accessRow(),
     ])),
-    _row(S.t('settings.eventRow'),help:S.t('settings.eventHelp'),child:widget.loadEvents!=null?_eventPicker():TextFormField(
-      controller:_event,decoration:_field(),autocorrect:false,validator:_required)),
-    _row(S.t('settings.deviceRow'),help:S.t('settings.deviceHelp'),child:_compact(TextFormField(
+    _row(S.t('settings.eventRow'),tip:S.t('settings.eventHelp'),child:widget.loadEvents!=null?_eventPicker():_withActions(TextFormField(
+      controller:_event,decoration:_field(),autocorrect:false,validator:_required))),
+    _row(S.t('settings.deviceRow'),tip:S.t('settings.deviceHelp'),child:_withActions(TextFormField(
       controller:_device,decoration:_field(hint:'TERRAIN-01'),autocorrect:false,validator:_required))),
+  ]);
+
+  /// Serveur, Événement suivi and Terminal of the same width, their buttons
+  /// (pencil, bin, refresh) in one column on the right (16 h 38).
+  static const double _actionsWidth=96;
+  Widget _withActions(Widget field,[List<Widget> actions=const []])=>Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+    Expanded(child:field),
+    SizedBox(width:_actionsWidth,child:Row(mainAxisAlignment:MainAxisAlignment.end,children:actions)),
   ]);
 
   Widget _profileTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -409,13 +473,23 @@ class _SettingsPageState extends State<SettingsPage> {
       controller:_callsign,decoration:_field(hint:'F4ABC-7'),
       autocorrect:false,textCapitalization:TextCapitalization.characters,validator:_callsignCheck))),
     // Colour of every new drawing (existing objects keep theirs).
-    _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
-      // Same 4 × 4 palette as the drawings and the groups (30 Oct 2026, 13 h 25).
+    _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      // Same 4 × 4 palette as the drawings and the groups (30 Oct 2026, 13 h 25);
+      // « Autre couleur » under the grid, on the left (revue n° 66).
       ColorGrid(colors:paletteWith(_drawColor),selected:_drawColor,onPick:(c)=>setState((){_drawColor=c;_dirty=true;})),
+      const SizedBox(height:8),
       ActionChip(avatar:const Icon(Icons.palette_outlined,size:18),label:Text(S.t('settings.otherColor')),onPressed:_pickOtherColor),
     ])),
-    // Under « Couleur de dessin » (29 Oct 2026).
-    _row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
+    // « Toujours ouvrir avec … » of « Ouvrir dans… », changed here
+    // (31 Oct 2026); applied at once on this device.
+    if(widget.store!=null)_row(S.t('settings.navApp'),child:Align(alignment:Alignment.centerRight,child:DropdownButton<String>(
+      key:const ValueKey('settings-nav-app'),value:widget.store!.preference(navAppMineKey)??'',
+      items:[DropdownMenuItem(value:'',child:Text(S.t('settings.navAppAsk'))),
+        for(final a in openInChoices(android:!kIsWeb&&defaultTargetPlatform==TargetPlatform.android,ios:!kIsWeb&&defaultTargetPlatform==TargetPlatform.iOS))
+          if(a!='other')DropdownMenuItem(value:a,child:Text(S.t('ext.app.$a')))],
+      onChanged:(v) async {await widget.store!.setPreference(navAppMineKey,v==null||v.isEmpty?null:v);if(mounted)setState((){});}))),
+    // Under « Couleur de dessin » (29 Oct 2026); ADRASEC module only.
+    if(_adrasec)_row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
       child:Switch(value:_aprsConsent,onChanged:(v)=>setState((){_aprsConsent=v;_dirty=true;})))),
   ]);
 
@@ -482,11 +556,12 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Active session only: what is shown does not depend on unsaved edits.
   Widget _diagnosticsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('diagnostics.description'))),
-    _row(S.t('diagnostics.event'),child:_value(widget.initial.eventId)),
+    // Name of the event; its identifier in the copyable report only (revue n° 60).
+    _row(S.t('diagnostics.event'),child:EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,builder:(_,n)=>_value(n))),
     _row(S.t('diagnostics.server'),child:_value(widget.initial.serverUrl)),
     _row(S.t('diagnostics.device'),child:_value(widget.initial.deviceId)),
-    _row(S.t('map.logbook'),help:S.t('diagnostics.activeEvent',{'event':widget.initial.eventId}),
-      child:_value('',action:S.t('diagnostics.open'),onAction:widget.onOpenLogbook)),
+    EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,builder:(_,n)=>_row(S.t('map.logbook'),help:S.t('diagnostics.activeEvent',{'event':n}),
+      child:_value('',action:S.t('diagnostics.open'),onAction:widget.onOpenLogbook))),
     // « Copier » at the far right (29 Oct 2026).
     _row(S.t('diagnostics.version'),child:Builder(builder:(c){
       final v='SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}';
@@ -511,7 +586,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'event'=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
       // Default frequencies of the bearing tool: administrator only.
-      if(myRoles.contains('admin'))_row(S.t('signals.title'),help:S.t('signals.rowHelp'),child:Align(alignment:Alignment.centerRight,child:OutlinedButton(
+      if(myRoles.contains('admin')&&_adrasec)_row(S.t('signals.title'),help:S.t('signals.rowHelp'),child:Align(alignment:Alignment.centerRight,child:OutlinedButton(
         onPressed:()=>showOverlayPage<void>(context,(_)=>SignalDefaultsPage(api:widget.api!,store:widget.store)),
         child:Text(S.t('signals.manage'))))),
     ]),
@@ -546,10 +621,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context){
     final t=Theme.of(context);
     return Scaffold(
-      appBar:AppBar(automaticallyImplyLeading:!widget.firstRun),
-      // Fixed save bar at the bottom (charte « style Play Console »).
-      bottomNavigationBar:SaveBar(changed:widget.firstRun||_dirty,saving:_saving,onSave:_trySave,
-        onCancel:widget.firstRun?null:_cancel),
+      // Same surface as the content in both themes (revue n° 68).
+      appBar:LinkedAppBar(linkStatus:!widget.firstRun,automaticallyImplyLeading:!widget.firstRun,backgroundColor:t.colorScheme.surface,surfaceTintColor:Colors.transparent,scrolledUnderElevation:0),
+      // Fixed save bar at the bottom (charte « style Play Console »); none on
+      // Diagnostic and À propos, nothing to save there (revue n° 64).
+      bottomNavigationBar:settingsShowsSaveBar(tab:_tabs[_tab.clamp(0,_tabs.length-1)],firstRun:widget.firstRun,dirty:_dirty)?SaveBar(changed:widget.firstRun||_dirty,saving:_saving,onSave:_trySave,
+        onCancel:widget.firstRun?null:_cancel):null,
       body:SafeArea(child:Center(child:ConstrainedBox(
         constraints:const BoxConstraints(maxWidth:900),
         child:Form(key:_form,onChanged:widget.firstRun?null:_touch,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -579,3 +656,8 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+/// The save bar, except on Diagnostic and À propos with nothing changed.
+bool settingsShowsSaveBar({required String tab,required bool firstRun,required bool dirty})=>firstRun||dirty||!(tab=='diagnostics'||tab=='about');
+/// Value of « + Ajouter un serveur… » in the list of servers.
+const addServerValue='\u0000add-server';

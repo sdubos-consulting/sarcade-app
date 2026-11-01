@@ -24,6 +24,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../access/access_manager.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
+import '../meshcore/meshcore_trial.dart';
 import '../../models/comm_group.dart' show myRoles;
 import '../../offline/sync_service.dart';
 import '../../offline/unsent_page.dart';
@@ -32,6 +33,8 @@ import '../../services/notification_service.dart';
 import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
 import '../aprs/aprs_models.dart' show linkState;
+import '../../services/event_names.dart';
+import '../navigation/road_graph_service.dart';
 
 /// green / orange / red / off → colour of the dot.
 Color stateColor(String? s)=>switch(s){'green'||'ok'||'connected'=>Colors.green,'orange'||'degraded'||'waiting'=>Colors.orange,
@@ -158,14 +161,18 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     final access=AccessManager.instance.sessionFor(widget.server);
     Map<String,dynamic>? aprs;
     try{aprs=await widget.api.aprsStatus().timeout(const Duration(seconds:5));}catch(_){aprs=null;}
+    bool engine=false;
+    try{engine=(await widget.api.routingStatus().timeout(const Duration(seconds:5)))['available']==true;}catch(_){engine=false;}
     Map<String,dynamic>? link(String k)=>aprs?[k] is Map?Map<String,dynamic>.from(aprs![k] as Map):null;
     final device=<DiagLine>[
       (block:dev,label:S.t('diag.version'),value:'SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}',state:null),
+      // Name and identifier of the event: the identifier only here (revue n° 60).
+      (block:dev,label:S.t('diagnostics.event'),value:eventReportValue(await loadEventName(widget.api,widget.eventId),widget.eventId),state:null),
       (block:dev,label:S.t('diag.localIp'),value:local.isEmpty?'—':local.join(', '),state:null),
       (block:dev,label:S.t('diag.publicIp'),value:'${client?['ip']??'—'}',state:null),
       (block:dev,label:S.t('diag.network'),value:net,state:null),
       (block:dev,label:S.t('diag.gps'),value:gps,state:gpsState),
-      (block:dev,label:S.t('diag.notifications'),value:S.t(notif==null?'diag.unknown':notif?'diag.allowed':'diag.refused'),state:notif==null?null:notif?'green':'orange'),
+      (block:dev,label:S.t('diag.notifications'),value:S.t(NotificationService.windowsUnavailable=='admin'?'diag.notifAdmin':notif==null?'diag.unknown':notif?'diag.allowed':'diag.refused'),state:notif==null?null:notif?'green':'orange'),
       (block:dev,label:S.t('diag.lastSync'),value:sync?.lastServerContact==null?'—':_date(sync!.lastServerContact!.toUtc().toIso8601String()),state:sync==null?null:sync.lastSyncOk?'green':'orange'),
     ];
     final links=<DiagLine>[
@@ -174,6 +181,9 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       (block:lk,label:S.t('diag.access'),value:access==null?S.t(client?['via_cloudflare']==true?'diag.accessNone':'diag.accessLocal')
         :[S.t('diag.connected'),if(access.email!=null)access.email!,if(client?['email']!=null)S.t('diag.emailChecked')].join(' · '),
         state:access==null?(client?['via_cloudflare']==true?'orange':null):'green'),
+      // Itinerary computation: server, device, or straight line (31 Oct 2026).
+      (block:lk,label:S.t('diag.routing'),value:S.t('diag.routing.${routingWhere(server:engine,device:RoadGraphService.active?.graph!=null)}'),
+        state:switch(routingWhere(server:engine,device:RoadGraphService.active?.graph!=null)){'server'=>'green','device'=>'orange',_=>'red'}),
       (block:lk,label:S.t('aprs.is'),value:S.t('aprs.link.${linkState(link('aprs_is'))}'),state:linkState(link('aprs_is'))),
       (block:lk,label:S.t('aprs.radio'),value:S.t('aprs.link.${linkState(link('radio'))}'),state:linkState(link('radio'))),
     ];
@@ -251,7 +261,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     final all=[..._device,...links,..._server];
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
-        FilledButton.icon(key:const ValueKey('diag-copy'),onPressed:all.isEmpty?null:() async {
+        // A discreet pill, as « Actualiser » (revue n° 65).
+        OutlinedButton.icon(key:const ValueKey('diag-copy'),onPressed:all.isEmpty?null:() async {
           final messenger=ScaffoldMessenger.of(context);
           await Clipboard.setData(ClipboardData(text:diagnosticsReport(all)));
           messenger.showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
@@ -265,6 +276,11 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         footer:sync==null?null:UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});})),
       if(_pco&&(_server.isNotEmpty||_serverError!=null))_block(S.t('diag.server'),_server,
         footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!))),
+      // Trial: does SARCADE talk to a MeshCore module over Bluetooth? (1 Nov 2026)
+      const MeshCoreTrialCard(),
     ]);
   }
 }
+
+/// Where itineraries are computed: 'server', 'device' or 'none'.
+String routingWhere({required bool server,required bool device})=>server?'server':device?'device':'none';

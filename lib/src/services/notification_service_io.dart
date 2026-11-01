@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:ui' show DartPluginRegistrant;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -9,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../features/car/car_background_io.dart' show sendAnswerNow;
 import '../l10n/strings.dart';
+import '../platform/startup_report.dart';
 import 'notification_actions.dart';
 
 export 'notification_actions.dart' show isUrgentPriority, NotificationPayload, PendingAnswer;
@@ -142,7 +145,22 @@ class NotificationService {
 
   Future<void> initialize()=>_init??=_initialize();
 
+  /// Why the Windows notifications are off (card « Client Windows : écran
+  /// gris », 31 Oct 2026): 'admin' when SARCADE runs with administrator
+  /// rights, where the Windows notification plugin stops the whole app
+  /// (crash seen on the owner's Surface); null otherwise.
+  static String? windowsUnavailable;
+
   Future<void> _initialize() async {
+    if(Platform.isWindows){
+      if(windowsElevated()){
+        windowsUnavailable='admin';
+        StartupReport.note('notifications Windows désactivées : SARCADE lancé en administrateur');
+        return;
+      }
+      // After the first screen: whatever the plugin does, the map shows.
+      await WidgetsBinding.instance.endOfFrame;
+    }
     try{
       final urgentCategory=DarwinNotificationCategory('sarcade_urgent',actions:[
         DarwinNotificationAction.plain(actionAccept,S.t('notif.action.accept')),
@@ -213,6 +231,7 @@ class NotificationService {
   /// Notifications allowed: true or false; null when the system does not say
   /// (Windows, Linux).
   Future<bool?> permissionGranted() async {
+    if(windowsUnavailable!=null)return false;
     try{
       final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       if(android!=null)return await android.areNotificationsEnabled();
@@ -353,4 +372,15 @@ class NotificationService {
       }
     }
   }
+}
+
+
+/// True when this Windows process runs with administrator rights
+/// (IsUserAnAdmin of shell32); false elsewhere or when unknown.
+bool windowsElevated(){
+  if(!Platform.isWindows)return false;
+  try{
+    final f=DynamicLibrary.open('shell32.dll').lookupFunction<Int32 Function(),int Function()>('IsUserAnAdmin');
+    return f()!=0;
+  }catch(_){return false;}
 }

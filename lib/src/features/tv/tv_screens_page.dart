@@ -8,6 +8,7 @@ import 'tv_code.dart';
 import 'tv_nearby.dart';
 import 'tv_qr_scan_page.dart';
 import 'tv_view.dart';
+import '../../ui/link_status.dart';
 
 /// « Afficher sur une TV » (any operator, decision of the porteur of
 /// 29 October 2026): pair the screen opened on tv.sarcade.org by scanning
@@ -18,7 +19,7 @@ class TvScreensPage extends StatelessWidget {
   /// The camera opens at once.
   final bool scanOnOpen;
   const TvScreensPage({super.key,required this.api,required this.eventId,this.scanOnOpen=false});
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(S.t('tv.menu'))),
+  @override Widget build(BuildContext context)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tv.menu'))),
     body:ListView(padding:const EdgeInsets.all(16),children:[
       Text(S.t('tv.help'),style:Theme.of(context).textTheme.bodyLarge),
       const SizedBox(height:16),
@@ -250,7 +251,7 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
         ]),
         if(_busy)const Padding(padding:EdgeInsets.only(top:16),child:LinearProgressIndicator()),
         const SizedBox(height:16),
-        Text(S.t('tv.list'),style:t.textTheme.titleMedium),
+        Text(S.t('tv.list'),style:t.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w600,color:t.colorScheme.primary)),
         if(_offline)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.cloud_off),title:Text(S.t('event.offline')),
           trailing:OutlinedButton(onPressed:_load,child:Text(S.t('common.retry'))))
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))

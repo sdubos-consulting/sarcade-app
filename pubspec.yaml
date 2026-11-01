@@ -7,6 +7,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Material texts in French (« Afficher le menu », « Fermer »…; revue n° 70).
+  flutter_localizations:
+    sdk: flutter
   flutter_map: ^8.0.0
   speech_to_text: ^7.0.0
   latlong2: ^0.9.1
@@ -42,6 +45,9 @@ dependencies:
   firebase_messaging: ^16.0.0
   # QR code of a Smart TV read by the camera (Android, iPhone).
   mobile_scanner: ^7.4.2
+  # Bluetooth LE, MeshCore trial (BSD-3; flutter_blue_plus now needs a paid licence).
+  # 3.1.1+ needs dbus 0.8, flutter_local_notifications 19 (Linux) dbus 0.7.
+  universal_ble: '>=3.0.0 <3.1.1'
 dependency_overrides:
   # Windows storage of the Access session without the native ATL part
   # (third_party/flutter_secure_storage_windows/README.md).

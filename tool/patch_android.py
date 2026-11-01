@@ -75,6 +75,8 @@ OPTIONAL_FEATURES = [
     "android.hardware.location",
     "android.hardware.location.gps",
     "android.hardware.location.network",
+    # MeshCore trial: Bluetooth LE optional, the app stays installable without it.
+    "android.hardware.bluetooth_le",
 ]
 PERMISSIONS = [
     "android.permission.INTERNET",
@@ -93,6 +95,14 @@ PERMISSIONS = [
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.ACCESS_NOTIFICATION_POLICY",
 ]
+# Bluetooth LE, MeshCore trial (universal_ble): scan without location on
+# Android 12+, legacy permissions up to Android 11 (location already declared).
+BLUETOOTH_PERMISSIONS = {
+    "android.permission.BLUETOOTH_SCAN": 'android:usesPermissionFlags="neverForLocation"',
+    "android.permission.BLUETOOTH_CONNECT": "",
+    "android.permission.BLUETOOTH": 'android:maxSdkVersion="30"',
+    "android.permission.BLUETOOTH_ADMIN": 'android:maxSdkVersion="30"',
+}
 NETWORK_CONFIG = Path("android/app/src/main/res/xml/network_security_config.xml")
 NETWORK_CONFIG_XML = """<?xml version="1.0" encoding="utf-8"?>
 <!-- SARCADE: system and user certification authorities (local CA of the
@@ -160,6 +170,8 @@ def main() -> int:
     features = [f for f in OPTIONAL_FEATURES if f'android:name="{f}"' not in xml]
     if missing or features:
         block = "".join(f'    <uses-permission android:name="{p}"/>\n' for p in missing)
+        block += "".join(f'    <uses-permission android:name="{p}" {a}/>\n'.replace(' />', '/>')
+                         for p, a in BLUETOOTH_PERMISSIONS.items() if f'android:name="{p}"' not in xml)
         block += "".join(f'    <uses-feature android:name="{f}" android:required="false"/>\n' for f in features)
         xml, n = re.subn(r"(\n\s*<application\b)", "\n" + block.rstrip("\n") + r"\1", xml, count=1)
         if n != 1:

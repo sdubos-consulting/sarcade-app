@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../l10n/strings.dart';
 import '../map/drawing/geometry.dart' show distanceM;
+import '../navigation/point_label.dart';
 
 /// Move order of the PCO to an operator (decision of the porteur of
 /// 29 October 2026): go to a point of the map. The server checks that only
@@ -17,7 +18,7 @@ class MoveOrder {
   String get note=>'${json['note']??''}';
   Map<String,dynamic> get _d=>Map<String,dynamic>.from(json['destination'] as Map? ?? const {});
   LatLng get destination=>LatLng((_d['lat'] as num?)?.toDouble()??0,(_d['lon'] as num?)?.toDouble()??0);
-  String get label{final l='${_d['label']??''}';return l.isEmpty?S.t('order.point'):l;}
+  String get label=>pointLabel('${_d['label']??''}');
   /// Still to carry out: sent or accepted.
   bool get open=>status=='sent'||status=='accepted';
   DateTime? get updatedAt=>DateTime.tryParse('${json['updated_at']??''}');
@@ -137,7 +138,9 @@ List<Widget> moveOrderList(BuildContext c,List<MoveOrder> orders,{required Value
     subtitle:Text(S.t('order.status.${o.status}')),onTap:()=>onOpen(o));
   final t=Theme.of(c).textTheme.labelLarge;
   return [
-    if(live.isEmpty)Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Text(S.t('order.none'))),
+    // Subtitle of the « Ordres » line (revue n° 30).
+    if(live.isEmpty)Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Builder(builder:(c)=>Text(S.t('order.none'),
+      style:Theme.of(c).textTheme.bodySmall?.copyWith(color:Theme.of(c).colorScheme.onSurfaceVariant)))),
     if(open.isNotEmpty)...[Padding(padding:const EdgeInsets.fromLTRB(16,4,16,0),child:Text('${S.t('order.inProgress')} · ${open.length}',style:t)),...open.map(tile)],
     if(done.isNotEmpty)...[Padding(padding:const EdgeInsets.fromLTRB(16,4,16,0),child:Text('${S.t('order.done')} · ${done.length}',style:t)),...done.map(tile)],
   ];

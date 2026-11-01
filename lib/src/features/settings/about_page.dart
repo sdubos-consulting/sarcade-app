@@ -6,13 +6,14 @@ import '../../l10n/strings.dart';
 import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart' show basemapNotices;
 import 'notifications_panel.dart' show VersionStatus;
+import '../../ui/link_status.dart';
 
 class SarcadeAboutPage extends StatelessWidget {
   const SarcadeAboutPage({super.key});
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(S.t('about.title'))),
+    appBar: LinkedAppBar(title: Text(S.t('about.title'))),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 640),
       child: ListView(padding: const EdgeInsets.all(20), children: const [SarcadeAboutContent()]),
@@ -47,7 +48,8 @@ class SarcadeAboutContent extends StatelessWidget {
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // SARCADE logo above the name, version and publisher, adapted to the
         // theme (card « Paramètres › À propos, logo SARCADE », 30 Oct 2026, 13 h 27).
-        Center(child: Image.asset(
+        // Aligned on the left with the title and the text (revue n° 67).
+        Align(alignment: Alignment.centerLeft, child: Image.asset(
           Theme.of(context).brightness == Brightness.dark ? 'assets/logo/sarcade-logo-dark.png' : 'assets/logo/sarcade-logo-light.png',
           height: 96, semanticLabel: 'SARCADE',
           errorBuilder: (_, _, _) => const SizedBox.shrink(),

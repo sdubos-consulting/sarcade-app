@@ -11,27 +11,36 @@ import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../l10n/strings.dart';
+import '../../ui/test_ids.dart';
 import '../places/readable_place.dart';
 
 /// [info]: the location line touched, fiche « Infos du point » (lot 5).
-enum PointAction { bearing, poi, order, measure, navigate, route, external, weather, info }
+enum PointAction { bearing, poi, order, measure, navigate, route, external, weather, info, select }
 
 /// Entries of the grid, in the validated order.
-List<PointAction> pointMenuEntries({required bool pco})=>[
-  PointAction.bearing,PointAction.poi,if(pco)PointAction.order,PointAction.measure,PointAction.navigate,PointAction.weather];
+List<PointAction> pointMenuEntries({required bool pco,bool adrasec=true})=>[
+  // « Relevé » belongs to the ADRASEC module (31 Oct 2026).
+  if(adrasec)PointAction.bearing,PointAction.poi,if(pco)PointAction.order,PointAction.measure,PointAction.navigate,PointAction.weather,
+  // « Sélectionner une zone » (17 h 36): a rectangle selects the drawn objects.
+  PointAction.select];
 
 /// Appui long on (or within ≈ 30 m of) my own position: bearing from the GPS
 /// position (decision of 30 Oct 2026, 3 h 05).
 const ownPositionRadiusM=30.0;
 bool nearOwnPosition(LatLng point,LatLng? me)=>me!=null&&const Distance().as(LengthUnit.Meter,point,me)<=ownPositionRadiusM;
 
-Future<PointAction?> showPointMenu(BuildContext context,{required LatLng point,required PlaceDescriber places,required bool pco,required String coordinates}) async {
+/// [objects]: drawn shapes under the finger, offered first as « Sélectionner
+/// … » ([onSelectObject]); the point menu always opens (31 Oct 2026).
+Future<PointAction?> showPointMenu(BuildContext context,{required LatLng point,required PlaceDescriber places,required bool pco,bool adrasec=true,required String coordinates,
+    List<({String id,String label})> objects=const [],ValueChanged<String>? onSelectObject}) async {
   final choice=await showModalBottomSheet<PointAction>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(
     padding:const EdgeInsets.fromLTRB(16,0,16,12),
     child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      for(final o in objects)ListTile(key:ValueKey('select-${o.id}'),contentPadding:EdgeInsets.zero,leading:const Icon(Icons.highlight_alt),
+        title:Text(S.t('point.selectObject',{'name':o.label})),onTap:(){Navigator.pop(c);onSelectObject?.call(o.id);}),
       _LocationLine(point:point,places:places,coordinates:coordinates,onOpen:()=>Navigator.pop(c,PointAction.info)),
       const SizedBox(height:12),
-      _Grid(entries:pointMenuEntries(pco:pco),onPick:(a)=>Navigator.pop(c,a)),
+      _Grid(entries:pointMenuEntries(pco:pco,adrasec:adrasec),onPick:(a)=>Navigator.pop(c,a)),
     ]))));
   if(choice!=PointAction.navigate||!context.mounted)return choice;
   return showModalBottomSheet<PointAction>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
@@ -44,12 +53,12 @@ Future<PointAction?> showPointMenu(BuildContext context,{required LatLng point,r
 IconData _icon(PointAction a)=>switch(a){
   PointAction.bearing=>Icons.track_changes,PointAction.poi=>Icons.add_location_alt_outlined,PointAction.order=>Icons.flag_outlined,
   PointAction.measure=>Icons.straighten,PointAction.navigate=>Icons.directions,PointAction.weather=>Icons.cloud_outlined,
-  PointAction.route=>Icons.add_road,PointAction.external=>Icons.open_in_new,PointAction.info=>Icons.info_outline};
+  PointAction.route=>Icons.add_road,PointAction.external=>Icons.open_in_new,PointAction.info=>Icons.info_outline,PointAction.select=>Icons.highlight_alt};
 
 String _label(PointAction a)=>S.t(switch(a){
   PointAction.bearing=>'point.bearing',PointAction.poi=>'point.poi',PointAction.order=>'point.order',
   PointAction.measure=>'point.measure',PointAction.navigate=>'point.go',PointAction.weather=>'point.weather',
-  PointAction.route=>'point.route',PointAction.external=>'point.otherApp',PointAction.info=>'info.title'});
+  PointAction.route=>'point.route',PointAction.external=>'point.otherApp',PointAction.info=>'info.title',PointAction.select=>'point.selectArea'});
 
 class _Grid extends StatelessWidget {
   final List<PointAction> entries; final ValueChanged<PointAction> onPick;
@@ -58,13 +67,13 @@ class _Grid extends StatelessWidget {
     final s=Theme.of(context).colorScheme;
     // Two rows: three icons per row (four with the PCO entry on the first).
     final perRow=(entries.length/2).ceil();
-    Widget cell(PointAction a)=>Expanded(child:InkWell(borderRadius:BorderRadius.circular(16),onTap:()=>onPick(a),
+    Widget cell(PointAction a)=>Expanded(child:withId('point.${a.name}',InkWell(borderRadius:BorderRadius.circular(16),onTap:()=>onPick(a),
       child:Padding(padding:const EdgeInsets.symmetric(vertical:8,horizontal:2),child:Column(mainAxisSize:MainAxisSize.min,children:[
         Container(width:52,height:52,decoration:BoxDecoration(color:s.primaryContainer,shape:BoxShape.circle),
           child:Icon(_icon(a),color:s.onPrimaryContainer)),
         const SizedBox(height:6),
         Text(_label(a),textAlign:TextAlign.center,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:13)),
-      ]))));
+      ])))));
     Widget row(List<PointAction> list)=>Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
       for(final a in list)cell(a),for(var i=list.length;i<perRow;i++)const Expanded(child:SizedBox.shrink())]);
     return Column(mainAxisSize:MainAxisSize.min,children:[row(entries.take(perRow).toList()),const SizedBox(height:4),row(entries.skip(perRow).toList())]);

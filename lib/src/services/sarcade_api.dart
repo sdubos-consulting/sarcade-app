@@ -224,8 +224,10 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('display_identify',r.statusCode,r.body);
   }
   /// « Envoyer ma vue »: [view] null gives the TV its automatic framing back.
-  Future<void> sendDisplayView(String eventId,String displayId,Map<String,dynamic>? view) async {
-    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/view'),headers:_json,body:jsonEncode({'view':view}));
+  /// [live] (« Suivre ma vue », lot 11): one logbook line for the whole follow.
+  Future<void> sendDisplayView(String eventId,String displayId,Map<String,dynamic>? view,{bool live=false}) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/view'),headers:_json,
+      body:jsonEncode({'view':view,if(live)'live':true}));
     if(r.statusCode!=200) throw SarcadeHttpException('display_view',r.statusCode,r.body);
   }
   /// « Messages : afficher / masquer » of one screen, applied at once.
@@ -337,6 +339,14 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('event',r.statusCode);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }
+  /// New event (PCO), with the model that decides its modules (card
+  /// « Séparer le Core et les modules », step 2): family, friends → Core;
+  /// exercise, sater, mission → ADRASEC; race → Course.
+  Future<Map<String,dynamic>> createEvent(String name,String kind) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events'),headers:_json,body:jsonEncode({'name':name,'kind':kind}));
+    if(r.statusCode!=201) throw SarcadeHttpException('create_event',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Changes event settings (PCO); 409 when the event is closed, 422 refused.
   Future<Map<String,dynamic>> patchEventSettings(String eventId,String actorId,Map<String,dynamic> settings) async {
     final r=await _client.patch(Uri.parse('$baseUrl/api/v0.1/events/$eventId/settings'),headers:_json,
@@ -440,6 +450,12 @@ class SarcadeApi {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/basemaps'));
     if(r.statusCode!=200) throw SarcadeHttpException('basemaps',r.statusCode);
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
+  }
+  /// Itinerary engine of the server (Valhalla): {available, url}.
+  Future<Map<String,dynamic>> routingStatus() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/routing/status'));
+    if(r.statusCode!=200) throw SarcadeHttpException('routing_status',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }
   /// Version of the road graph for navigation on the device.
   Future<Map<String,dynamic>> roadGraphInfo() async {

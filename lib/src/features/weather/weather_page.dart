@@ -5,6 +5,7 @@ import '../../models/comm_group.dart' show isPco;
 import '../../offline/local_store.dart';
 import '../../services/sarcade_api.dart';
 import 'weather_models.dart';
+import '../../ui/link_status.dart';
 
 IconData weatherIcon(String key,{bool night=false})=>switch(key){
   'clear'=>night?Icons.nightlight_round:Icons.wb_sunny,'partly'=>night?Icons.nights_stay:Icons.wb_cloudy,'overcast'=>Icons.cloud,'fog'=>Icons.foggy,
@@ -179,9 +180,11 @@ class _WeatherPageState extends State<WeatherPage> {
     final title=widget.point==null?S.t('weather.title'):S.t('weather.pointTitle',{'label':widget.point!.label});
     final t=Theme.of(context); final s=t.colorScheme;
     return Scaffold(
-      appBar:AppBar(title:Text(title),actions:[
-        if(widget.point==null&&isPco(widget.actorId))IconButton(tooltip:S.t('weather.bulletin'),onPressed:_bulletin,icon:const Icon(Icons.campaign_outlined)),
-        IconButton(tooltip:S.t('weather.refresh'),onPressed:widget.point==null?_refresh:_load,icon:const Icon(Icons.refresh)),
+      appBar:LinkedAppBar(title:Text(title),secondary:[
+        // « Diffuser » written on a wide screen (revue n° 51); in ⋮ on a
+        // phone with « Actualiser », so the title shows whole (card C3).
+        if(widget.point==null&&isPco(widget.actorId))AppBarAction(icon:Icons.campaign_outlined,label:S.t('weather.broadcast'),onPressed:_bulletin,written:true),
+        AppBarAction(icon:Icons.refresh,label:S.t('weather.refresh'),onPressed:widget.point==null?_refresh:_load),
       ]),
       body:RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.only(bottom:24),children:[
         if(_loading)const LinearProgressIndicator(),
@@ -194,7 +197,7 @@ class _WeatherPageState extends State<WeatherPage> {
               Text(S.t('weather.vigilance.${r.vigilance!.colorId.clamp(1,4)}',{'dep':r.vigilance!.department}),style:const TextStyle(fontWeight:FontWeight.w600)),
               if(r.vigilance!.phenomena.isNotEmpty)Text(r.vigilance!.phenomena.join(', '),style:t.textTheme.bodySmall),
             ]))])),
-        if(r!=null&&(r.stale||_offline))ListTile(leading:const Icon(Icons.history),title:Text(S.t('weather.stale',{'time':_hm(r.fetchedAt)}))),
+        if(weatherShowsStale(r,offline:_offline))ListTile(leading:const Icon(Icons.history),title:Text(S.t('weather.stale',{'time':_hm(r!.fetchedAt)}))),
         if(r==null||r.isEmpty)Padding(padding:const EdgeInsets.all(20),child:Text(_loading?S.t('weather.loading'):S.t('weather.none'))),
         if(hours.isNotEmpty)_nowCard(hours.first,loc),
         if(hours.isNotEmpty)_strip(hours,loc),

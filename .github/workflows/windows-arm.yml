@@ -1,0 +1,115 @@
+name: Windows ARM64
+
+# Card « Client Windows : écran gris au démarrage » (31 Oct 2026): the
+# owner's PC is ARM64 (Surface Pro 11), where the x64 build runs emulated.
+# This starts the x64 portable build of the windows-dev pre-release on a
+# Windows ARM64 machine (tool/windows_smoke.ps1). Not run on pull requests,
+# so a missing ARM runner never blocks a merge: after each merge on main
+# and by hand (Actions › Windows ARM64 › Run workflow).
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  x64-emulated:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: x64 portable build of windows-dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release download windows-dev --pattern sarcade-windows-portable.zip --dir dl
+          Expand-Archive dl\sarcade-windows-portable.zip -DestinationPath app
+      - name: Start test, x64 emulated on ARM64
+        shell: pwsh
+        run: |
+          & tool\windows_smoke.ps1 -Exe "app\sarcade_app.exe" -Out smoke
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-arm64-smoke
+          path: smoke
+          retention-days: 30
+
+  arm64-native:
+    # Native ARM64 build (point 5 of the plan): Flutter cloned from GitHub
+    # (the SDK bootstraps its ARM64 Dart), Windows runner generated and
+    # patched like the x64 job, then the same start test. The portable ZIP
+    # is kept as an artifact and, on main, added to the windows-dev
+    # pre-release as sarcade-windows-arm64-portable.zip.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Flutter (stable, ARM64)
+        shell: pwsh
+        run: |
+          git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$env:RUNNER_TEMP\flutter"
+          "$env:RUNNER_TEMP\flutter\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & "$env:RUNNER_TEMP\flutter\bin\flutter.bat" --version
+      - name: Generate Windows runner
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ".\windows")) { flutter create --platforms=windows --no-pub . }
+          python tool/patch_windows.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter pub get
+          # Firebase has no ARM64 Windows SDK and serves phones only.
+          python tool/windows_drop_plugins.py
+          flutter pub get
+      - name: Build Windows ARM64
+        shell: pwsh
+        run: |
+          flutter build windows --release --dart-define=SARCADE_BUILD="${{ github.event.workflow_run.head_branch || github.ref_name }}@$("${{ github.event.workflow_run.head_sha || github.sha }}".Substring(0,7))-arm64" 2>&1 | Tee-Object -FilePath build-arm64.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            # The job log is not always reachable: errors as annotations.
+            Select-String -Path build-arm64.log -Pattern "error|Error|FAILED|fatal|not supported|unsupported" -Context 1,4 |
+              Select-Object -First 12 | ForEach-Object { Write-Host "::error title=ARM64 build::$(($_.Context.PreContext + $_.Line + $_.Context.PostContext) -join ' | ')" }
+            exit $code
+          }
+          Get-ChildItem build\windows -Directory | ForEach-Object { Write-Host "built: $($_.Name)" }
+      - name: Start test, native ARM64
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build\windows\arm64\runner\Release\sarcade_app.exe -ErrorAction SilentlyContinue
+          if (-not $exe) { Write-Host "::error title=Windows ARM64::no ARM64 exe (build\windows\arm64\runner\Release)"; exit 1 }
+          & tool\windows_smoke.ps1 -Exe $exe.FullName -Out smoke-arm64
+          exit $LASTEXITCODE
+      - name: Portable ZIP
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          if (Test-Path build\windows\arm64\runner\Release) { Compress-Archive -Path build\windows\arm64\runner\Release\* -DestinationPath dist\sarcade-windows-arm64-portable.zip }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-arm64-native
+          path: |
+            smoke-arm64
+            dist
+          retention-days: 30
+      # Not published until the code is signed: Windows refuses to start the
+      # unsigned ARM64 exe on the owner's Surface (31 Oct 2026), the x64
+      # build works there. Set ARM64_PUBLISH=true (repository variable) to
+      # publish again.
+      - name: Publish to the windows-dev pre-release
+        if: success() && github.event_name == 'workflow_run' && vars.ARM64_PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: gh release upload windows-dev dist\sarcade-windows-arm64-portable.zip --clobber
