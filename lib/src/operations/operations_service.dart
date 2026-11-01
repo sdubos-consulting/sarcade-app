@@ -18,7 +18,7 @@ class OperationsService extends ChangeNotifier {
   final String eventId, deviceId, platform;
   /// Current tracking state and operator settings, read at each heartbeat.
   final ({bool enabled,int intervalS}) Function() tracking;
-  final ({String callsign,bool aprsTxConsent}) Function() operator;
+  final ({String callsign,bool aprsTxConsent,String icon}) Function() operator;
   /// The server announces an HTTPS address while this device uses plain HTTP.
   final void Function(String httpsUrl)? onHttpsAvailable;
 
@@ -64,6 +64,8 @@ class OperationsService extends ChangeNotifier {
         'tracking_enabled':t.enabled,'tracking_interval_s':t.intervalS,
         'callsign':o.callsign.trim().toUpperCase(),
         'aprs_tx_consent':o.aprsTxConsent,
+        // Icon on the map, seen by every device (1 Nov 2026); '' = none.
+        'icon':o.icon,
       });
       final wasLow=settings.lowBandwidth, wasInterval=settings.lowBandwidthIntervalS;
       settings=EventSettings.fromHeartbeat(answer);
