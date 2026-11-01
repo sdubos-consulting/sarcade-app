@@ -51,3 +51,23 @@ Name: "{autodesktop}\SARCADE"; Filename: "{app}\sarcade_app.exe"; Tasks: desktop
 ; notification plugin stops an elevated SARCADE (card « Client Windows :
 ; écran gris », 31 Oct 2026).
 Filename: "{app}\sarcade_app.exe"; Description: "{cm:LaunchProgram,SARCADE}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+
+[Code]
+// Card « Installeur Windows : case encore coupée après #156 » (1 Nov 2026):
+// on the Surface (200 %, ARM64, x64 installer emulated) the check box of
+// « Créer une icône sur le Bureau » is still cut on the left, even with the
+// larger wizard: the task list draws its box too close to its left edge.
+// The list is moved to the right by a gap scaled with the screen (ScaleX)
+// and made narrower by the same amount, so its right edge does not move.
+// Independent of the Inno Setup version.
+const
+  TasksListGap = 8;
+
+procedure InitializeWizard;
+var
+  Gap: Integer;
+begin
+  Gap := ScaleX(TasksListGap);
+  WizardForm.TasksList.Left := WizardForm.TasksList.Left + Gap;
+  WizardForm.TasksList.Width := WizardForm.TasksList.Width - Gap;
+end;

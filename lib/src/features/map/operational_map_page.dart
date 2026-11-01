@@ -36,8 +36,10 @@ import '../compass/shared_compass.dart';
 import '../compass/compass_status.dart';
 import '../measure/wmm.dart' show magneticDeclination;
 import 'drawing/export_formats.dart';
+import 'cinematique_escape.dart';
 import '../../ui/theme.dart';
 import 'stations.dart';
+import 'cinematique_touch.dart';
 import 'sos_placement.dart';
 import '../../modules/adrasec/bearings/bearing_aim.dart';
 import '../../ui/escape_stack.dart';
@@ -47,6 +49,7 @@ import '../../modules/adrasec/bearings/bearing_controller.dart';
 import '../../modules/adrasec/bearings/bearing_layers.dart';
 import '../../modules/adrasec/bearings/bearing_mouse_hud.dart';
 import '../../modules/adrasec/bearings/bearing_models.dart';
+import '../../modules/adrasec/bearings/zone_window.dart';
 import 'drawing/geometry.dart' as geo;
 import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
@@ -78,6 +81,7 @@ import '../../operations/event_settings.dart';
 import '../../operations/operations_service.dart';
 import '../../operations/operations_widgets.dart';
 import 'sos_alert.dart';
+import 'sos_map.dart';
 import '../../operations/tracking_service.dart';
 import '../navigation/navigation_controller.dart';
 import '../navigation/road_graph_service.dart';
@@ -120,8 +124,9 @@ import '../../modules/adrasec/adsb/adsb_layer.dart';
 import '../../modules/adrasec/adsb/adsb_models.dart';
 import '../../modules/adrasec/adsb/adsb_page.dart';
 import '../meshcore/meshcore_link.dart';
-import '../meshcore/meshcore_link_card.dart' show meshCoreStateText;
+import '../meshcore/meshcore_link_card.dart' show meshCoreStateText, MeshCoreReconnectBanner;
 import '../meshcore/meshcore_page.dart';
+import '../meshcore/meshcore_map.dart';
 import 'locate_button.dart';
 import 'locate_cycle.dart';
 import 'point_menu.dart';
@@ -268,27 +273,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         content:Text(S.t('adsb.alert',{'name':a.name,'what':emergencyText(a.emergency!)})),
         action:SnackBarAction(label:S.t('adsb.see'),textColor:Colors.white,onPressed:(){_fitPoints([a.position]);unawaited(_selectAircraft(a));})));
     };
+    // « Suivre » (lot 17): the map stays on the last aircraft followed; the
+    // followed screens get the aircraft followed.
+    _adsb.onCentre=(p){try{_map.move(p,_map.camera.zoom);}catch(_){/* map not ready */}};
+    _adsb.onFollowedChanged=()=>_tvScreens.mapMoved();
     _adsb.addListener(_onAdsb);
   }
-  void _onAdsb(){
-    if(!mounted)return;
-    // « Suivre »: the map stays on the selected aircraft.
-    final a=_adsb.selected;
-    if(_adsb.follow&&a!=null){try{_map.move(a.position,_map.camera.zoom);}catch(_){/* map not ready */}}
-    setState((){});
-  }
+  void _onAdsb(){if(mounted)setState((){});}
 
-  /// Sheet of one aircraft: side panel on computers and tablets, bottom
-  /// sheet on a phone (card validated 1 Nov 2026, 8 h 21).
-  Future<void> _selectAircraft(Aircraft a) async {
-    unawaited(_adsb.select(a));
-    if(_isCompact){await showAircraftSheet(context,_adsb);return;}
-    setState((){_deskId='adsb-aircraft';_deskPage=AircraftPanel(adsb:_adsb,onClose:_closeAircraft);_showPanel=false;});
-  }
-  void _closeAircraft(){
-    unawaited(_adsb.select(null));
-    if(_deskId=='adsb-aircraft')setState((){_deskId=null;_deskPage=null;});
-  }
+  /// Sheet of one aircraft, floating over the map (lot 17, 1 Nov 2026).
+  Future<void> _selectAircraft(Aircraft a)=>_adsb.select(a);
+  void _closeAircraft()=>unawaited(_adsb.select(null));
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -371,7 +366,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Each opening of the tools starts from the profile colour.
     // Closing the bar ends any selection: the map is never left blocked
     // (bug of 30 Oct 2026, 17 h 35).
-    if(_drawingTools){_drawing.selectTool(null);_drawing.endSelection();}else{
+    // « Fermer les outils » also closes the sheet of an operator (card L1, lot 17).
+    if(_drawingTools){_drawing.selectTool(null);_drawing.endSelection();_selectedDevice=null;_trace=[];_history=[];_scrub=null;}else{
       _drawing.color=_profileDrawColor;
       _bearings.operatorColor=_profileDrawColor;
       // Drawing with the drawings hidden shows nothing (28 Oct 2026): shown again.
@@ -691,12 +687,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   // --- Distress (ATAK 4) and résection (ATAK 2) ---
   bool get _inDistress=>widget.store.preference('distress:${widget.eventId}')=='1';
 
+  /// Operators in distress, last position whatever the filters (sos_map.dart, lot 17).
+  List<SosTarget> _sosTargets()=>sosTargetsFor(widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId),widget.deviceId,_positions);
+  /// Touch on the SOS banner: the map on the operator, his sheet open.
+  void _centerSos(SosTarget t){
+    if(t.point==null)return;
+    if(_tab!=0)_goTab(0);
+    if(_follow)_setFollow(false);
+    _map.move(t.point!,sosZoom);
+    if(_positions[t.deviceId] case final p?)unawaited(_select(p,move:false));
+  }
+
   /// SOS of other operators not closed yet, with « Couper le son » (sos_alert.dart).
   Widget? _sosAlert(){
-    final open=openDistress(widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId),widget.deviceId).values.toList();
-    if(open.isEmpty)return null;
+    final targets=_sosTargets();
+    if(targets.isEmpty)return null;
+    final open=[for(final t in targets)t.message];
     final key='sosMuted:${widget.eventId}';
-    return SosAlertBanner(open:open,muted:sosMuted(open,widget.store.preference(key)),onOpen:_openMessages,onMute:() async {
+    return SosAlertBanner(targets:targets,now:DateTime.now().toUtc(),onCenter:_centerSos,muted:sosMuted(open,widget.store.preference(key)),onMute:() async {
       for(final m in open){await _notifications.answered(m.id,'read',key:messageNotificationKey(m));}
       await widget.store.setPreference(key,sosMuteKey(open));
       if(mounted)setState((){});
@@ -876,9 +884,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ToolItem(id:'routes',icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
     if(_adrasec)ToolItem(id:'resection',icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
     if(_adrasec)ToolItem(id:'adsb',icon:Icons.flight,title:S.t('adsb.title'),subtitle:S.t('adsb.toolHelp'),color:Colors.lightBlue,
-      onTap:()=>_openDesk('adsb',()=>AdsbPage(adsb:_adsb,onShow:(a)=>unawaited(_selectAircraft(a))))),
+      onTap:()=>_openDesk('adsb',()=>AdsbPage(adsb:_adsb,onShow:(a){if(_isCompact)Navigator.pop(context);
+        _onMapNow((){try{_map.move(aircraftEstimated(a,_adsb.serverNow),_map.camera.zoom);}catch(_){/* map not ready */}unawaited(_selectAircraft(a));});}))),
     if(MeshCoreLink.instance.supported)ToolItem(id:'meshcore',icon:Icons.hub_outlined,title:S.t('mesh.tool'),subtitle:S.t('mesh.toolHelp'),color:Colors.cyan,
-      onTap:()=>_openDesk('meshcore',()=>const MeshCorePage())),
+      onTap:()=>_openDesk('meshcore',()=>MeshCorePage(onShowOnMap:(n){if(_isCompact)Navigator.of(context).pop();_onMapNow(()=>unawaited(meshCoreShowOnMap(_map,n)));}))),
     ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
       onTap:_openTvScreens),
     if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
@@ -1016,6 +1025,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       MapEventSource.onMultiFinger,MapEventSource.doubleTap,MapEventSource.doubleTapHold,MapEventSource.scrollWheel,
       MapEventSource.keyboard,MapEventSource.cursorKeyboardRotation};
     if((_follow||_followPending)&&gestures.contains(e.source))_setFollow(false);
+    // ADS-B: the map moved by hand stops the centring, the routes stay (zoom keeps it).
+    if(e.source==MapEventSource.dragStart||e.source==MapEventSource.onDrag||e.source==MapEventSource.keyboard)_adsb.stopCentring();
   }
 
   List<Widget> _variantLayers(){
@@ -1396,6 +1407,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _onMapTap(TapPosition tap,LatLng point) async {
+    meshCoreSelected.value=null;
     final pick=_pickPoint;
     if(pick!=null){setState((){_pickPoint=null;_pickHint=null;});pick(point,null);return;}
     if(_adjusting!=null){_adjustTowards(point);return;}
@@ -1435,6 +1447,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_measure.active){unawaited(_measure.clear());closed=true;}
     if(_selectedDevice!=null||_trace.isNotEmpty){_selectedDevice=null;_trace=[];closed=true;}
     if(_selectedReference!=null){_selectedReference=null;closed=true;}
+    if(_adsb.selectedId!=null){_closeAircraft();closed=true;}
     if(compact&&(_showPanel||_showReferencePanel||_showRoutesPanel)){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;closed=true;}
     if(closed)setState((){});
     return closed;
@@ -1586,7 +1599,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Maj + glisser (computer) or « Sélection » (phone): selection rectangle.
   /// A touch on the map places something: drawing a shape, picking a point.
   double _mapZoomOr(double v){try{return _map.camera.zoom;}catch(_){return v;}}
-  bool get _placingOnMap=>_drawing.isDrawing||_pickPoint!=null;
+  // Drawing, measure or bearing: markers let the touch through (card L1, lot 17).
+  bool get _placingOnMap=>markersIgnoreTouches(drawing:_drawing.isDrawing||_drawingRouteId!=null||_drawingClosure,picking:_pickPoint!=null,
+    measuring:_measure.active||_pickingOrigin,bearing:_bearings.taking||_aim!=null||_adjusting!=null);
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
   /// Selection mode: a drag moves the map, a pinch or the wheel zooms
@@ -1725,6 +1740,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         row(S.t('adsb.layer'),_adsb.on,(v) async {await _adsb.setOn(v);refresh((){});}),
         if(_adsb.on)Padding(padding:const EdgeInsets.only(left:24,right:8),child:AdsbFiltersTiles(adsb:_adsb)),
       ],
+      // Lot 17: « Nœuds MeshCore » (Core), set too in Outils › MeshCore.
+      if(MeshCoreLink.instance.remembered)row(S.t('mesh.layer'),MeshCoreLink.instance.showOnMap,(v)=>MeshCoreLink.instance.setShowOnMap(v)),
       const SizedBox(height:12),
     ];
   }
@@ -2021,6 +2038,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>setState((){_chatPeer=p.deviceId;_deskPage=null;_deskId=null;}),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
+        if(sosTargetOf(_sosTargets(),p.deviceId) case final t?)SosGoButton(onPressed:()=>unawaited(_navigateTo(t.point??LatLng(p.lat,p.lon),S.t('sos.label',{'who':t.label})))),
         if(callsignAmong([p.callsign,p.label,_devices[p.deviceId]?['callsign']?.toString()]) case final call?)Padding(padding:const EdgeInsets.only(top:6),child:CallsignLinks(callsign:call)),
         if(p.isAprs)Padding(padding:const EdgeInsets.only(top:8),child:Row(children:[
           Text(S.t('fixed.kind'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
@@ -2308,10 +2326,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     await _setSignal(sig.name);
   }
 
+  // Zones of each signal in its mode, kept by the server (card « Plusieurs zones »).
+  Map<String,String> get _zoneModes=>zoneModesOf(_ops.settings.raw);
+  Future<bool> _setZoneMode(String search,String mode)=>saveZoneMode(context,api:widget.api,ops:_ops,eventId:widget.eventId,actorId:widget.deviceId,search:search,mode:mode);
+
   /// Details of a bearing; change or delete for its author or the PCO.
   Future<void> _showBearingSheet(Bearing b) async {
     final can=b.canEdit(widget.deviceId,isPco(widget.deviceId)), pco=isPco(widget.deviceId);
-    final zone=bearingZoneStatus(b,_bearings.all);
+    final zone=bearingZoneStatus(b,_bearings.all,mode:zoneModeOf(_zoneModes,b.search));
     final l=b.takenAt.toLocal(); String two(int v)=>v.toString().padLeft(2,'0');
     // Scrolls and grows (31 Oct 2026, 23 h 46: « Supprimer » pushed off an
     // iPhone screen by the zone actions of the PCO).
@@ -2332,6 +2354,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         Text(S.t('bearings.lineCone',{'l':geo.formatDistance(b.lengthM),'c':b.coneDeg.toStringAsFixed(0)}),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant)),
         PlaceLine(describer:_places,point:b.origin),
         if(zone!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text(zone,key:const ValueKey('bearing-zone-status'),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.tertiary))),
+        if(b.search.isNotEmpty)ZoneModeBlock(mode:zoneModeOf(_zoneModes,b.search),onChanged:(m)=>Navigator.pop(c,'zmode:$m')),
         const SizedBox(height:8),
         ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),title:Text(S.t('bearings.fromOrigin')),onTap:()=>Navigator.pop(c,'origin')),
         // The PCO decides by hand when the automatic rule is wrong: one line,
@@ -2351,6 +2374,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ]))));
     if(!mounted)return;
     if(choice=='origin'){await _onLongPress(b.origin);return;}
+    if(choice!=null&&choice.startsWith('zmode:')){await _setZoneMode(b.search,choice.substring(6));return;}
     if(choice!=null&&choice.startsWith('zone:')){
       await _bearings.update(b.copyWith(zone:choice.substring(5),updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));
       return;
@@ -2487,17 +2511,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         LogicalKeyboardKey.keyY when ctrl=>run(_drawing.redo),
         LogicalKeyboardKey.keyD when ctrl&&_drawing.hasSelection=>run(()=>_drawing.duplicateSelected()),
         LogicalKeyboardKey.enter||LogicalKeyboardKey.numpadEnter when _drawing.canFinish=>run(()=>_drawing.finish()),
-        // Constat L3 (1 Nov 2026): Échap first drops the shape being drawn,
+        // Constat L3 (lot 17): Échap first drops the shape being drawn,
         // then leaves the tool and closes the drawing bar.
-        LogicalKeyboardKey.escape when _drawing.isDrawing&&_drawing.draft.isNotEmpty=>run(_drawing.cancelDraft),
-        LogicalKeyboardKey.escape when _drawing.isDrawing=>run((){_drawing.selectTool(null);if(_drawingTools)_toggleDrawingTools();}),
+        LogicalKeyboardKey.escape when _drawing.isDrawing=>escapeDrawing(_drawing,closeBar:(){if(_drawingTools)_toggleDrawingTools();}),
         LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run(_drawing.endSelection),
         // Card N1 of the cinématique review (31 Oct 2026): Échap also ends
         // « Toucher la carte » (converter), then closes the last window, then
         // clears the measure, then closes an empty drawing bar.
         LogicalKeyboardKey.escape when _pickPoint!=null=>run(_cancelPick),
-        // Constat L2 (1 Nov 2026): Échap closes the sheet of an operator.
-        LogicalKeyboardKey.escape when _selectedDevice!=null||_trace.isNotEmpty=>run(()=>setState((){_selectedDevice=null;_trace=[];})),
+        // Constat L2 (lot 17): Échap closes the sheet of an operator, as its ✕.
+        LogicalKeyboardKey.escape when _selectedDevice!=null||_trace.isNotEmpty=>run(()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;})),
         LogicalKeyboardKey.escape when _mapPanelOpen=>_escapePanel(),
         LogicalKeyboardKey.escape when _measure.active=>run((){unawaited(_measure.clear());setState((){});}),
         LogicalKeyboardKey.escape when _drawingTools&&_drawing.selection.isEmpty=>run(_toggleDrawingTools),
@@ -2533,7 +2556,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   @override Widget build(BuildContext context){
     currentMapView=_tvView; currentMapOptions=_tvOptions;
     // ADS-B filters of this map, applied by the TV (1 Nov 2026, 8 h 22).
-    currentMapExtras=()=>_adsb.on&&_adrasec?_adsb.filters.tvJson():const <String,dynamic>{};
+    currentMapExtras=()=>_adsb.on&&_adrasec?_adsb.tvJson():const <String,dynamic>{};
     currentMapTraces=()=>(windowMin:_traceWindow,pinned:_traces.pinned.toList()..sort());
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     // Old stations stay in the list and the search, not on the map.
@@ -2632,6 +2655,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ?sosAlert,
         banners,
         ?graphBanner,
+        const MeshCoreReconnectBanner(),
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
         if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,
@@ -2685,36 +2709,38 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(traced.isNotEmpty)_faded('traces',CircleLayer(circles:traceDots(_traces,traced,windowMin:_traceWindow,zoom:_mapZoomOr(0)))),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Theme.of(context).colorScheme.secondary)).toList()),
           // Reference sites below the drawn objects, grouped when zoomed out.
-          if(_showHighPoints)_faded('high',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isHighPoint).toList(),onSelect:_selectReference)),
-          if(_showRelays)_faded('relay',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isRelay).toList(),onSelect:_selectReference)),
+          if(_showHighPoints)touchableMarkers(ignoring:_placingOnMap,child:_faded('high',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isHighPoint).toList(),onSelect:_selectReference))),
+          if(_showRelays)touchableMarkers(ignoring:_placingOnMap,child:_faded('relay',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isRelay).toList(),onSelect:_selectReference))),
           if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
           if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id&&b.id!=_aim?.editing?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
-            onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c))),
+            zoneModes:_zoneModes,onTapBearing:_showBearingSheet,onTapZone:(t)=>unawaited(showZoneWindow(context,t,mode:zoneModeOf(_zoneModes,t.search),onMode:(m)=>_setZoneMode(t.search,m))))),
           if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
           ..._variantLayers(),
-          if(_adsb.on&&_adrasec)...[aircraftTrails(_adsb.shown,selectedId:_adsb.selectedId,track:_adsb.track),
-            aircraftMarkers(_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),labels:_adsb.filters.labels,selectedId:_adsb.selectedId)],
+          if(_adsb.on&&_adrasec)...[aircraftRoutes(_adsb.routes),touchableMarkers(ignoring:_placingOnMap,child:AircraftMarkers(aircraft:_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),
+            now:()=>_adsb.serverNow,filters:_adsb.filters,selectedId:_adsb.selectedId,followed:_adsb.followed))],
+          touchableMarkers(ignoring:_placingOnMap,child:const MeshCoreNodesLayer()),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             lineHits:_routeHits,onWaypointTap:(w)=>unawaited(_openWaypoint(w))),
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
-          if(_showPois)_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)))),
-          // Constat L1 (revue du lot 16, 1 Nov 2026): while a shape is drawn
-          // or a point is picked, a touch on an operator places the point
-          // instead of opening the operator.
+          if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p))))),
+          // Card L1 (lot 17): while drawing, measuring or taking a bearing, a
+          // touch on a marker places the point instead of opening the marker.
           IgnorePointer(ignoring:_placingOnMap,child:_faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())]))),
           IgnorePointer(ignoring:_placingOnMap,child:_faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList())))),
-          if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
+          if(_me!=null)touchableMarkers(ignoring:_placingOnMap,child:MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
             onTap:()=>openMyPositionInfo(context,location:_location,places:_places,fallback:_me,onSendMessage:_sendText),
-            child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)]))))]),
+            child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)]))))])),
           if(_trace.isNotEmpty)MarkerLayer(markers:[for(final t in _trace)Marker(point:LatLng(t.lat,t.lon),width:8,height:8,
             child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.secondary,shape:BoxShape.circle)))]),
           if(_scrub!=null)MarkerLayer(markers:[Marker(point:LatLng(_scrub!.lat,_scrub!.lon),width:22,height:22,
             child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.onSecondaryContainer,shape:BoxShape.circle,border:Border.all(color:Theme.of(context).colorScheme.secondary,width:3))))]),
-          if(_searchPin!=null)MarkerLayer(markers:[Marker(point:_searchPin!,width:44,height:44,alignment:Alignment.topCenter,
-            child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))]),
+          if(_searchPin!=null)touchableMarkers(ignoring:_placingOnMap,child:MarkerLayer(markers:[Marker(point:_searchPin!,width:44,height:44,alignment:Alignment.topCenter,
+            child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))])),
           buildHandleLayer(_drawing,_globalToLatLng),
+          // SOS halos above everything, whatever the filters (lot 17).
+          sosHaloLayer(_sosTargets(),DateTime.now().toUtc()),
           // ⓘ with the licence notice of the base map: on the left, under the
           // scale, never under SOS (revue d'ergonomie n° 3).
           SafeArea(child:Padding(padding:EdgeInsets.only(bottom:compact?mapAttributionLift:0),
@@ -2736,6 +2762,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         // Scale first: behind every panel, never over a button (decision of
         // 30 Oct 2026, 16 h 25; revue n° 14, 18, 31); above the ⓘ.
         Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
+        MeshCoreNodeOverlay(map:_map,me:_me,compact:compact),
         if(_inDistress)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:Material(color:Theme.of(context).colorScheme.error,
           borderRadius:BorderRadius.circular(16),child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_distress,child:Padding(padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
             child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.sos,color:Theme.of(context).colorScheme.onError),const SizedBox(width:8),
@@ -2791,6 +2818,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_drawing.selectMode&&!_drawing.hasSelection)Padding(padding:const EdgeInsets.only(top:8),child:SelectionHint(controller:_drawing)),
           if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:(f)=>_exportGeoJson(only:_drawing.selection,format:f))),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
+          if(!compact&&_adsb.on&&_adrasec&&_adsb.selectedId!=null)Padding(padding:const EdgeInsets.only(top:8),child:AircraftCard(adsb:_adsb,onClose:_closeAircraft)),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
             const Icon(Icons.block,color:Colors.red),const SizedBox(width:8),
             Flexible(child:Text(S.t('closures.drawHelp'))),
@@ -2811,6 +2839,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         else if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
           child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
+        if(compact&&_adsb.on&&_adrasec&&_adsb.selectedId!=null)Positioned(left:12,right:12,bottom:12,child:AircraftCard(adsb:_adsb,onClose:_closeAircraft,compact:true)),
         Positioned(left:0,right:0,bottom:compact?60:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},

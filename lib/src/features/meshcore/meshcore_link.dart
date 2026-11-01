@@ -4,8 +4,9 @@
 ///
 /// The module chosen once in Paramètres › Liaisons is remembered and joined
 /// again at start and after a drop. The state shows in the link pill of the
-/// map; Outils › MeshCore lists the nodes and the metrics. Read only for
-/// now: SARCADE messages over LoRa come with a later step.
+/// map; Outils › MeshCore lists the nodes and the metrics. Lot 17: the
+/// nodes on the map and private messages with a companion (see
+/// meshcore_chat.dart).
 library;
 
 import 'dart:async';
@@ -13,19 +14,26 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
 
+import '../../platform/platform_services.dart' show webBluetoothAvailable;
 import '../../offline/local_store.dart';
 import '../../l10n/strings.dart';
+import '../../services/notification_service.dart';
+import 'meshcore_chat.dart';
 import 'meshcore_protocol.dart';
 
-enum MeshCoreState { none, connecting, connected, reconnecting, failed }
+/// [waitingClick]: web app (lot 17), the browser lets join the module only
+/// after a click in this tab (« Reconnecter le module »).
+enum MeshCoreState { none, connecting, connected, reconnecting, failed, waitingClick }
 
 /// Preference keys of the remembered module.
 const meshCoreDeviceKey='meshcore_device', meshCoreNameKey='meshcore_name';
+/// « Afficher les nœuds sur la carte » (lot 17), off by default.
+const meshCoreMapKey='meshcore_map';
 
 /// Colour family of the pill: 'off' (no module), 'ok', 'wait', 'bad'.
 String meshCorePillTone(MeshCoreState s)=>switch(s){
   MeshCoreState.none=>'off', MeshCoreState.connected=>'ok',
-  MeshCoreState.connecting||MeshCoreState.reconnecting=>'wait', MeshCoreState.failed=>'bad'};
+  MeshCoreState.connecting||MeshCoreState.reconnecting||MeshCoreState.waitingClick=>'wait', MeshCoreState.failed=>'bad'};
 
 /// Delay before the next attempt to join the module again: 5 s, 15 s,
 /// 30 s, then every minute.
@@ -64,6 +72,8 @@ class MeshCoreLink extends ChangeNotifier {
   bool trying=false;
   /// Delay before the next attempt after a failure.
   Duration? retryIn;
+  /// « Nœuds MeshCore » layer of the map (lot 17), off by default.
+  bool showOnMap=false;
 
   StreamSubscription<Uint8List>? _valueSub;
   StreamSubscription<bool>? _connSub;
@@ -74,7 +84,12 @@ class MeshCoreLink extends ChangeNotifier {
 
   List<MeshCoreContact> get contacts=>sortedContacts(_contacts.values);
   bool get remembered=>deviceId!=null;
-  bool get supported=>!kIsWeb;
+  /// Every platform, the web app included (lot 17, card « Application web :
+  /// se connecter à un module MeshCore »): in a browser without Web
+  /// Bluetooth, Outils › MeshCore says to use Chrome, Edge or the app.
+  bool get supported=>true;
+  /// Bluetooth usable here: always in the apps, Web Bluetooth in a browser.
+  bool get browserReady=>!kIsWeb||webBluetoothAvailable();
 
   void log(String line){
     final t=DateTime.now(); String two(int v)=>v.toString().padLeft(2,'0');
@@ -87,6 +102,7 @@ class MeshCoreLink extends ChangeNotifier {
   /// At start: joins the remembered module, if any.
   Future<void> restore(LocalStore store) async {
     _store=store;
+    _wire(store);
     if(!supported||state!=MeshCoreState.none)return;
     deviceId=store.preference(meshCoreDeviceKey); deviceName=store.preference(meshCoreNameKey);
     if(deviceId!=null){notifyListeners();unawaited(_join());}
@@ -95,6 +111,7 @@ class MeshCoreLink extends ChangeNotifier {
   /// Chosen in Paramètres › Liaisons: remembered, then joined.
   Future<void> choose(BleDevice d,{LocalStore? store}) async {
     if(store!=null)_store=store;
+    final st=_store; if(st!=null)_wire(st);
     await _drop();
     deviceId=d.deviceId; deviceName=d.name;
     await _store?.setPreference(meshCoreDeviceKey,deviceId);
@@ -115,6 +132,9 @@ class MeshCoreLink extends ChangeNotifier {
 
   Future<void> _join() async {
     final id=deviceId; if(id==null)return;
+    // Web: only a module chosen in this tab can be joined (the browser asks
+    // for a click); after a drop, it is joined again by itself.
+    if(kIsWeb&&!_webChosen.contains(id)){_retry?.cancel();trying=false;_set(MeshCoreState.waitingClick);return;}
     _retry?.cancel();
     trying=true; retryIn=null;
     _set(_attempt==0?MeshCoreState.connecting:MeshCoreState.reconnecting);
@@ -168,14 +188,42 @@ class MeshCoreLink extends ChangeNotifier {
       await _send(batteryQuery(),'BATTERY');
       await Future<void>.delayed(const Duration(milliseconds:300));
       await _send(contactsQuery(),'GET_CONTACTS');
+      // Messages kept by the module while SARCADE was away (lot 17).
+      await Future<void>.delayed(const Duration(milliseconds:300));
+      await _send(syncNextMessage(),'SYNC_NEXT_MESSAGE');
       try{linkRssi=await UniversalBle.readRssi(id);}catch(_){}
       notifyListeners();
     }catch(e){log('échec : $e');}
   }
 
+  /// The private messages (lot 17) go through this link; their threads are
+  /// kept in the preferences of the device.
+  bool _wired=false;
+  void _wire(LocalStore store){
+    final chats=MeshCoreChats.instance;
+    chats.send=(frame,what) async {
+      if(state!=MeshCoreState.connected)throw StateError('no module');
+      await _send(frame,what);
+    };
+    chats.notify??=(title,body)=>unawaited(NotificationService().message(title:title,body:body,priority:'routine'));
+    if(_wired)return;
+    _wired=true;
+    showOnMap=store.preference(meshCoreMapKey)=='1';
+    chats.attach(load:store.preference,save:store.setPreference);
+  }
+
+  /// « Afficher les nœuds sur la carte », remembered on this device.
+  Future<void> setShowOnMap(bool on) async {
+    showOnMap=on; notifyListeners();
+    await _store?.setPreference(meshCoreMapKey,on?'1':null);
+  }
+
+  /// The node whose public key starts with [prefix], if known.
+  MeshCoreContact? contactOf(String prefix)=>_contacts.values.where((c)=>meshCorePrefix(c.key)==meshCorePrefix(prefix)).firstOrNull;
+
   Future<void> _send(Uint8List frame,String what) async {
     final id=deviceId; if(id==null)return;
-    log('→ $what ${meshCoreHex(frame)}');
+    log(what=='SEND_TXT_MSG'?'→ $what':'→ $what ${meshCoreHex(frame)}');
     framesOut++;
     await UniversalBle.write(id,meshCoreService,meshCoreRx,frame);
   }
@@ -192,8 +240,22 @@ class MeshCoreLink extends ChangeNotifier {
         log('${_contacts.length} nœud(s) connu(s)');
       case 'advert':
         unawaited(_send(contactsQuery(),'GET_CONTACTS'));
+      // Private messages (lot 17).
+      case 'sent':
+        final sent=readMeshCoreSent(v); if(sent!=null)MeshCoreChats.instance.onSent(sent.ack,sent.timeout);
+      case 'error':
+        MeshCoreChats.instance.onError();
+      case 'confirmed':
+        final ack=readMeshCoreConfirmed(v); if(ack!=null)MeshCoreChats.instance.onConfirmed(ack);
+      case 'waiting': case 'channelMsg':
+        unawaited(_send(syncNextMessage(),'SYNC_NEXT_MESSAGE'));
+      case 'contactMsg':
+        final msg=readMeshCoreMessage(v);
+        if(msg!=null)MeshCoreChats.instance.onReceived(msg,nameOf:(p){final n=contactOf(p)?.name;return n==null||n.isEmpty?null:n;});
+        unawaited(_send(syncNextMessage(),'SYNC_NEXT_MESSAGE'));
     }
-    if(kind!='contact')log('← $kind ${meshCoreHex(v)}');
+    // The text of a message stays out of the journal.
+    if(kind=='contactMsg'){log('← $kind');}else if(kind!='contact'){log('← $kind ${meshCoreHex(v)}');}
     notifyListeners();
   }
 
@@ -206,5 +268,33 @@ class MeshCoreLink extends ChangeNotifier {
     if(id!=null){try{await UniversalBle.disconnect(id);}catch(_){}}
     connectedSince=null;
     _stopping=false;
+  }
+
+  /// Web: modules chosen in the browser's window during this tab.
+  final Set<String> _webChosen={};
+
+  /// Web: the browser's window to choose the module (to be called from a
+  /// click); null when cancelled.
+  Future<BleDevice?> pickInBrowser() async {
+    BleDevice? got;
+    final sub=UniversalBle.scanStream.listen((d){got??=d;});
+    try{
+      await UniversalBle.startScan(scanFilter:ScanFilter(withServices:[meshCoreService]));
+      await Future<void>.delayed(const Duration(milliseconds:300));
+    }catch(e){
+      log('choix du module : $e');
+    }finally{
+      await sub.cancel();
+      try{await UniversalBle.stopScan();}catch(_){}
+    }
+    return got;
+  }
+
+  /// Web: « Connecter un module MeshCore » and « Reconnecter le module ».
+  Future<void> chooseInBrowser() async {
+    final d=await pickInBrowser();
+    if(d==null)return;
+    _webChosen.add(d.deviceId);
+    await choose(d);
   }
 }

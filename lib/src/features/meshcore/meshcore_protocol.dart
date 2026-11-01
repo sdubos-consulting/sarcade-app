@@ -1,9 +1,10 @@
 /// MeshCore companion radio protocol, the few frames of the Bluetooth trial
 /// (card « Essai : SARCADE parle en Bluetooth à un module MeshCore »,
-/// 1 Nov 2026). Source: docs.meshcore.io/companion_protocol. Read only:
-/// nothing here sends anything on the LoRa network (contacts and adverts
-/// are read, lot D, 1 Nov 2026). Pure code, testable
-/// without Bluetooth.
+/// 1 Nov 2026). Source: docs.meshcore.io/companion_protocol. Contacts and
+/// adverts are read (lot D); since lot 17 (card « MeshCore : nœuds sur la
+/// carte et discussion directe avec un nœud ») a private text message can
+/// be sent to a companion and its acknowledgement followed. Pure code,
+/// testable without Bluetooth.
 library;
 
 import 'dart:convert';
@@ -116,6 +117,13 @@ String readMeshCoreFrame(Uint8List f,MeshCoreInfo info){
     case 0x02: return 'contactsStart';
     case 0x03: return 'contact';
     case 0x04: return 'contactsEnd';
+    // Private messages (lot 17): sent, acknowledged, received.
+    case 0x06: return 'sent';
+    case 0x07: case 0x10: return 'contactMsg';
+    case 0x08: case 0x11: return 'channelMsg';
+    case 0x0A: return 'noMore';
+    case 0x82: return 'confirmed';
+    case 0x83: return 'waiting';
     // ADVERT (0x80) and NEW_ADVERT (0x8A): a node was heard.
     case 0x80: case 0x8A: return 'advert';
     default: return 'other';
@@ -140,3 +148,73 @@ List<(String,String)> meshCoreLines(MeshCoreInfo i)=>[
   if(i.lat!=null)('position','${i.lat!.toStringAsFixed(5)}, ${i.lon!.toStringAsFixed(5)}'),
   if(i.publicKeyStart!=null)('key','${i.publicKeyStart}…'),
 ];
+
+/// Longest private message SARCADE lets write: 133 characters (MeshCore
+/// specification), and never more than the 160 bytes of the frame.
+const meshCoreMaxText=133, meshCoreMaxTextBytes=160;
+
+/// True when [text] can go in one MeshCore message.
+bool meshCoreTextFits(String text){
+  final t=text.trim();
+  return t.isNotEmpty&&t.runes.length<=meshCoreMaxText&&utf8.encode(t).length<=meshCoreMaxTextBytes;
+}
+
+/// The 6 first bytes of a public key (12 hexadecimal characters): how a
+/// private message names its recipient or its sender.
+String meshCorePrefix(String key)=>(key.length>12?key.substring(0,12):key).toLowerCase();
+
+/// CMD_SEND_TXT_MSG (0x02): plain text to the contact whose public key
+/// starts with [prefix]; [attempt] 0 to 3. Answers: RESP_CODE_SENT (0x06)
+/// with the expected acknowledgement, or an error (0x01); then
+/// PUSH_CODE_SEND_CONFIRMED (0x82) when the node acknowledged it.
+Uint8List sendTextMessage(String prefix,String text,{required DateTime at,int attempt=0}){
+  final key=[for(var i=0;i+1<prefix.length&&i<12;i+=2)int.parse(prefix.substring(i,i+2),radix:16)];
+  final ts=at.millisecondsSinceEpoch~/1000;
+  return Uint8List.fromList([0x02,0,attempt.clamp(0,3),ts&0xFF,(ts>>8)&0xFF,(ts>>16)&0xFF,(ts>>24)&0xFF,
+    ...key,...List<int>.filled(6-key.length,0),...utf8.encode(text.trim())]);
+}
+
+/// CMD_SYNC_NEXT_MESSAGE (0x0A): the next message waiting in the module
+/// (they wait there even while SARCADE is away). Answers: a contact message
+/// (0x07 or 0x10), a channel message (0x08 or 0x11), or NO_MORE (0x0A).
+Uint8List syncNextMessage()=>Uint8List.fromList([0x0A]);
+
+/// RESP_CODE_SENT (0x06): flood or direct, the acknowledgement code to
+/// expect and the round trip the module suggests to wait.
+({bool flood,int ack,Duration timeout})? readMeshCoreSent(Uint8List f){
+  if(f.length<10||f[0]!=0x06)return null;
+  return (flood:f[1]==1,ack:_u32(f,2),timeout:Duration(milliseconds:_u32(f,6)));
+}
+
+/// PUSH_CODE_SEND_CONFIRMED (0x82): the acknowledgement code received.
+int? readMeshCoreConfirmed(Uint8List f)=>f.length<5||f[0]!=0x82?null:_u32(f,1);
+
+/// A private message received from a node.
+class MeshCoreIncoming {
+  /// 12 hexadecimal characters of the sender's public key.
+  final String prefix;
+  final String text;
+  final DateTime? sentAt;
+  /// Signal to noise ratio in dB (version 3 frames only).
+  final double? snr;
+  /// Hops of the way it came; null when sent direct.
+  final int? hops;
+  const MeshCoreIncoming({required this.prefix,required this.text,this.sentAt,this.snr,this.hops});
+}
+
+/// CONTACT_MSG_RECV (0x07) and its version 3 (0x10, with the SNR first):
+/// sender prefix (6), path length (0xFF: direct), text type, timestamp,
+/// 4 more bytes when the text is signed (type 2), then the text.
+MeshCoreIncoming? readMeshCoreMessage(Uint8List f){
+  if(f.isEmpty)return null;
+  final v3=f[0]==0x10;
+  if(!v3&&f[0]!=0x07)return null;
+  final o=v3?4:1;
+  if(f.length<o+12)return null;
+  final prefix=[for(final b in f.sublist(o,o+6))b.toRadixString(16).padLeft(2,'0')].join();
+  final path=f[o+6], type=f[o+7], ts=_u32(f,o+8);
+  final textAt=o+12+(type==2?4:0);
+  return MeshCoreIncoming(prefix:prefix,text:_text(f,textAt),
+    sentAt:ts==0?null:DateTime.fromMillisecondsSinceEpoch(ts*1000,isUtc:true),
+    snr:v3?_i8(f[1])/4:null,hops:path==0xFF?null:path);
+}
