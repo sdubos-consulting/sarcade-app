@@ -59,10 +59,13 @@ class NotificationPayload {
   /// Key of the notification (notification_keys.dart): the message itself,
   /// or the distress of its sender, shared with its « Fin de détresse ».
   final String? tag;
+  /// Sender of the message: the dictated answer of Android Auto goes to it
+  /// (lot 1b, 1 Nov 2026).
+  final String? senderId;
   String get key=>tag??messageId;
-  const NotificationPayload({required this.eventId,required this.messageId,required this.deviceId,required this.priority,this.tag});
+  const NotificationPayload({required this.eventId,required this.messageId,required this.deviceId,required this.priority,this.tag,this.senderId});
 
-  String encode([String? action])=>jsonEncode({'e':eventId,'m':messageId,'d':deviceId,'p':priority,'a':?action,if(key!=messageId)'k':key});
+  String encode([String? action])=>jsonEncode({'e':eventId,'m':messageId,'d':deviceId,'p':priority,'a':?action,if(key!=messageId)'k':key,'s':?senderId});
 
   static NotificationPayload? decode(String? text){
     if(text==null||text.isEmpty)return null;
@@ -70,7 +73,8 @@ class NotificationPayload {
       final j=jsonDecode(text);
       if(j is! Map||j['m'] is! String||j['e'] is! String)return null;
       return NotificationPayload(eventId:j['e'] as String,messageId:j['m'] as String,
-        deviceId:(j['d'] as String?)??'',priority:(j['p'] as String?)??'routine',tag:j['k'] is String?j['k'] as String:null);
+        deviceId:(j['d'] as String?)??'',priority:(j['p'] as String?)??'routine',tag:j['k'] is String?j['k'] as String:null,
+        senderId:j['s'] is String?j['s'] as String:null);
     }catch(_){
       return null;
     }
