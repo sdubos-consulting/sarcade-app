@@ -16,8 +16,8 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
   final groups=bySearch(bearings);
   final names=searchNames(bearings);
   String shown(Bearing b)=>names[searchKey(b.search)]??b.search;
-  final zones={for(final e in groups.entries)e.key:probableZone(e.value)};
-  final excluded={for(final z in zones.values)...z.excluded};
+  final zones={for(final e in groups.entries)e.key:probableZones(e.value)};
+  final excluded={for(final zs in zones.values)for(final z in zs)...z.excluded};
   final cones=<Polygon>[], lines=<Polyline<Bearing>>[], markers=<Marker>[], circles=<CircleMarker>[], outlines=<Polyline>[];
   void add(Bearing b,{bool live=false}){
     // A bearing set aside from the zone: grey dashed line, no cone.
@@ -38,8 +38,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
         decoration:BoxDecoration(color:op,shape:BoxShape.circle,border:Border.all(color:line,width:2.5)),
         child:Text(operatorInitials(b.createdBy),style:const TextStyle(fontSize:10,fontWeight:FontWeight.w700,color:Colors.white,height:1)))))));
   }
-  for(final e in groups.entries){
-    final z=zones[e.key]!;
+  for(final e in groups.entries){for(final z in zones[e.key]!){
     final c=Color(searchColor(e.key));
     for(final p in z.crossings){circles.add(CircleMarker(point:p,radius:4,color:c));}
     if(z.centre==null)continue;
@@ -57,7 +56,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
     final edge=geo.destination(z.centre!,z.radiusM,60), tip=geo.destination(z.centre!,z.radiusM*1.35+150,60);
     outlines.add(Polyline(points:[edge,tip],color:zc,strokeWidth:2));
     final freq=e.value.map((b)=>b.frequencyMhz).whereType<double>().toSet();
-    final parts=zoneLabel(z.radiusM,z.bearings,z.excluded.length).split(' · ');
+    final parts=zonesLabel(z).split(' · ');
     markers.add(Marker(point:tip,width:240,height:28,alignment:Alignment.centerRight,child:GestureDetector(onTap:()=>onTapZone(z.centre!,e.key),
       child:Tooltip(message:[S.t('bearings.zoneTitle'),if(e.key.isNotEmpty)e.key,for(final f in freq)'${f.toStringAsFixed(3)} MHz',if(ex)'EXERCICE'].join(' · '),
         child:Align(alignment:Alignment.centerLeft,child:Container(key:const ValueKey('bearing-zone-label'),padding:const EdgeInsets.symmetric(horizontal:7,vertical:3),
@@ -68,7 +67,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
             Text(parts.take(2).join(' · '),maxLines:1,softWrap:false,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:Colors.white,height:1.2)),
             if(parts.length>2)Text(' · ${parts.skip(2).join(' · ')}',maxLines:1,softWrap:false,style:const TextStyle(fontSize:11,color:Color(0xFFB8C6D6),height:1.2)),
           ])))))));
-  }
+  }}
   return [
     if(cones.isNotEmpty)PolygonLayer(polygons:cones),
     // The whole line selects the bearing (« Relevés, sélection »), not only
