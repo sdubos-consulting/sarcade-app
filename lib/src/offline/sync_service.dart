@@ -39,6 +39,10 @@ class OfflineSyncService {
   bool get eventUnknown=>eventAccess==EventAccess.unknown;
   /// No answer from the server (not a refusal of the event).
   bool get serverDown=>!lastSyncOk&&eventAccess==EventAccess.ok;
+  /// Told once per service when the server answers 404 for the event
+  /// (lot 19, event_choice.dart: switch or list of the open events).
+  static void Function(String server,String eventId)? onEventUnknown;
+  bool _unknownTold=false;
   OfflineSyncService({required this.api,required this.store,required this.eventId,this.onRemoteChange});
 
   String get server=>api.baseUrl;
@@ -163,6 +167,7 @@ class OfflineSyncService {
       // The server answered (reachable), but the event is refused.
       eventAccess=eventAccessOf(e.statusCode); eventRefusedStatus=e.statusCode;
       lastSyncOk=false; lastServerContact=DateTime.now();
+      if(eventUnknown&&!_unknownTold){_unknownTold=true;onEventUnknown?.call(server,eventId);}
       return null;
     }
   }
