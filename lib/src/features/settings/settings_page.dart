@@ -32,6 +32,7 @@ import '../../ui/action_buttons.dart';
 import '../../services/event_names.dart';
 import '../../ui/link_status.dart';
 import '../measure/external_maps.dart' show openInChoices, navAppMineKey;
+import '../map/operator_icons.dart';
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -480,6 +481,14 @@ class _SettingsPageState extends State<SettingsPage> {
       const SizedBox(height:8),
       ActionChip(avatar:const Icon(Icons.palette_outlined,size:18),label:Text(S.t('settings.otherColor')),onPressed:_pickOtherColor),
     ])),
+    // Icon on the map, as the APRS symbols (1 Nov 2026); applied at once,
+    // sent with the next heartbeat, kept in the personal settings.
+    if(widget.store!=null)_row(S.t('settings.operatorIcon'),help:S.t('settings.operatorIconHelp'),child:Wrap(spacing:6,runSpacing:6,children:[
+      ChoiceChip(key:const ValueKey('icon-none'),label:Text(S.t('settings.operatorIconNone')),selected:(widget.store!.preference(operatorIconKey)??'').isEmpty,
+        onSelected:(_)=>_setOperatorIcon(null)),
+      for(final id in operatorIconIds)ChoiceChip(key:ValueKey('icon-$id'),tooltip:S.t('icon.$id'),showCheckmark:false,
+        label:Icon(operatorIcon(id),size:20),selected:widget.store!.preference(operatorIconKey)==id,onSelected:(_)=>_setOperatorIcon(id)),
+    ])),
     // « Toujours ouvrir avec … » of « Ouvrir dans… », changed here
     // (31 Oct 2026); applied at once on this device.
     if(widget.store!=null)_row(S.t('settings.navApp'),child:Align(alignment:Alignment.centerRight,child:DropdownButton<String>(
@@ -592,6 +601,12 @@ class _SettingsPageState extends State<SettingsPage> {
     ]),
     _=>const Padding(padding:EdgeInsets.only(top:16),child:SarcadeAboutContent()),
   };
+
+  Future<void> _setOperatorIcon(String? id) async {
+    await widget.store!.setPreference(operatorIconKey,id);
+    if(mounted)setState((){});
+    try{await widget.api?.patchMyPreferences({'operator_icon':id});}catch(_){/* kept on this device */}
+  }
 
   void _cancel(){
     final i=widget.initial;
