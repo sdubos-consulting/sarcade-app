@@ -69,6 +69,8 @@ class _MeshCorePageState extends State<MeshCorePage> {
           icon:const Icon(Icons.troubleshoot),label:Text(S.t('mesh.diagnostic'))),
       ]),
       body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),child:ListView(padding:const EdgeInsets.all(16),children:[
+        // Web (lot 17): the browser waits for a click to join the module.
+        const MeshCoreReconnectBanner(),
         if(!link.remembered)...[
           Text(S.t('mesh.noModule')),
           const MeshCoreLinkCard(),

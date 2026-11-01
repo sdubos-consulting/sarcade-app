@@ -14,13 +14,16 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
 
+import '../../platform/platform_services.dart' show webBluetoothAvailable;
 import '../../offline/local_store.dart';
 import '../../l10n/strings.dart';
 import '../../services/notification_service.dart';
 import 'meshcore_chat.dart';
 import 'meshcore_protocol.dart';
 
-enum MeshCoreState { none, connecting, connected, reconnecting, failed }
+/// [waitingClick]: web app (lot 17), the browser lets join the module only
+/// after a click in this tab (« Reconnecter le module »).
+enum MeshCoreState { none, connecting, connected, reconnecting, failed, waitingClick }
 
 /// Preference keys of the remembered module.
 const meshCoreDeviceKey='meshcore_device', meshCoreNameKey='meshcore_name';
@@ -30,7 +33,7 @@ const meshCoreMapKey='meshcore_map';
 /// Colour family of the pill: 'off' (no module), 'ok', 'wait', 'bad'.
 String meshCorePillTone(MeshCoreState s)=>switch(s){
   MeshCoreState.none=>'off', MeshCoreState.connected=>'ok',
-  MeshCoreState.connecting||MeshCoreState.reconnecting=>'wait', MeshCoreState.failed=>'bad'};
+  MeshCoreState.connecting||MeshCoreState.reconnecting||MeshCoreState.waitingClick=>'wait', MeshCoreState.failed=>'bad'};
 
 /// Delay before the next attempt to join the module again: 5 s, 15 s,
 /// 30 s, then every minute.
@@ -81,7 +84,12 @@ class MeshCoreLink extends ChangeNotifier {
 
   List<MeshCoreContact> get contacts=>sortedContacts(_contacts.values);
   bool get remembered=>deviceId!=null;
-  bool get supported=>!kIsWeb;
+  /// Every platform, the web app included (lot 17, card « Application web :
+  /// se connecter à un module MeshCore »): in a browser without Web
+  /// Bluetooth, Outils › MeshCore says to use Chrome, Edge or the app.
+  bool get supported=>true;
+  /// Bluetooth usable here: always in the apps, Web Bluetooth in a browser.
+  bool get browserReady=>!kIsWeb||webBluetoothAvailable();
 
   void log(String line){
     final t=DateTime.now(); String two(int v)=>v.toString().padLeft(2,'0');
@@ -124,6 +132,9 @@ class MeshCoreLink extends ChangeNotifier {
 
   Future<void> _join() async {
     final id=deviceId; if(id==null)return;
+    // Web: only a module chosen in this tab can be joined (the browser asks
+    // for a click); after a drop, it is joined again by itself.
+    if(kIsWeb&&!_webChosen.contains(id)){_retry?.cancel();trying=false;_set(MeshCoreState.waitingClick);return;}
     _retry?.cancel();
     trying=true; retryIn=null;
     _set(_attempt==0?MeshCoreState.connecting:MeshCoreState.reconnecting);
@@ -257,5 +268,33 @@ class MeshCoreLink extends ChangeNotifier {
     if(id!=null){try{await UniversalBle.disconnect(id);}catch(_){}}
     connectedSince=null;
     _stopping=false;
+  }
+
+  /// Web: modules chosen in the browser's window during this tab.
+  final Set<String> _webChosen={};
+
+  /// Web: the browser's window to choose the module (to be called from a
+  /// click); null when cancelled.
+  Future<BleDevice?> pickInBrowser() async {
+    BleDevice? got;
+    final sub=UniversalBle.scanStream.listen((d){got??=d;});
+    try{
+      await UniversalBle.startScan(scanFilter:ScanFilter(withServices:[meshCoreService]));
+      await Future<void>.delayed(const Duration(milliseconds:300));
+    }catch(e){
+      log('choix du module : $e');
+    }finally{
+      await sub.cancel();
+      try{await UniversalBle.stopScan();}catch(_){}
+    }
+    return got;
+  }
+
+  /// Web: « Connecter un module MeshCore » and « Reconnecter le module ».
+  Future<void> chooseInBrowser() async {
+    final d=await pickInBrowser();
+    if(d==null)return;
+    _webChosen.add(d.deviceId);
+    await choose(d);
   }
 }

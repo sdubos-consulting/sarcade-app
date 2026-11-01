@@ -122,7 +122,7 @@ import '../../modules/adrasec/adsb/adsb_layer.dart';
 import '../../modules/adrasec/adsb/adsb_models.dart';
 import '../../modules/adrasec/adsb/adsb_page.dart';
 import '../meshcore/meshcore_link.dart';
-import '../meshcore/meshcore_link_card.dart' show meshCoreStateText;
+import '../meshcore/meshcore_link_card.dart' show meshCoreStateText, MeshCoreReconnectBanner;
 import '../meshcore/meshcore_page.dart';
 import '../meshcore/meshcore_map.dart';
 import 'locate_button.dart';
@@ -2635,6 +2635,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ?sosAlert,
         banners,
         ?graphBanner,
+        const MeshCoreReconnectBanner(),
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
         if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,
