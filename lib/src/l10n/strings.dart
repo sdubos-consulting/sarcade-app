@@ -450,6 +450,8 @@ const Texts _fr={
   'event.aprsTxOn':'émission radio sous {call}',
   'weather.windLine':'Vent {dir} {speed}',
   'weather.rainLine':'Pluie {mm}{p}',
+  // Lot 19, « Windows : météo absente de la pastille en haut à droite ».
+  'weather.pillAt':'{text} · à {time}',
   'diag.device':'Cet appareil',
   'diag.links':'Liaisons',
   'diag.server':'Serveur',
@@ -902,6 +904,8 @@ const Texts _en={
   'event.aprsTxOn':'radio transmission as {call}',
   'weather.windLine':'Wind {dir} {speed}',
   'weather.rainLine':'Rain {mm}{p}',
+  // Lot 19, « Windows : météo absente de la pastille en haut à droite ».
+  'weather.pillAt':'{text} · at {time}',
   'diag.device':'This device',
   'diag.links':'Links',
   'diag.server':'Server',
