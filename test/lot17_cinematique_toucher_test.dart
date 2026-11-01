@@ -16,7 +16,7 @@ import 'package:sarcade_app/src/ui/test_ids.dart';
 Widget _map({required bool ignoring,required void Function(LatLng) onMapTap,required VoidCallback onMarkerTap})=>MaterialApp(home:Scaffold(body:FlutterMap(
   options:MapOptions(initialCenter:const LatLng(48.8,2.1),initialZoom:12,onTap:(_,p)=>onMapTap(p)),
   children:[touchableMarkers(ignoring:ignoring,child:MarkerLayer(markers:[Marker(point:const LatLng(48.8,2.1),width:80,height:40,
-    child:GestureDetector(key:const ValueKey('tel-02'),onTap:onMarkerTap,child:const ColoredBox(color:Colors.blue,child:Text('TEL-02')))))]))],
+    child:GestureDetector(key:const ValueKey('tel-02'),onTap:onMarkerTap,child:const ColoredBox(color:Colors.blue,child:Text('TEL-02'))))]))],
 )));
 
 void main() {
