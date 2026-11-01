@@ -24,6 +24,8 @@ import 'meshcore_chat_page.dart';
 import 'meshcore_link.dart';
 import 'meshcore_page.dart' show meshCoreAge, meshCoreHops;
 import 'meshcore_protocol.dart';
+import 'meshcore_remote.dart';
+import 'meshcore_remote_page.dart' show openMeshCoreRemote;
 
 /// A node not heard for more than 24 h is drawn grey.
 const meshCoreStaleAfter=Duration(hours:24);
@@ -95,7 +97,9 @@ class MeshCoreNodeCard extends StatelessWidget {
   final VoidCallback? onWrite;
   /// Null for a node without position.
   final VoidCallback? onCenter;
-  const MeshCoreNodeCard({super.key,required this.node,required this.now,this.distance,this.snr,required this.onClose,this.onWrite,this.onCenter});
+  /// « Télécommande » (lot 19): only for the companion of a box of relays.
+  final VoidCallback? onRemote;
+  const MeshCoreNodeCard({super.key,required this.node,required this.now,this.distance,this.snr,required this.onClose,this.onWrite,this.onCenter,this.onRemote});
 
   @override Widget build(BuildContext context){
     final t=Theme.of(context), small=t.textTheme.bodySmall;
@@ -115,7 +119,8 @@ class MeshCoreNodeCard extends StatelessWidget {
         if(snr!=null)line(S.t('mesh.card.snr'),'${snr!.toStringAsFixed(1)} dB'),
         line(S.t('mesh.card.hops'),meshCoreHops(node.hops)),
         if(!meshCoreHasPosition(node))line(S.t('mesh.field.position'),S.t('mesh.noPosition')),
-        if(onWrite!=null||onCenter!=null)Padding(padding:const EdgeInsets.only(top:10,right:8),child:Wrap(spacing:8,runSpacing:8,children:[
+        if(onWrite!=null||onCenter!=null||onRemote!=null)Padding(padding:const EdgeInsets.only(top:10,right:8),child:Wrap(spacing:8,runSpacing:8,children:[
+          if(onRemote!=null)FilledButton.icon(key:const ValueKey('mesh-card-remote'),onPressed:onRemote,icon:const Icon(Icons.settings_remote),label:Text(S.t('remote.open'))),
           if(onWrite!=null)FilledButton.icon(key:const ValueKey('mesh-card-write'),onPressed:onWrite,icon:const Icon(Icons.edit_outlined),label:Text(S.t('mesh.write'))),
           if(onCenter!=null)OutlinedButton.icon(key:const ValueKey('mesh-card-center'),onPressed:onCenter,icon:const Icon(Icons.center_focus_strong),label:Text(S.t('mesh.center'))),
         ])),
@@ -132,16 +137,18 @@ class MeshCoreNodeOverlay extends StatelessWidget {
   final bool compact;
   const MeshCoreNodeOverlay({super.key,required this.map,this.me,this.compact=false});
 
-  @override Widget build(BuildContext context)=>ListenableBuilder(listenable:Listenable.merge([MeshCoreLink.instance,meshCoreSelected,MeshCoreChats.instance]),builder:(context,_){
+  @override Widget build(BuildContext context)=>ListenableBuilder(listenable:Listenable.merge([MeshCoreLink.instance,meshCoreSelected,MeshCoreChats.instance,MeshCoreRemotes.instance]),builder:(context,_){
     final key=meshCoreSelected.value, link=MeshCoreLink.instance;
     final node=key==null||!link.showOnMap?null:link.contacts.where((c)=>c.key==key).firstOrNull;
     if(node==null)return const SizedBox.shrink();
     final from=me??(link.info.lat==null?null:LatLng(link.info.lat!,link.info.lon!));
+    final remote=MeshCoreRemotes.instance.ofNode(node.key).firstOrNull;
     final card=MeshCoreNodeCard(node:node,now:DateTime.now(),distance:meshCoreDistance(node,from),
       snr:MeshCoreChats.instance.snr[meshCorePrefix(node.key)],
       onClose:()=>meshCoreSelected.value=null,
       onWrite:meshCoreWritable(node)?()=>unawaited(openMeshCoreChat(context,node.key,node.name)):null,
-      onCenter:meshCoreHasPosition(node)?()=>unawaited(meshCoreShowOnMap(map,node)):null);
+      onCenter:meshCoreHasPosition(node)?()=>unawaited(meshCoreShowOnMap(map,node)):null,
+      onRemote:remote==null?null:()=>unawaited(openMeshCoreRemote(context,remote)));
     if(compact){
       return Positioned(left:8,right:8,bottom:140,child:Align(alignment:Alignment.bottomCenter,
         child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(context).height/3),child:SingleChildScrollView(child:card))));

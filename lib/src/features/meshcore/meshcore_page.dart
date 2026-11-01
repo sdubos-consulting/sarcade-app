@@ -17,6 +17,7 @@ import 'meshcore_link.dart';
 import 'meshcore_link_card.dart';
 import 'meshcore_map.dart';
 import 'meshcore_protocol.dart';
+import 'meshcore_remote_page.dart';
 
 /// « Diagnostic » of Outils › MeshCore: the card of the module (search,
 /// choice, state, journal, « Oublier ce module »).
@@ -71,6 +72,8 @@ class _MeshCorePageState extends State<MeshCorePage> {
       body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),child:ListView(padding:const EdgeInsets.all(16),children:[
         // Web (lot 17): the browser waits for a click to join the module.
         const MeshCoreReconnectBanner(),
+        // Lot 19: remotes of relays (declared by the PCO).
+        const MeshCoreRemotesTile(),
         if(!link.remembered)...[
           Text(S.t('mesh.noModule')),
           const MeshCoreLinkCard(),
