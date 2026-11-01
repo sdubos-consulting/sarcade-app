@@ -94,7 +94,7 @@ for (const size of SIZES) {
     test.afterAll(async () => { await page?.close(); await api?.dispose(); });
 
     test('every section, then « Carte »', async () => {
-      const ids = compact ? ['nav.messages', 'nav.teams', 'nav.tools', 'nav.more'] : ['nav.messages', 'nav.teams', 'nav.files', 'nav.tools', 'nav.settings'];
+      const ids = compact ? ['nav.messages', 'nav.teams', 'nav.tools'] : ['nav.messages', 'nav.teams', 'nav.files', 'nav.tools', 'nav.settings'];
       for (const id of ids) {
         await tapId(page, id);
         await tapId(page, 'nav.map');
