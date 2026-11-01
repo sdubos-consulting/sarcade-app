@@ -266,27 +266,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         content:Text(S.t('adsb.alert',{'name':a.name,'what':emergencyText(a.emergency!)})),
         action:SnackBarAction(label:S.t('adsb.see'),textColor:Colors.white,onPressed:(){_fitPoints([a.position]);unawaited(_selectAircraft(a));})));
     };
+    // « Suivre » (lot 17): the map stays on the last aircraft followed; the
+    // followed screens get the aircraft followed.
+    _adsb.onCentre=(p){try{_map.move(p,_map.camera.zoom);}catch(_){/* map not ready */}};
+    _adsb.onFollowedChanged=()=>_tvScreens.mapMoved();
     _adsb.addListener(_onAdsb);
   }
-  void _onAdsb(){
-    if(!mounted)return;
-    // « Suivre »: the map stays on the selected aircraft.
-    final a=_adsb.selected;
-    if(_adsb.follow&&a!=null){try{_map.move(a.position,_map.camera.zoom);}catch(_){/* map not ready */}}
-    setState((){});
-  }
+  void _onAdsb(){if(mounted)setState((){});}
 
-  /// Sheet of one aircraft: side panel on computers and tablets, bottom
-  /// sheet on a phone (card validated 1 Nov 2026, 8 h 21).
-  Future<void> _selectAircraft(Aircraft a) async {
-    unawaited(_adsb.select(a));
-    if(_isCompact){await showAircraftSheet(context,_adsb);return;}
-    setState((){_deskId='adsb-aircraft';_deskPage=AircraftPanel(adsb:_adsb,onClose:_closeAircraft);_showPanel=false;});
-  }
-  void _closeAircraft(){
-    unawaited(_adsb.select(null));
-    if(_deskId=='adsb-aircraft')setState((){_deskId=null;_deskPage=null;});
-  }
+  /// Sheet of one aircraft, floating over the map (lot 17, 1 Nov 2026).
+  Future<void> _selectAircraft(Aircraft a)=>_adsb.select(a);
+  void _closeAircraft()=>unawaited(_adsb.select(null));
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -856,7 +846,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ToolItem(id:'routes',icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
     if(_adrasec)ToolItem(id:'resection',icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
     if(_adrasec)ToolItem(id:'adsb',icon:Icons.flight,title:S.t('adsb.title'),subtitle:S.t('adsb.toolHelp'),color:Colors.lightBlue,
-      onTap:()=>_openDesk('adsb',()=>AdsbPage(adsb:_adsb,onShow:(a)=>unawaited(_selectAircraft(a))))),
+      onTap:()=>_openDesk('adsb',()=>AdsbPage(adsb:_adsb,onShow:(a){if(_isCompact)Navigator.pop(context);
+        _onMapNow((){try{_map.move(aircraftEstimated(a,_adsb.serverNow),_map.camera.zoom);}catch(_){/* map not ready */}unawaited(_selectAircraft(a));});}))),
     if(MeshCoreLink.instance.supported)ToolItem(id:'meshcore',icon:Icons.hub_outlined,title:S.t('mesh.tool'),subtitle:S.t('mesh.toolHelp'),color:Colors.cyan,
       onTap:()=>_openDesk('meshcore',()=>const MeshCorePage())),
     ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
@@ -996,6 +987,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       MapEventSource.onMultiFinger,MapEventSource.doubleTap,MapEventSource.doubleTapHold,MapEventSource.scrollWheel,
       MapEventSource.keyboard,MapEventSource.cursorKeyboardRotation};
     if((_follow||_followPending)&&gestures.contains(e.source))_setFollow(false);
+    // ADS-B: the map moved by hand stops the centring, the routes stay (zoom keeps it).
+    if(e.source==MapEventSource.dragStart||e.source==MapEventSource.onDrag||e.source==MapEventSource.keyboard)_adsb.stopCentring();
   }
 
   List<Widget> _variantLayers(){
@@ -1415,6 +1408,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_measure.active){unawaited(_measure.clear());closed=true;}
     if(_selectedDevice!=null||_trace.isNotEmpty){_selectedDevice=null;_trace=[];closed=true;}
     if(_selectedReference!=null){_selectedReference=null;closed=true;}
+    if(_adsb.selectedId!=null){_closeAircraft();closed=true;}
     if(compact&&(_showPanel||_showReferencePanel||_showRoutesPanel)){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;closed=true;}
     if(closed)setState((){});
     return closed;
@@ -2513,7 +2507,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   @override Widget build(BuildContext context){
     currentMapView=_tvView; currentMapOptions=_tvOptions;
     // ADS-B filters of this map, applied by the TV (1 Nov 2026, 8 h 22).
-    currentMapExtras=()=>_adsb.on&&_adrasec?_adsb.filters.tvJson():const <String,dynamic>{};
+    currentMapExtras=()=>_adsb.on&&_adrasec?_adsb.tvJson():const <String,dynamic>{};
     currentMapTraces=()=>(windowMin:_traceWindow,pinned:_traces.pinned.toList()..sort());
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     // Old stations stay in the list and the search, not on the map.
@@ -2672,8 +2666,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c))),
           if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
           ..._variantLayers(),
-          if(_adsb.on&&_adrasec)...[aircraftTrails(_adsb.shown,selectedId:_adsb.selectedId,track:_adsb.track),
-            aircraftMarkers(_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),labels:_adsb.filters.labels,selectedId:_adsb.selectedId)],
+          if(_adsb.on&&_adrasec)...[aircraftRoutes(_adsb.routes),AircraftMarkers(aircraft:_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),
+            now:()=>_adsb.serverNow,filters:_adsb.filters,selectedId:_adsb.selectedId,followed:_adsb.followed)],
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             lineHits:_routeHits,onWaypointTap:(w)=>unawaited(_openWaypoint(w))),
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
@@ -2771,6 +2765,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_drawing.selectMode&&!_drawing.hasSelection)Padding(padding:const EdgeInsets.only(top:8),child:SelectionHint(controller:_drawing)),
           if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:(f)=>_exportGeoJson(only:_drawing.selection,format:f))),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
+          if(!compact&&_adsb.on&&_adrasec&&_adsb.selectedId!=null)Padding(padding:const EdgeInsets.only(top:8),child:AircraftCard(adsb:_adsb,onClose:_closeAircraft)),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
             const Icon(Icons.block,color:Colors.red),const SizedBox(width:8),
             Flexible(child:Text(S.t('closures.drawHelp'))),
@@ -2791,6 +2786,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         else if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
           child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
+        if(compact&&_adsb.on&&_adrasec&&_adsb.selectedId!=null)Positioned(left:12,right:12,bottom:12,child:AircraftCard(adsb:_adsb,onClose:_closeAircraft,compact:true)),
         Positioned(left:0,right:0,bottom:compact?60:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},
