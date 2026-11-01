@@ -2515,7 +2515,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onLongPress:(_,point)=>_onLongPress(point,gesture:true),
           onSecondaryTap:(_,point){if(_aim!=null){_cancelAim();}else{_onLongPress(point,gesture:true);}},
           onMapEvent:_onMapEvent,
-          onMapReady:(){if(mounted){_onCameraChanged(_map.camera);setState((){});}},
+          // Map moves listened from the start: « Suivre ma vue » no longer
+          // waits for « Ma position » (1 Nov 2026).
+          onMapReady:(){if(mounted){_onCameraChanged(_map.camera);_watchMapMoves();setState((){});}},
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
           interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),

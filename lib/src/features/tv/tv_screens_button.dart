@@ -58,9 +58,20 @@ Duration tvFollowWait(DateTime now,DateTime? lastSent){
   return gap>tvFollowDelay?gap:tvFollowDelay;
 }
 
+/// Bumped when screens are paired, renamed or revoked elsewhere in the
+/// application (Outils › Afficher sur une TV): the button reads them again.
+final tvScreensChanged=ValueNotifier<int>(0);
+
 class TvScreensController extends ChangeNotifier {
   final SarcadeApi api; final String eventId;
-  TvScreensController({required this.api,required this.eventId});
+  late final AppLifecycleListener _life;
+  TvScreensController({required this.api,required this.eventId}){
+    // 1 Nov 2026: a screen just paired did not appear in the button for up
+    // to a minute; read again on a change, and back in the foreground.
+    tvScreensChanged.addListener(_reload);
+    _life=AppLifecycleListener(onResume:_reload);
+  }
+  void _reload(){if(!_disposed)unawaited(refresh(pco:_pco));}
 
   List<Map<String,dynamic>> _all=const [];
   bool _pco=false;
@@ -129,7 +140,7 @@ class TvScreensController extends ChangeNotifier {
     });
   }
 
-  @override void dispose(){_disposed=true;_pending?.cancel();super.dispose();}
+  @override void dispose(){_disposed=true;_pending?.cancel();tvScreensChanged.removeListener(_reload);_life.dispose();super.dispose();}
 }
 
 /// The button itself, built with the floating button of the map ([fab]).
@@ -149,6 +160,7 @@ class TvScreensButton extends StatelessWidget {
   });
 
   Future<void> _tap(BuildContext context) async {
+    unawaited(controller.refresh(pco:controller._pco));
     final s=controller.screens;
     if(s.length==1&&!controller.isFollowing){
       await _send(context,[s.single]);
@@ -164,7 +176,12 @@ class TvScreensButton extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(text)));
   }
 
-  Future<void> _openList(BuildContext context)=>showModalBottomSheet<void>(context:context,showDragHandle:true,isScrollControlled:true,
+  Future<void> _openList(BuildContext context){
+    unawaited(controller.refresh(pco:controller._pco));
+    return _showList(context);
+  }
+
+  Future<void> _showList(BuildContext context)=>showModalBottomSheet<void>(context:context,showDragHandle:true,isScrollControlled:true,
     builder:(c)=>TvScreensSheet(controller:controller,onSend:(to)async{Navigator.pop(c);await _send(context,to);},
       onManage:(){Navigator.pop(c);onManage();}));
 }
