@@ -40,6 +40,7 @@ import 'cinematique_escape.dart';
 import '../../ui/theme.dart';
 import 'stations.dart';
 import 'cinematique_touch.dart';
+import 'layer_opacity.dart';
 import 'sos_placement.dart';
 import '../../modules/adrasec/bearings/bearing_aim.dart';
 import '../../ui/escape_stack.dart';
@@ -1700,8 +1701,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     await widget.store.setPreference('opacity:$k',v>=0.99?null:v.toStringAsFixed(2));
     if(mounted)setState((){});
   }
-  Widget _faded(String k,Widget layer){final o=_layerOpacity(k);return o>=1?layer:Opacity(opacity:o,child:layer);}
-  List<Widget> _fadedAll(String k,List<Widget> layers)=>[for(final l in layers)_faded(k,l)];
+  // Labels follow the opacity of their layer (layer_opacity.dart, lot 19).
+  Widget _faded(String k,Widget layer)=>fadedLayer(_layerOpacity(k),layer);
+  List<Widget> _fadedAll(String k,List<Widget> layers)=>fadedLayers(_layerOpacity(k),layers);
 
   List<Widget> _layerSections(BuildContext c,StateSetter refresh){
     Widget row(String label,bool on,Future<void> Function(bool) set,{String? op,Widget? trailing})=>LayerRow(label:label,on:on,trailing:trailing,
