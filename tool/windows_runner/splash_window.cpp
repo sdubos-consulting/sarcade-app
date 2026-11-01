@@ -123,8 +123,8 @@ bool SystemUsesLightTheme() {
 
 const wchar_t* StartingText() {
   return PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_FRENCH
-             ? L"Démarrage…"
-             : L"Starting…";
+             ? L"D\u00E9marrage\u2026"
+             : L"Starting\u2026";
 }
 
 // Logo of the theme, from the resources of the exe (Runner.rc).
@@ -199,7 +199,7 @@ void Paint(HWND hwnd) {
       g.DrawImage(g_logo, Gdiplus::RectF((fw - logo_w) / 2.0f, 36.0f * s,
                                          logo_w, logo_h));
     }
-    // « Démarrage… »
+    // "Demarrage..." (StartingText)
     Gdiplus::FontFamily family(L"Segoe UI");
     Gdiplus::Font font(&family, 15.0f * s, Gdiplus::FontStyleRegular,
                        Gdiplus::UnitPixel);
