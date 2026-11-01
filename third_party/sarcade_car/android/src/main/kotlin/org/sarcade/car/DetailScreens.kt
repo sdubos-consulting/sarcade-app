@@ -174,7 +174,7 @@ internal class OrderScreen(carContext: CarContext, private val id: String) : Liv
         actions.forEach { pane.addAction(it) }
         if (actions.isEmpty()) {
             pane.addAction(
-                Action.Builder().setTitle(s.label("navigate"))
+                Action.Builder().setTitle(CarUi.navigateTitle(carContext, s))
                     .setOnClickListener { CarUi.navigate(carContext, s, o.optDouble("lat"), o.optDouble("lon"), o.optString("title")) }
                     .build()
             )
