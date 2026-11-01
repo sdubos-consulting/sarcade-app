@@ -52,7 +52,10 @@ double toolButtonWidth(BuildContext context,Iterable<String> labels){
 class DrawingToolbar extends StatelessWidget {
   final DrawingController controller;
   final VoidCallback onClose;
-  const DrawingToolbar({super.key,required this.controller,required this.onClose});
+  /// Times the help of a tool was already shown (full help the first 3).
+  final int Function(FeatureKind)? hintSeen;
+  final void Function(FeatureKind)? onHintShown;
+  const DrawingToolbar({super.key,required this.controller,required this.onClose,this.hintSeen,this.onHintShown});
 
   @override
   Widget build(BuildContext context){
@@ -72,24 +75,35 @@ class DrawingToolbar extends StatelessWidget {
     final close=IconButton(key:const ValueKey('draw-close'),tooltip:S.t('draw.close'),onPressed:onClose,icon:const Icon(Icons.close));
     // Phone (revue d'ergonomie n° 21): the tools on two rows, nothing hidden
     // behind a scroll; « Fermer » and « Annuler » always in sight on the right.
+    // Help of the active tool: one thin line at the bottom of the bar, no
+    // separate bubble nor ✕ (card « Dessin : bandeau d'aide trop
+    // encombrant », 1 Nov 2026).
+    final line=c.tool==null?null:DraftLine(key:ValueKey('draft-line-${c.tool!.name}'),controller:c,
+      seen:hintSeen?.call(c.tool!)??0,onShown:onHintShown);
     if(drawingToolbarWraps(MediaQuery.sizeOf(context).width)){
       return Material(elevation:4,borderRadius:BorderRadius.circular(14),color:scheme.surface,
-        child:Padding(padding:const EdgeInsets.all(4),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Expanded(child:Wrap(runSpacing:4,children:[...tools,redo])),
-          Column(mainAxisSize:MainAxisSize.min,children:[close,undo]),
+        child:Padding(padding:const EdgeInsets.all(4),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Expanded(child:Wrap(runSpacing:4,children:[...tools,redo])),
+            Column(mainAxisSize:MainAxisSize.min,children:[close,undo]),
+          ]),
+          ?line,
         ])));
     }
     return Material(
       elevation:4,borderRadius:BorderRadius.circular(14),color:scheme.surface,
-      child:SingleChildScrollView(
-        scrollDirection:Axis.horizontal,
-        padding:const EdgeInsets.symmetric(horizontal:4,vertical:4),
-        child:Row(mainAxisSize:MainAxisSize.min,children:[
-          ...tools,
-          const SizedBox(height:40,child:VerticalDivider(width:12)),
-          undo,redo,close,
-        ]),
-      ),
+      child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+        SingleChildScrollView(
+          scrollDirection:Axis.horizontal,
+          padding:const EdgeInsets.symmetric(horizontal:4,vertical:4),
+          child:Row(mainAxisSize:MainAxisSize.min,children:[
+            ...tools,
+            const SizedBox(height:40,child:VerticalDivider(width:12)),
+            undo,redo,close,
+          ]),
+        ),
+        ?line,
+      ]),
     );
   }
 }
@@ -121,6 +135,49 @@ class _ToolButton extends StatelessWidget {
       ),
     ));
   }
+}
+
+/// Tools whose gesture needs no help (a single touch).
+const hintlessTools={FeatureKind.point,FeatureKind.text};
+
+/// How many times a tool's help is shown in full before folding into ⓘ.
+const fullHintTimes=3;
+
+/// Thin line of the drawing bar while a tool is active: count of points and
+/// live measure, ⌫ and ✓ for lines and zones; the help in full the first 3
+/// times of each tool, then behind ⓘ; none for Point and Texte.
+class DraftLine extends StatefulWidget {
+  final DrawingController controller; final int seen; final void Function(FeatureKind)? onShown;
+  const DraftLine({super.key,required this.controller,this.seen=0,this.onShown});
+  @override State<DraftLine> createState()=>_DraftLineState();
+}
+
+class _DraftLineState extends State<DraftLine> {
+  bool _open=false;
+  @override void initState(){
+    super.initState();
+    final t=widget.controller.tool;
+    if(t!=null&&!hintlessTools.contains(t))WidgetsBinding.instance.addPostFrameCallback((_)=>widget.onShown?.call(t));
+  }
+  @override Widget build(BuildContext context)=>ListenableBuilder(listenable:widget.controller,builder:(context,_){
+    final c=widget.controller, t=c.tool;
+    if(t==null)return const SizedBox.shrink();
+    final scheme=Theme.of(context).colorScheme;
+    final count=c.draft.length, measure=c.draftMeasure;
+    final full=widget.seen<fullHintTimes||_open;
+    final hint=hintlessTools.contains(t)?null:toolHint(t);
+    final text=[if(t.isMultiVertex&&count>0)S.t('draw.points',{'n':count}) else if(hint!=null&&full)hint,?measure].join(' · ');
+    final style=TextStyle(fontSize:12,color:scheme.onSurfaceVariant);
+    if(text.isEmpty&&hint==null&&!t.isMultiVertex)return const SizedBox.shrink();
+    return Padding(padding:const EdgeInsets.fromLTRB(12,0,4,2),child:Row(mainAxisSize:MainAxisSize.min,children:[
+      Flexible(child:Text(text,key:const ValueKey('draft-line'),maxLines:1,overflow:TextOverflow.ellipsis,style:style)),
+      if(hint!=null&&!full&&!(t.isMultiVertex&&count>0))IconButton(key:const ValueKey('draft-help'),visualDensity:VisualDensity.compact,
+        tooltip:hint,onPressed:()=>setState(()=>_open=true),icon:Icon(Icons.info_outline,size:18,color:scheme.onSurfaceVariant)),
+      if(t.isMultiVertex&&count>0)IconButton(visualDensity:VisualDensity.compact,tooltip:S.t('draw.removeLast'),onPressed:c.undoLastVertex,icon:const Icon(Icons.backspace_outlined,size:18)),
+      if(t.isMultiVertex)IconButton(visualDensity:VisualDensity.compact,tooltip:S.t('closures.finish'),onPressed:c.canFinish?c.finish:null,
+        icon:Icon(Icons.check_circle,size:22,color:c.canFinish?scheme.primary:null)),
+    ]));
+  });
 }
 
 /// Status line while a tool is active: hint, live measure, and the actions
