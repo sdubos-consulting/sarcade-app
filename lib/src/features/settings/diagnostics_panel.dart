@@ -90,6 +90,19 @@ String diagnosticsReport(List<DiagLine> lines,{DateTime? at}){
   return b.toString();
 }
 
+/// Lines of « Copier le rapport »: Serveur and Terminal, no longer shown at
+/// the top of Paramètres › Diagnostic (lot 19, 22 h 18, point 8), are added
+/// at the end of the « Cet appareil » block.
+List<DiagLine> reportLines(List<DiagLine> all,{required String server,String? device}){
+  final dev=S.t('diag.device');
+  final extra=<DiagLine>[
+    (block:dev,label:S.t('diagnostics.server'),value:server,state:null),
+    if(device!=null&&device.isNotEmpty)(block:dev,label:S.t('diagnostics.device'),value:device,state:null),
+  ];
+  final at=all.lastIndexWhere((l)=>l.block==dev);
+  return at<0?[...extra,...all]:[...all.take(at+1),...extra,...all.skip(at+1)];
+}
+
 /// Lines of the server block from `/diagnostics/server`.
 List<DiagLine> serverLines(Map<String,dynamic> d){
   final block=S.t('diag.server');
@@ -293,7 +306,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         // A discreet pill, as « Actualiser » (revue n° 65).
         OutlinedButton.icon(key:const ValueKey('diag-copy'),onPressed:all.isEmpty?null:() async {
           final messenger=ScaffoldMessenger.of(context);
-          await Clipboard.setData(ClipboardData(text:diagnosticsReport(all)));
+          await Clipboard.setData(ClipboardData(text:diagnosticsReport(reportLines(all,server:widget.server,device:widget.actorId))));
           messenger.showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
         },icon:const Icon(Icons.copy_all),label:Text(S.t('diag.copyReport'))),
         OutlinedButton.icon(onPressed:_loading?null:_load,icon:const Icon(Icons.refresh),label:Text(S.t('diag.refresh'))),

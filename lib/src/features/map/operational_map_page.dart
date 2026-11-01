@@ -109,6 +109,7 @@ import '../orders/move_orders.dart';
 import '../../modules/adrasec/bearings/signals.dart';
 import '../settings/diagnostics_panel.dart' show diagnosticsAlert, showDiagnosticsSheet;
 import '../tools/tools_page.dart';
+import '../settings/settings_tools.dart';
 import 'sos_button.dart';
 import '../tools/coordinate_converter_page.dart';
 import '../places/readable_place.dart';
@@ -893,6 +894,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
       onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
+    // Main courante and the bearing frequencies, out of Paramètres (lot 19).
+    ...settingsToolItems(api:widget.api,eventId:widget.eventId,store:widget.store,adrasec:_adrasec,open:_openDesk),
   ];
   /// Convertisseur étoffé (lot 5): actions handed back to the map.
   void _openConverter({LatLng? initial})=>_openDesk('converter',()=>CoordinateConverterPage(key:ValueKey('desk-converter-$initial'),initial:initial,

@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../../ui/overlay_page.dart';
-import '../../ui/choice_pills.dart';
 import 'package:flutter/services.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
@@ -12,24 +10,21 @@ import '../../config/saved_servers.dart';
 import '../../config/version.dart';
 import 'about_page.dart';
 import 'notifications_panel.dart';
-import '../../ui/theme.dart' show themeMode;
 import '../map/drawing/drawing_controller.dart' show defaultDrawColor;
 import '../../ui/color_palette.dart';
 import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
 import '../../operations/event_settings.dart';
 import '../../services/notification_service.dart';
-import '../../models/comm_group.dart' show isPco, myRoles;
+import '../../models/comm_group.dart' show isPco;
 import '../../services/sarcade_api.dart' show SarcadeApi, SarcadeHttpException;
 import 'diagnostics_panel.dart';
 import 'event_settings_section.dart';
-import '../../modules/adrasec/bearings/signal_defaults_page.dart';
 import '../../offline/local_store.dart';
 import '../compass/shared_compass.dart';
 import '../../services/power_state.dart';
 import '../../ui/save_bar.dart';
 import '../../ui/action_buttons.dart';
-import '../../services/event_names.dart';
 import '../../ui/link_status.dart';
 import '../measure/external_maps.dart' show openInChoices, navAppMineKey;
 import '../map/operator_icons.dart';
@@ -41,8 +36,6 @@ class SettingsPage extends StatefulWidget {
   final AppConfig initial;
   final Future<void> Function(AppConfig) onSave;
   final bool firstRun;
-  /// Opens the logbook of the active session, not the unsaved form values.
-  final VoidCallback? onOpenLogbook;
   /// Events of a server (« Choix de l'événement dans une liste »): fetched
   /// list, and the last list known for offline use.
   final Future<List<Map<String,dynamic>>> Function(String server)? loadEvents;
@@ -55,14 +48,12 @@ class SettingsPage extends StatefulWidget {
   /// each successful connection, and saved after a rename or a removal.
   final List<SavedServer> Function()? readServers;
   final Future<void> Function(List<SavedServer>)? saveServers;
-  /// Day / night / automatic chosen: applied at once, kept by the caller.
-  final void Function(ThemeMode)? onThemeChanged;
   /// Active session, for Paramètres › Événement (PCO only).
   final SarcadeApi? api;
   /// Device store: caches what the administrator saves (default frequencies).
   final LocalStore? store;
   const SettingsPage({super.key,required this.initial,required this.onSave,this.firstRun=false,
-    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook,this.onThemeChanged,this.api,this.store});
+    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.api,this.store});
   @override State<SettingsPage> createState()=>_SettingsPageState();
 }
 
@@ -367,10 +358,11 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// Tabs of the screen (« Charte graphique épurée »); the first setup only
-  /// shows what is needed to start.
-  List<String> get _tabs=>widget.firstRun
-    ?['general','profile','display','about']
-    :['general',if(_eventTab)'event','profile','display','notifications','diagnostics','about'];
+  /// shows what is needed to start. No « Affichage » any more (card
+  /// « Paramètres : supprimer l'onglet Affichage », 1 Nov 2026, 22 h 17):
+  /// the theme is in « Fond et affichage » of the map, the power saving in
+  /// Général, the language in Profil.
+  List<String> get _tabs=>settingsTabs(firstRun:widget.firstRun,event:_eventTab);
   bool get _eventTab=>widget.api!=null&&isPco(widget.initial.deviceId);
   int _tab=0;
 
@@ -403,12 +395,6 @@ class _SettingsPageState extends State<SettingsPage> {
   InputDecoration _field({String? label,String? hint,String? help})=>InputDecoration(isDense:true,labelText:label,hintText:hint,helperText:help,helperMaxLines:3,
     border:OutlineInputBorder(borderRadius:BorderRadius.circular(8)));
 
-
-  /// Read-only value with an optional text action on the right (« Ouvrir »).
-  Widget _value(String text,{String? action,VoidCallback? onAction})=>Row(children:[
-    Expanded(child:SelectableText(text)),
-    if(action!=null)OutlinedButton(onPressed:onAction,child:Text(action)),
-  ]);
 
   /// Compact field on the right of a row (label inside, read by screen
   /// readers and the end-to-end tests).
@@ -459,6 +445,18 @@ class _SettingsPageState extends State<SettingsPage> {
       controller:_event,decoration:_field(),autocorrect:false,validator:_required))),
     _row(S.t('settings.deviceRow'),tip:S.t('settings.deviceHelp'),child:_withActions(TextFormField(
       controller:_device,decoration:_field(hint:'TERRAIN-01'),autocorrect:false,validator:_required))),
+    // Settings of this device (22 h 18, point 5): « Toujours ouvrir avec … »
+    // of « Ouvrir dans… » (31 Oct 2026), applied at once.
+    if(widget.store!=null)_row(S.t('settings.navApp'),child:Align(alignment:Alignment.centerRight,child:DropdownButton<String>(
+      key:const ValueKey('settings-nav-app'),value:widget.store!.preference(navAppMineKey)??'',
+      items:[DropdownMenuItem(value:'',child:Text(S.t('settings.navAppAsk'))),
+        for(final a in openInChoices(android:!kIsWeb&&defaultTargetPlatform==TargetPlatform.android,ios:!kIsWeb&&defaultTargetPlatform==TargetPlatform.iOS))
+          if(a!='other')DropdownMenuItem(value:a,child:Text(S.t('ext.app.$a')))],
+      onChanged:(v) async {await widget.store!.setPreference(navAppMineKey,v==null||v.isEmpty?null:v);if(mounted)setState((){});}))),
+    // Battery card (30 Oct 2026, point E): applied at once, kept on the device.
+    _row(S.t('power.saver'),help:S.t('power.saverHelp'),child:ListenableBuilder(listenable:PowerState.instance,
+      builder:(context,_)=>Align(alignment:Alignment.centerRight,child:Switch(key:const ValueKey('power-saver'),
+        value:PowerState.instance.saver,onChanged:(v){PowerState.instance.setSaver(v);})))),
   ]);
 
   /// Serveur, Événement suivi and Terminal of the same width, their buttons
@@ -489,14 +487,19 @@ class _SettingsPageState extends State<SettingsPage> {
       for(final id in operatorIconIds)ChoiceChip(key:ValueKey('icon-$id'),tooltip:S.t('icon.$id'),showCheckmark:false,
         label:Icon(operatorIcon(id),size:20),selected:widget.store!.preference(operatorIconKey)==id,onSelected:(_)=>_setOperatorIcon(id)),
     ])),
-    // « Toujours ouvrir avec … » of « Ouvrir dans… », changed here
-    // (31 Oct 2026); applied at once on this device.
-    if(widget.store!=null)_row(S.t('settings.navApp'),child:Align(alignment:Alignment.centerRight,child:DropdownButton<String>(
-      key:const ValueKey('settings-nav-app'),value:widget.store!.preference(navAppMineKey)??'',
-      items:[DropdownMenuItem(value:'',child:Text(S.t('settings.navAppAsk'))),
-        for(final a in openInChoices(android:!kIsWeb&&defaultTargetPlatform==TargetPlatform.android,ios:!kIsWeb&&defaultTargetPlatform==TargetPlatform.iOS))
-          if(a!='other')DropdownMenuItem(value:a,child:Text(S.t('ext.app.$a')))],
-      onChanged:(v) async {await widget.store!.setPreference(navAppMineKey,v==null||v.isEmpty?null:v);if(mounted)setState((){});}))),
+    // Language of the person (22 h 17, choice 1), « Langue de l'appareil »
+    // by default. Kept on this device: the server has no personal language.
+    _row(S.t('settings.languageRow'),child:_compact(DropdownButtonFormField<String>(
+      key:const ValueKey('settings-language'),
+      initialValue:_language,isExpanded:true,
+      decoration:_field(),
+      items:[
+        DropdownMenuItem(value:'system',child:Text(S.t('settings.languageSystem'))),
+        const DropdownMenuItem(value:'fr',child:Text('Français')),
+        const DropdownMenuItem(value:'en',child:Text('English')),
+      ],
+      onChanged:(v)=>setState((){_language=v??'system';_dirty=true;}),
+    ))),
     // Under « Couleur de dessin » (29 Oct 2026); ADRASEC module only.
     if(_adrasec)_row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
       child:Switch(value:_aprsConsent,onChanged:(v)=>setState((){_aprsConsent=v;_dirty=true;})))),
@@ -519,36 +522,6 @@ class _SettingsPageState extends State<SettingsPage> {
     if(picked!=null&&mounted)setState((){_drawColor=picked;_dirty=true;});
   }
 
-  Widget _displayTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-    // Applied at once, kept on the device (not part of the saved form).
-    _row(S.t('settings.theme'),help:S.t('settings.themeHelp'),child:ValueListenableBuilder<ThemeMode>(valueListenable:themeMode,
-      builder:(context,mode,_)=>Align(alignment:Alignment.centerLeft,child:ChoicePills<ThemeMode>(
-        choices:[
-          (value:ThemeMode.light,icon:Icons.light_mode_outlined,label:S.t('settings.themeDay')),
-          (value:ThemeMode.dark,icon:Icons.dark_mode_outlined,label:S.t('settings.themeNight')),
-          (value:ThemeMode.system,icon:Icons.brightness_auto_outlined,label:S.t('settings.themeAuto')),
-        ],
-        selected:mode,
-        onSelected:(v){themeMode.value=v;widget.onThemeChanged?.call(v);},
-      )))),
-    _row(S.t('settings.languageRow'),child:_compact(DropdownButtonFormField<String>(
-      initialValue:_language,isExpanded:true,
-      decoration:_field(),
-      items:[
-        DropdownMenuItem(value:'system',child:Text(S.t('settings.languageSystem'))),
-        const DropdownMenuItem(value:'fr',child:Text('Français')),
-        const DropdownMenuItem(value:'en',child:Text('English')),
-      ],
-      onChanged:(v)=>setState((){_language=v??'system';_dirty=true;}),
-    ))),
-    // Smart TV screens: managed in Outils › Afficher sur une TV only
-    // (« Écrans Smart TV en double », 30 Oct 2026).
-    // Battery card (30 Oct 2026, point E): applied at once, kept on the device.
-    _row(S.t('power.saver'),help:S.t('power.saverHelp'),child:ListenableBuilder(listenable:PowerState.instance,
-      builder:(context,_)=>Align(alignment:Alignment.centerRight,child:Switch(key:const ValueKey('power-saver'),
-        value:PowerState.instance.saver,onChanged:(v){PowerState.instance.setSaver(v);})))),
-  ]);
-
   Widget _notificationsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     if(NotificationService.supportsDndBypass)_row(S.t('settings.dndBypass'),help:S.t('settings.dndBypassHelp'),child:Align(alignment:Alignment.centerRight,
       child:Switch(value:_bypassDnd,onChanged:(v) async {
@@ -565,12 +538,9 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Active session only: what is shown does not depend on unsaved edits.
   Widget _diagnosticsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('diagnostics.description'))),
-    // Name of the event; its identifier in the copyable report only (revue n° 60).
-    _row(S.t('diagnostics.event'),child:EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,builder:(_,n)=>_value(n))),
-    _row(S.t('diagnostics.server'),child:_value(widget.initial.serverUrl)),
-    _row(S.t('diagnostics.device'),child:_value(widget.initial.deviceId)),
-    EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,builder:(_,n)=>_row(S.t('map.logbook'),help:S.t('diagnostics.activeEvent',{'event':n}),
-      child:_value('',action:S.t('diagnostics.open'),onAction:widget.onOpenLogbook))),
+    // Événement, Serveur and Terminal are in Général, not repeated here; they
+    // stay in the copied report. Main courante moved to Outils › Au PC
+    // (22 h 18, points 6 and 8).
     // « Copier » at the far right (29 Oct 2026).
     _row(S.t('diagnostics.version'),child:Builder(builder:(c){
       final v='SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}';
@@ -590,15 +560,11 @@ class _SettingsPageState extends State<SettingsPage> {
   ]);
 
   Widget _tabBody(String id)=>switch(id){
-    'general'=>_generalTab(),'profile'=>_profileTab(),'display'=>_displayTab(),
+    'general'=>_generalTab(),'profile'=>_profileTab(),
     'notifications'=>_notificationsTab(),'diagnostics'=>_diagnosticsTab(),
-    'event'=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
-      // Default frequencies of the bearing tool: administrator only.
-      if(myRoles.contains('admin')&&_adrasec)_row(S.t('signals.title'),help:S.t('signals.rowHelp'),child:Align(alignment:Alignment.centerRight,child:OutlinedButton(
-        onPressed:()=>showOverlayPage<void>(context,(_)=>SignalDefaultsPage(api:widget.api!,store:widget.store)),
-        child:Text(S.t('signals.manage'))))),
-    ]),
+    // Default frequencies of the bearing tool: Outils › Fréquences du
+    // relevé (22 h 18, point 7).
+    'event'=>EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
     _=>const Padding(padding:EdgeInsets.only(top:16),child:SarcadeAboutContent()),
   };
 
@@ -648,7 +614,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Padding(padding:const EdgeInsets.fromLTRB(20,0,20,4),child:Text(widget.firstRun?S.t('settings.firstRun'):S.t('settings.title'),
             style:t.textTheme.headlineMedium)),
           // « En-tête allégé » (30 Oct 2026, 2 h 56): no lines under the
-          // title; server, event and terminal stay in Diagnostic.
+          // title; server, event and terminal are in Général (lot 19).
           if(widget.firstRun)Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:Text(S.t('settings.subtitleFirst'),
             style:t.textTheme.bodyMedium?.copyWith(color:t.colorScheme.onSurfaceVariant))),
           const SizedBox(height:8),
@@ -671,6 +637,12 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+/// Tabs of Paramètres: Général, Événement (PCO), Profil, Notifications,
+/// Diagnostic, À propos; at the first setup Général, Profil, À propos.
+List<String> settingsTabs({required bool firstRun,required bool event})=>firstRun
+  ?const ['general','profile','about']
+  :['general',if(event)'event','profile','notifications','diagnostics','about'];
 
 /// The save bar, except on Diagnostic and À propos with nothing changed.
 bool settingsShowsSaveBar({required String tab,required bool firstRun,required bool dirty})=>firstRun||dirty||!(tab=='diagnostics'||tab=='about');
