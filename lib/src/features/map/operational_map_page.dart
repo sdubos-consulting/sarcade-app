@@ -76,6 +76,7 @@ import '../../operations/event_settings.dart';
 import '../../operations/operations_service.dart';
 import '../../operations/operations_widgets.dart';
 import 'sos_alert.dart';
+import 'sos_map.dart';
 import '../../operations/tracking_service.dart';
 import '../navigation/navigation_controller.dart';
 import '../navigation/road_graph_service.dart';
@@ -689,12 +690,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   // --- Distress (ATAK 4) and résection (ATAK 2) ---
   bool get _inDistress=>widget.store.preference('distress:${widget.eventId}')=='1';
 
+  /// Operators in distress, last position whatever the filters (sos_map.dart, lot 17).
+  List<SosTarget> _sosTargets()=>sosTargetsFor(widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId),widget.deviceId,_positions);
+  /// Touch on the SOS banner: the map on the operator, his sheet open.
+  void _centerSos(SosTarget t){
+    if(t.point==null)return;
+    if(_tab!=0)_goTab(0);
+    if(_follow)_setFollow(false);
+    _map.move(t.point!,sosZoom);
+    if(_positions[t.deviceId] case final p?)unawaited(_select(p,move:false));
+  }
+
   /// SOS of other operators not closed yet, with « Couper le son » (sos_alert.dart).
   Widget? _sosAlert(){
-    final open=openDistress(widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId),widget.deviceId).values.toList();
-    if(open.isEmpty)return null;
+    final targets=_sosTargets();
+    if(targets.isEmpty)return null;
+    final open=[for(final t in targets)t.message];
     final key='sosMuted:${widget.eventId}';
-    return SosAlertBanner(open:open,muted:sosMuted(open,widget.store.preference(key)),onOpen:_openMessages,onMute:() async {
+    return SosAlertBanner(targets:targets,now:DateTime.now().toUtc(),onCenter:_centerSos,muted:sosMuted(open,widget.store.preference(key)),onMute:() async {
       for(final m in open){await _notifications.answered(m.id,'read',key:messageNotificationKey(m));}
       await widget.store.setPreference(key,sosMuteKey(open));
       if(mounted)setState((){});
@@ -2001,6 +2014,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>setState((){_chatPeer=p.deviceId;_deskPage=null;_deskId=null;}),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
+        if(sosTargetOf(_sosTargets(),p.deviceId) case final t?)SosGoButton(onPressed:()=>unawaited(_navigateTo(t.point??LatLng(p.lat,p.lon),S.t('sos.label',{'who':t.label})))),
         if(callsignAmong([p.callsign,p.label,_devices[p.deviceId]?['callsign']?.toString()]) case final call?)Padding(padding:const EdgeInsets.only(top:6),child:CallsignLinks(callsign:call)),
         if(p.isAprs)Padding(padding:const EdgeInsets.only(top:8),child:Row(children:[
           Text(S.t('fixed.kind'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
@@ -2695,6 +2709,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_searchPin!=null)MarkerLayer(markers:[Marker(point:_searchPin!,width:44,height:44,alignment:Alignment.topCenter,
             child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))]),
           buildHandleLayer(_drawing,_globalToLatLng),
+          // SOS halos above everything, whatever the filters (lot 17).
+          sosHaloLayer(_sosTargets(),DateTime.now().toUtc()),
           // ⓘ with the licence notice of the base map: on the left, under the
           // scale, never under SOS (revue d'ergonomie n° 3).
           SafeArea(child:Padding(padding:EdgeInsets.only(bottom:compact?mapAttributionLift:0),
