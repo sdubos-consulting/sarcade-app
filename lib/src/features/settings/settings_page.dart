@@ -17,6 +17,7 @@ import '../map/drawing/drawing_controller.dart' show defaultDrawColor;
 import '../../ui/color_palette.dart';
 import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
+import '../events/event_choice.dart' show singleOpenEvent, eventName;
 import '../../operations/event_settings.dart';
 import '../../services/notification_service.dart';
 import '../../models/comm_group.dart' show isPco, myRoles;
@@ -84,13 +85,18 @@ class _SettingsPageState extends State<SettingsPage> {
   List<Map<String,dynamic>> _events=[];
   bool _loadingEvents=false, _eventsOffline=false, _accessRequired=false;
   String? _eventsError;
+  /// Only open event of the server, chosen by itself (lot 19): said under the field.
+  ({String id,String name})? _autoEvent;
   late List<SavedServer> _servers=widget.readServers?.call()??const [];
 
   @override void initState(){
     super.initState();
     // Red dot on Paramètres: the screen opens on the Diagnostic (card
     // « Diagnostic, point d'arrivée unique des problèmes », 30 Oct 2026).
-    if(!widget.firstRun&&diagnosticsAlert())_tab=_tabs.indexOf('diagnostics');
+    // « Choisir un événement » of the Diagnostic opens Général (lot 19).
+    final asked=settingsRequestedTab; settingsRequestedTab=null;
+    if(asked!=null&&_tabs.contains(asked)){_tab=_tabs.indexOf(asked);}
+    else if(!widget.firstRun&&diagnosticsAlert()){_tab=_tabs.indexOf('diagnostics');}
     _events=widget.cachedEvents?.call(_serverText)??[];
     if(widget.loadEvents!=null)WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_loadEvents();});
   }
@@ -108,6 +114,9 @@ class _SettingsPageState extends State<SettingsPage> {
       final list=await load(server);
       if(!mounted||server!=_serverText)return;
       setState((){_events=list;_eventsOffline=false;_accessRequired=false;_servers=widget.readServers?.call()??_servers;});
+      // First run, server added or changed: its only open event (lot 19).
+      final only=widget.firstRun||_event.text.trim().isEmpty||normalServer(server)!=normalServer(widget.initial.serverUrl)?singleOpenEvent(list,_event.text.trim()):null;
+      if(only!=null)setState((){_event.text='${only['id']}';_autoEvent=(id:'${only['id']}',name:eventName(only));_dirty=true;});
     }on AccessRequiredException{
       // Protected by Cloudflare Access: sign in first, then the list comes.
       if(mounted)setState((){_events=widget.cachedEvents?.call(server)??[];_accessRequired=true;});
@@ -265,7 +274,8 @@ class _SettingsPageState extends State<SettingsPage> {
     ];
     final help=_eventsError!=null?S.t('settings.eventsError',{'error':_eventsError})
       :_eventsOffline?S.t('settings.eventsOffline')
-      :(_events.isEmpty&&!_loadingEvents)?S.t('settings.eventsEmpty'):null;
+      :(_events.isEmpty&&!_loadingEvents)?S.t('settings.eventsEmpty')
+      :_autoEvent!=null&&_autoEvent!.id==current?S.t('events.followed',{'name':_autoEvent!.name}):null;
     return _withActions(DropdownButtonFormField<String>(
         key:ValueKey('$current|${_events.length}'),
         initialValue:current.isEmpty?null:current,
@@ -586,7 +596,8 @@ class _SettingsPageState extends State<SettingsPage> {
       return Text(consumptionLine(trackingS:p.trackingS,moving:p.trackingMoving,reduced:p.gpsReduced,
         compass:SharedCompass.instance.running,saver:p.saver,t:S.t));})),
     // Cet appareil, Liaisons, Serveur (PCO / admin), « Copier le rapport » (lot 5).
-    if(widget.api!=null)DiagnosticsPanel(api:widget.api!,server:widget.initial.serverUrl,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
+    if(widget.api!=null)DiagnosticsPanel(api:widget.api!,server:widget.initial.serverUrl,eventId:widget.initial.eventId,actorId:widget.initial.deviceId,
+      onChooseEvent:()=>setState(()=>_tab=_tabs.indexOf('general'))),
   ]);
 
   Widget _tabBody(String id)=>switch(id){
@@ -671,6 +682,10 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+/// Tab the next opening of Paramètres shows (« Choisir un événement » of
+/// the Diagnostic over the map, lot 19); read once.
+String? settingsRequestedTab;
 
 /// The save bar, except on Diagnostic and À propos with nothing changed.
 bool settingsShowsSaveBar({required String tab,required bool firstRun,required bool dirty})=>firstRun||dirty||!(tab=='diagnostics'||tab=='about');

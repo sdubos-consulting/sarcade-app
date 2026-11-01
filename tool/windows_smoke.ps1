@@ -4,7 +4,8 @@
 #   powershell -ExecutionPolicy Bypass -File tool\windows_smoke.ps1 -Exe "C:\Program Files\SARCADE\sarcade_app.exe" -Out smoke
 # Writes to -Out: report.json (from the app), capture.png (screen after a few
 # seconds), demarrage.log (startup log). Exit code 0 when the start window
-# showed within one second and the first screen without error.
+# showed within one second, the first screen without error, a second launch
+# was refused leaving one process, and no « Application Error » event.
 param([Parameter(Mandatory=$true)][string]$Exe, [string]$Out = "smoke", [int]$CaptureAfter = 6, [int]$Timeout = 90)
 $ErrorActionPreference = "Continue"
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -42,12 +43,35 @@ public static class SplashW32 {
     return found;
   } }
 "@
+$started = Get-Date
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $p = Start-Process -FilePath $Exe -PassThru
 $splashSeen = -1
 while ($clock.ElapsedMilliseconds -lt 3000) {
   if ([SplashW32]::Shown($p.Id)) { $splashSeen = $clock.ElapsedMilliseconds; break }
   Start-Sleep -Milliseconds 10
+}
+# Second launch while the first one starts (card « Windows : pastille de
+# liaison grise alors que le Diagnostic dit « Tout fonctionne » », lot 19,
+# point 6): the native runner refuses it at once, brings the first window
+# to the front and returns; one process must remain.
+$exeName = [IO.Path]::GetFileNameWithoutExtension($Exe)
+$p2 = Start-Process -FilePath $Exe -PassThru
+$null = $p2.Handle  # keeps the exit code readable
+if ($p2.WaitForExit(15000)) {
+  Start-Sleep -Milliseconds 300
+  $left = @(Get-Process -Name $exeName -ErrorAction SilentlyContinue | Where-Object { -not $_.HasExited })
+  $code = $p2.ExitCode
+  if ($left.Count -eq 1 -and ($null -eq $code -or $code -eq 0)) {
+    Write-Host "::notice title=Windows second instance ($env:PROCESSOR_ARCHITECTURE)::second launch refused (exit code $code), one process left"
+  } else {
+    Write-Host "::error title=Windows second instance ($env:PROCESSOR_ARCHITECTURE)::second launch ended with code $code, $($left.Count) process(es) left instead of 1"
+    $script:secondFailed = $true
+  }
+} else {
+  Write-Host "::error title=Windows second instance ($env:PROCESSOR_ARCHITECTURE)::the second launch did not end within 15 s"
+  Stop-Process -Id $p2.Id -Force -ErrorAction SilentlyContinue
+  $script:secondFailed = $true
 }
 Start-Sleep -Milliseconds ([Math]::Max(0, $CaptureAfter * 1000 - $clock.ElapsedMilliseconds))
 try {
@@ -115,10 +139,29 @@ if (Test-Path $log) {
   Write-Host "::notice title=Windows start log ($env:PROCESSOR_ARCHITECTURE)::$tail"
 }
 else { Write-Host "::warning title=Windows start::no startup log (Dart code never ran?)" }
+# No abrupt end (owner's crash: 0xc0000409 in ucrtbase.dll at a second
+# launch): no « Application Error » event of the app since the start.
+$crashes = @()
+try {
+  $crashes = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Application Error'; StartTime = $started } -ErrorAction SilentlyContinue |
+    Where-Object { $_.Message -match [regex]::Escape("$exeName.exe") })
+} catch { }
+if ($crashes.Count -gt 0) {
+  foreach ($c in $crashes) { Write-Host "::error title=Windows abrupt end ($env:PROCESSOR_ARCHITECTURE)::$($c.TimeCreated): $(($c.Message -split "`r?`n" | Select-Object -First 6) -join ' | ')" }
+  $script:crashed = $true
+} else {
+  Write-Host "::notice title=Windows abrupt end ($env:PROCESSOR_ARCHITECTURE)::no Application Error event for $exeName.exe"
+}
+if (Test-Path $log) {
+  $m = Select-String -Path $log -Pattern 'second_instance=refused' | Select-Object -Last 1
+  if ($m) { Write-Host "::notice title=Windows second instance log ($env:PROCESSOR_ARCHITECTURE)::$($m.Line)" }
+}
 if (-not (Test-Path $report)) { Write-Host "::error title=Windows start::no report: the first screen was not drawn"; exit 1 }
 $r = Get-Content $report -Raw | ConvertFrom-Json
 Write-Host "--- report.json"; Get-Content $report
 if ($script:uniform) { exit 1 }
+if ($script:secondFailed) { exit 1 }
+if ($script:crashed) { exit 1 }
 if ($script:splashLate) { exit 1 }
 if (-not $r.first_frame) { Write-Host "::error title=Windows start::first screen not drawn"; exit 1 }
 if ($r.errors.Count -gt 0) {
