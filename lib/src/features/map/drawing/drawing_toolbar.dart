@@ -6,6 +6,7 @@ import 'geometry.dart';
 import 'map_feature.dart';
 import 'multi_select.dart';
 import '../../../ui/color_palette.dart';
+import '../../../ui/test_ids.dart';
 
 IconData toolIcon(FeatureKind k)=>switch(k){
   FeatureKind.point=>Icons.place_outlined,
@@ -65,7 +66,8 @@ class DrawingToolbar extends StatelessWidget {
     final tools=<Widget>[
       for(final k in drawingToolbarKinds)Padding(
         padding:const EdgeInsets.symmetric(horizontal:2),
-        child:_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:()=>c.selectTool(c.tool==k?null:k)),
+        // Stable identifier for the CI journeys (card L1, lot 17).
+        child:withId('map.draw-${k.name}',_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:()=>c.selectTool(c.tool==k?null:k))),
       ),
       // « Sélection » left the drawing bar (17 h 36): long press on an
       // object, or « Sélectionner une zone » of the point menu.

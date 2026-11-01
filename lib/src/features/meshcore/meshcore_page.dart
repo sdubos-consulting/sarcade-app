@@ -1,6 +1,8 @@
 /// Outils › MeshCore (lot D, card « MeshCore comme transport », 1 Nov
 /// 2026): the module, its metrics and the nodes of the MeshCore network it
-/// knows (companions, repeaters, room servers, sensors). Core.
+/// knows (companions, repeaters, room servers, sensors). Core. Lot 17:
+/// « Afficher les nœuds sur la carte », and « Écrire » / « Voir sur la
+/// carte » on each node.
 library;
 
 import 'dart:async';
@@ -10,8 +12,10 @@ import 'package:flutter/material.dart';
 import '../../l10n/strings.dart';
 import '../../ui/link_status.dart';
 import '../../ui/overlay_page.dart';
+import 'meshcore_chat_page.dart';
 import 'meshcore_link.dart';
 import 'meshcore_link_card.dart';
+import 'meshcore_map.dart';
 import 'meshcore_protocol.dart';
 
 /// « Diagnostic » of Outils › MeshCore: the card of the module (search,
@@ -38,7 +42,9 @@ IconData meshCoreKindIcon(String kind)=>switch(kind){
   'repeater'=>Icons.cell_tower,'room'=>Icons.forum_outlined,'sensor'=>Icons.sensors,_=>Icons.person_pin_circle_outlined};
 
 class MeshCorePage extends StatefulWidget {
-  const MeshCorePage({super.key});
+  /// « Voir sur la carte »: the map shows the node (lot 17).
+  final void Function(MeshCoreContact)? onShowOnMap;
+  const MeshCorePage({super.key,this.onShowOnMap});
   @override State<MeshCorePage> createState()=>_MeshCorePageState();
 }
 
@@ -78,14 +84,23 @@ class _MeshCorePageState extends State<MeshCorePage> {
           if(link.lastFrameAt!=null)_metric(S.t('mesh.field.lastFrame'),meshCoreAge(link.lastFrameAt,now)),
         ]))),
         if(link.remembered)...[
+          // Lot 17: the nodes on the map, also under Fond et affichage.
+          SwitchListTile(key:const ValueKey('mesh-show-map'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
+            title:Text(S.t('mesh.showOnMap')),value:link.showOnMap,onChanged:(v)=>unawaited(link.setShowOnMap(v))),
           Padding(padding:const EdgeInsets.fromLTRB(4,16,4,6),child:Text(S.t('mesh.nodes',{'n':'${nodes.length}'}),style:t.textTheme.titleSmall)),
           if(nodes.isEmpty)Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.noNodes'),style:t.textTheme.bodySmall)),
           for(final n in nodes)ListTile(key:ValueKey('mesh-node-${n.shortKey}'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             leading:Icon(meshCoreKindIcon(n.kind)),
             title:Text(n.name.isEmpty?n.shortKey:n.name),
             subtitle:Text([S.t('mesh.kind.${n.kind}'),meshCoreHops(n.hops),meshCoreAge(n.lastAdvert,now),
-              if(n.lat!=null)'${n.lat!.toStringAsFixed(4)}, ${n.lon!.toStringAsFixed(4)}'].join(' · '))),
-          Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.readOnly'),style:t.textTheme.bodySmall)),
+              n.lat!=null?'${n.lat!.toStringAsFixed(4)}, ${n.lon!.toStringAsFixed(4)}':S.t('mesh.noPosition')].join(' · ')),
+            trailing:Row(mainAxisSize:MainAxisSize.min,children:[
+              if(meshCoreWritable(n))TextButton(key:ValueKey('mesh-write-${n.shortKey}'),
+                onPressed:()=>unawaited(openMeshCoreChat(context,n.key,n.name)),child:Text(S.t('mesh.write'))),
+              if(meshCoreHasPosition(n)&&widget.onShowOnMap!=null)TextButton(key:ValueKey('mesh-see-${n.shortKey}'),
+                onPressed:()=>widget.onShowOnMap!(n),child:Text(S.t('mesh.seeOnMap'))),
+            ])),
+          Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.local'),style:t.textTheme.bodySmall)),
         ],
       ]))),
     );

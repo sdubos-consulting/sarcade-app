@@ -19,9 +19,9 @@ int outlinePolylines(List layers) => layers.whereType<PolylineLayer>().fold(0, (
 void main() {
   test('exercise: dashed contour and leader line; real search: leader only', () {
     final ex = buildBearingLayers(bearings: [towards('1', 3000, 200, exercise: true), towards('2', 4000, 300), towards('3', 2500, 90)],
-        onTapBearing: (_) {}, onTapZone: (_, _) {});
+        onTapBearing: (_) {}, onTapZone: (_) {});
     final real = buildBearingLayers(bearings: [towards('1', 3000, 200), towards('2', 4000, 300), towards('3', 2500, 90)],
-        onTapBearing: (_) {}, onTapZone: (_, _) {});
+        onTapBearing: (_) {}, onTapZone: (_) {});
     expect(outlinePolylines(ex), outlinePolylines(real) + 1);
   });
 }
