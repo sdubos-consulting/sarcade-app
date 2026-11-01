@@ -164,6 +164,23 @@ void main(){
     expect(Aircraft.fromJson(plane())!.positionTime,1793491200,reason:'no position time: last contact');
   });
 
+  test('sheet: age of the position and advance of the estimate (lot 18)',(){
+    DateTime t(int s)=>DateTime.fromMillisecondsSinceEpoch(s*1000);
+    final a=Aircraft.fromJson({...plane(),'speed_kt':250,'track_deg':90,'position_time':1000})!;
+    expect(aircraftEstimateS(a,t(1042)),42);
+    expect(aircraftPositionDiag(a,t(1042)),'Position reçue il y a 42 s · estimée +42 s');
+    expect(aircraftPositionDiag(a,t(1090)),'Position reçue il y a 90 s · estimée +60 s',reason:'60 s at most');
+    expect(aircraftPositionDiag(a,t(1000)),'Position reçue il y a 0 s',reason:'nothing to estimate');
+    expect(aircraftPositionDiag(a,t(995)),'Position reçue il y a 0 s',reason:'never negative');
+    final ground=Aircraft.fromJson({...plane(),'on_ground':true,'position_time':1000})!;
+    expect(aircraftPositionDiag(ground,t(1030)),'Position reçue il y a 30 s',reason:'on the ground: shown as received');
+    final still=Aircraft.fromJson({...plane(),'speed_kt':null,'position_time':1000})!;
+    expect(aircraftEstimateS(still,t(1030)),0);
+    expect(aircraftPositionDiag(Aircraft.fromJson({...plane(),'last_contact':null})!,t(1030)),isNull,reason:'no time: no line');
+    S.setLanguage('en');
+    expect(aircraftPositionDiag(a,t(1042)),'Position received 42 s ago · estimated +42 s');
+  });
+
   test('icon by OpenSky category, unknown → generic, type in words',(){
     Aircraft cat(int? c,{bool rotor=false})=>Aircraft.fromJson({...plane(rotor:rotor),'category':c})!;
     final expected={2:AircraftKind.light,3:AircraftKind.light,4:AircraftKind.airliner,5:AircraftKind.airliner,6:AircraftKind.airliner,
@@ -229,6 +246,7 @@ void main(){
     expect(find.byKey(const ValueKey('adsb-card')),findsOneWidget);
     expect(t.getSize(find.byKey(const ValueKey('adsb-card'))).width,300,reason:'small window, the map stays visible');
     expect(find.text('Catégorie non transmise'),findsOneWidget,reason:'type in words');
+    expect(find.textContaining('Position reçue il y a'),findsOneWidget,reason:'age of the position by the server clock (lot 18)');
     await t.ensureVisible(find.byKey(const ValueKey('adsb-follow')));
     await t.tap(find.byKey(const ValueKey('adsb-follow')));
     expect(c.isFollowed('3c6444'),isTrue);

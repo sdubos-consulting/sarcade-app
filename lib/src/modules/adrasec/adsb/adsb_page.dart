@@ -233,6 +233,7 @@ class AircraftCard extends StatelessWidget {
           if(aircraftStale(a,adsb.serverNow))Text(S.t('adsb.stale'),style:t.textTheme.bodySmall?.copyWith(fontWeight:FontWeight.w700)),
           for(final (k,v) in aircraftLines(a,now:adsb.serverNow))Padding(padding:const EdgeInsets.symmetric(vertical:2),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
             SizedBox(width:118,child:Text(S.t(k),style:t.textTheme.bodySmall)),Expanded(child:Text(v,style:t.textTheme.bodyMedium))])),
+          AircraftPositionAge(adsb:adsb,aircraft:a),
         ],
         if(followed&&(adsb.routes[id]?.length??0)>1)Padding(padding:const EdgeInsets.only(top:4),child:Text(S.t('adsb.routeShown'),style:t.textTheme.bodySmall)),
         const SizedBox(height:8),
@@ -244,4 +245,27 @@ class AircraftCard extends StatelessWidget {
         ]),
       ])));
   });
+}
+
+/// Discreet line under the sheet (lot 18, 1 Nov 2026): « Position reçue il
+/// y a 42 s · estimée +42 s », by the server clock, refreshed every second;
+/// to compare the application with the TV.
+class AircraftPositionAge extends StatefulWidget {
+  final AdsbController adsb; final Aircraft aircraft;
+  const AircraftPositionAge({super.key,required this.adsb,required this.aircraft});
+  @override State<AircraftPositionAge> createState()=>_AircraftPositionAgeState();
+}
+
+class _AircraftPositionAgeState extends State<AircraftPositionAge> {
+  Timer? _tick;
+  @override void initState(){super.initState();_tick=Timer.periodic(const Duration(seconds:1),(_){if(mounted)setState((){});});}
+  @override void dispose(){_tick?.cancel();super.dispose();}
+
+  @override Widget build(BuildContext context){
+    final text=aircraftPositionDiag(widget.aircraft,widget.adsb.serverNow);
+    if(text==null)return const SizedBox.shrink();
+    final t=Theme.of(context);
+    return Padding(padding:const EdgeInsets.only(top:4),child:Text(text,key:const ValueKey('adsb-position-age'),
+      style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)));
+  }
 }
