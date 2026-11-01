@@ -45,6 +45,8 @@ dependencies:
   firebase_messaging: ^16.0.0
   # QR code of a Smart TV read by the camera (Android, iPhone).
   mobile_scanner: ^7.4.2
+  # Bluetooth LE, MeshCore trial (BSD-3; flutter_blue_plus now needs a paid licence).
+  universal_ble: ^3.2.0
 dependency_overrides:
   # Windows storage of the Access session without the native ATL part
   # (third_party/flutter_secure_storage_windows/README.md).
