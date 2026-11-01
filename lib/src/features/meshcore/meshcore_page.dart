@@ -9,9 +9,17 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/strings.dart';
 import '../../ui/link_status.dart';
+import '../../ui/overlay_page.dart';
 import 'meshcore_link.dart';
 import 'meshcore_link_card.dart';
 import 'meshcore_protocol.dart';
+
+/// « Diagnostic » of Outils › MeshCore: the card of the module (search,
+/// choice, state, journal, « Oublier ce module »).
+Future<void> openMeshCoreDiagnostic(BuildContext context)=>showOverlayPage<void>(context,(_)=>Scaffold(
+  appBar:LinkedAppBar(title:Text('${S.t('mesh.tool')} · ${S.t('mesh.diagnostic')}')),
+  body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),
+    child:ListView(padding:const EdgeInsets.all(16),children:const [MeshCoreLinkCard()])))));
 
 /// « il y a 3 min », « il y a 2 h », « il y a 4 j ».
 String meshCoreAge(DateTime? at,DateTime now){
@@ -49,6 +57,10 @@ class _MeshCorePageState extends State<MeshCorePage> {
     return Scaffold(
       appBar:LinkedAppBar(title:Text(S.t('mesh.tool')),actions:[
         IconButton(tooltip:S.t('mesh.refresh'),onPressed:link.state==MeshCoreState.connected?()=>unawaited(link.refresh()):null,icon:const Icon(Icons.refresh)),
+        // Everything about the module in one place (1 Nov 2026, 8 h 17):
+        // search, choose, journal, forget.
+        TextButton.icon(key:const ValueKey('meshcore-diagnostic'),onPressed:()=>openMeshCoreDiagnostic(context),
+          icon:const Icon(Icons.troubleshoot),label:Text(S.t('mesh.diagnostic'))),
       ]),
       body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),child:ListView(padding:const EdgeInsets.all(16),children:[
         if(!link.remembered)...[
@@ -62,8 +74,6 @@ class _MeshCorePageState extends State<MeshCorePage> {
           if(link.connectedSince!=null)_metric(S.t('mesh.field.since'),meshCoreAge(link.connectedSince,now)),
           _metric(S.t('mesh.field.frames'),S.t('mesh.framesValue',{'in':'${link.framesIn}','out':'${link.framesOut}'})),
           if(link.lastFrameAt!=null)_metric(S.t('mesh.field.lastFrame'),meshCoreAge(link.lastFrameAt,now)),
-          Align(alignment:Alignment.centerLeft,child:TextButton.icon(onPressed:()=>unawaited(link.forget()),
-            icon:const Icon(Icons.bluetooth_disabled),label:Text(S.t('mesh.forget')))),
         ]))),
         if(link.remembered)...[
           Padding(padding:const EdgeInsets.fromLTRB(4,16,4,6),child:Text(S.t('mesh.nodes',{'n':'${nodes.length}'}),style:t.textTheme.titleSmall)),

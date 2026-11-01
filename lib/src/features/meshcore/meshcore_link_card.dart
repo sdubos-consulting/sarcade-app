@@ -11,9 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:universal_ble/universal_ble.dart';
 
 import '../../l10n/strings.dart';
-import '../../ui/overlay_page.dart';
 import 'meshcore_link.dart';
-import 'meshcore_page.dart';
 import 'meshcore_protocol.dart';
 
 /// Text of the state line ('mesh.state.connected'…).
@@ -77,7 +75,8 @@ class _MeshCoreLinkCardState extends State<MeshCoreLinkCard> {
 
   @override Widget build(BuildContext context){
     final s=Theme.of(context).colorScheme, small=Theme.of(context).textTheme.bodySmall;
-    final busy=link.state==MeshCoreState.connecting||link.state==MeshCoreState.reconnecting;
+    final busy=link.trying;
+    final problem=meshCoreProblem(state:link.state,trying:link.trying,error:link.error,retryIn:link.retryIn);
     return Card(key:const ValueKey('meshcore-link'),margin:const EdgeInsets.only(top:12),child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Row(children:[
         Icon(Icons.settings_input_antenna,color:s.primary),const SizedBox(width:10),
@@ -86,11 +85,9 @@ class _MeshCoreLinkCardState extends State<MeshCoreLinkCard> {
       Padding(padding:const EdgeInsets.only(top:4,bottom:8),child:Text(S.t('mesh.help'),style:small)),
       if(link.remembered)...[
         Text('${link.deviceName??link.deviceId} · ${meshCoreStateText(link.state)}',key:const ValueKey('meshcore-state')),
-        if(link.error!=null&&link.state!=MeshCoreState.connected)Padding(padding:const EdgeInsets.only(top:4),child:Text(link.error!,style:small?.copyWith(color:s.error))),
+        if(problem!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text(problem,key:const ValueKey('meshcore-problem'),style:small?.copyWith(color:s.error))),
         const SizedBox(height:8),
         Wrap(spacing:8,runSpacing:8,children:[
-          FilledButton.tonalIcon(key:const ValueKey('meshcore-open'),onPressed:()=>showOverlayPage<void>(context,(_)=>const MeshCorePage()),
-            icon:const Icon(Icons.hub_outlined),label:Text(S.t('mesh.open'))),
           OutlinedButton.icon(onPressed:link.state==MeshCoreState.connected?()=>unawaited(link.refresh()):null,icon:const Icon(Icons.refresh),label:Text(S.t('mesh.refresh'))),
           OutlinedButton.icon(key:const ValueKey('meshcore-forget'),onPressed:()=>unawaited(link.forget()),icon:const Icon(Icons.bluetooth_disabled),label:Text(S.t('mesh.forget'))),
           if(busy)const Padding(padding:EdgeInsets.all(8),child:SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2))),
