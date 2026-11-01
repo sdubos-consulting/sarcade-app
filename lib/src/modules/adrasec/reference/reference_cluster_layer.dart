@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../models/reference_site.dart';
+import 'reference_site.dart';
 
 /// Radio reference sites (high points, relays) grouped on screen when the
 /// map is zoomed out, so that the 183 sites of the ADRASEC78 map do not hide

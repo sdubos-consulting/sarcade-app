@@ -3,15 +3,15 @@
 /// for every operator.
 library;
 
-import '../../ui/choice_pills.dart';
+import '../../../ui/choice_pills.dart';
 import 'package:flutter/material.dart';
 
-import '../../l10n/strings.dart';
-import '../../offline/local_store.dart';
-import '../../services/sarcade_api.dart';
-import '../../ui/save_bar.dart';
+import '../../../l10n/strings.dart';
+import '../../../offline/local_store.dart';
+import '../../../services/sarcade_api.dart';
+import '../../../ui/save_bar.dart';
 import 'signals.dart';
-import '../../ui/link_status.dart';
+import '../../../ui/link_status.dart';
 
 class SignalDefaultsPage extends StatefulWidget {
   final SarcadeApi api; final LocalStore? store;

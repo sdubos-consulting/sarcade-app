@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sarcade_app/src/features/map/fixed_stations.dart';
+import 'package:sarcade_app/src/modules/adrasec/fixed_stations.dart';
 import 'package:sarcade_app/src/models/position.dart';
 
 SarcadePosition aprs(String call, {String? symbol, double lat = 48.8, double lon = 2.1, DateTime? t, double? speed}) => SarcadePosition(

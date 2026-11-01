@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sarcade_app/src/features/bearings/bearing_models.dart';
-import 'package:sarcade_app/src/features/bearings/signals.dart';
-import 'package:sarcade_app/src/features/tools/resection.dart';
-import 'package:sarcade_app/src/models/reference_site.dart';
+import 'package:sarcade_app/src/modules/adrasec/bearings/bearing_models.dart';
+import 'package:sarcade_app/src/modules/adrasec/bearings/signals.dart';
+import 'package:sarcade_app/src/modules/adrasec/resection/resection.dart';
+import 'package:sarcade_app/src/modules/adrasec/reference/reference_site.dart';
 
 Bearing _b(String id, String search, int minute, {bool exercise = false, String by = 'T1'}) {
   final t = DateTime.utc(2026, 10, 29, 12, minute);

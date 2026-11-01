@@ -3,8 +3,8 @@
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sarcade_app/src/features/bearings/bearing_layers.dart';
-import 'package:sarcade_app/src/features/bearings/bearing_models.dart';
+import 'package:sarcade_app/src/modules/adrasec/bearings/bearing_layers.dart';
+import 'package:sarcade_app/src/modules/adrasec/bearings/bearing_models.dart';
 import 'package:sarcade_app/src/features/map/drawing/geometry.dart' as geo;
 
 const target = LatLng(48.85, 1.95);

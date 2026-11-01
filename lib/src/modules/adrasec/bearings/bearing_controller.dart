@@ -4,9 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../services/location_service.dart';
-import '../compass/shared_compass.dart';
-import '../measure/wmm.dart';
+import '../../../services/location_service.dart';
+import '../../../features/compass/shared_compass.dart';
+import '../../../features/measure/wmm.dart';
 import 'bearing_models.dart';
 
 /// Bearings of the event, and the « taking a bearing » mode: live GPS

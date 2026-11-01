@@ -10,8 +10,11 @@ import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
 
-import '../../l10n/strings.dart';
-import '../map/drawing/geometry.dart' as geo;
+import '../../../l10n/strings.dart';
+import '../../../features/map/drawing/geometry.dart' as geo;
+
+// Core since lot C: the module keeps seeing them through this file.
+export '../../../ui/operator_color.dart';
 
 class Bearing {
   final String id, eventId, createdBy, updatedBy;
@@ -259,19 +262,7 @@ List<String> signalsByRecency(Iterable<Bearing> list){
   return out;
 }
 
-/// Colour of an operator (dot where a bearing was taken), stable from the
-/// identifier, until the operator colours of the event exist.
-int operatorColor(String id){
-  const palette=[0xFFE53935,0xFFFB8C00,0xFF43A047,0xFF1E88E5,0xFF8E24AA,0xFF00897B,0xFFD81B60,0xFF6D4C41,0xFF3949AB,0xFF7CB342];
-  var h=0; for(final c in id.codeUnits){h=(h*31+c)&0x7FFFFFFF;}
-  return palette[h%palette.length];
-}
 
-/// Initials shown in the dot: callsign or terminal, two characters.
-String operatorInitials(String id){
-  final t=id.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'),'');
-  return t.length<=2?t:t.substring(0,2);
-}
 
 /// Résection (ATAK 2): position of a team without GPS from the azimuths it
 /// measured towards two or three known points (high points, relays). Seen

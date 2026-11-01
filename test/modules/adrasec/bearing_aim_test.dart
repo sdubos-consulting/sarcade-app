@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sarcade_app/src/features/bearings/bearing_aim.dart';
+import 'package:sarcade_app/src/modules/adrasec/bearings/bearing_aim.dart';
 import 'package:sarcade_app/src/features/map/drawing/geometry.dart' as geo;
 
 void main() {

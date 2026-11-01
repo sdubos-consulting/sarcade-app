@@ -23,7 +23,7 @@ import '../../models/comm_group.dart' show isPco, myRoles;
 import '../../services/sarcade_api.dart' show SarcadeApi, SarcadeHttpException;
 import 'diagnostics_panel.dart';
 import 'event_settings_section.dart';
-import '../bearings/signal_defaults_page.dart';
+import '../../modules/adrasec/bearings/signal_defaults_page.dart';
 import '../../offline/local_store.dart';
 import '../compass/shared_compass.dart';
 import '../../services/power_state.dart';

@@ -33,7 +33,7 @@ import '../../platform/platform_services.dart';
 import '../../services/notification_service.dart';
 import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
-import '../aprs/aprs_models.dart' show linkState;
+import '../../modules/adrasec/aprs/aprs_models.dart' show linkState;
 import '../../services/event_names.dart';
 import '../navigation/road_graph_service.dart';
 

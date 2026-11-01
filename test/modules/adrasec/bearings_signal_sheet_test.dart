@@ -1,7 +1,7 @@
 // 1 Nov 2026: one search whatever the apostrophe; sheets at most 560 px wide.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sarcade_app/src/features/bearings/bearing_models.dart';
+import 'package:sarcade_app/src/modules/adrasec/bearings/bearing_models.dart';
 import 'package:sarcade_app/src/ui/theme.dart';
 
 Bearing b(String id, String search, int minute) => Bearing(id: id, eventId: 'e', origin: const LatLng(48.8, 2.1), azimuthDeg: 10,

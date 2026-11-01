@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sarcade_app/src/features/bearings/bearing_aim.dart';
-import 'package:sarcade_app/src/features/bearings/bearing_models.dart';
+import 'package:sarcade_app/src/modules/adrasec/bearings/bearing_aim.dart';
+import 'package:sarcade_app/src/modules/adrasec/bearings/bearing_models.dart';
 import 'package:sarcade_app/src/features/compass/compass_reading.dart';
 import 'package:sarcade_app/src/features/compass/shared_compass.dart';
 

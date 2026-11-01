@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../l10n/strings.dart';
+import '../../../l10n/strings.dart';
 
 class MouseBearingHud extends StatelessWidget {
   final double? trueDeg, magneticDeg, accuracyM;
