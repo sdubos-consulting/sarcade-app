@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
 import '../../l10n/strings.dart';
+import 'tv_screens_button.dart' show tvScreensChanged;
 import '../../models/comm_group.dart';
 import '../../services/sarcade_api.dart';
 import '../../ui/theme.dart' show themeMode;
@@ -64,6 +65,8 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
       await widget.api.approveDisplay(code,widget.eventId,name:name);
       _say('tv.done');
       await _load();
+      // The « Écrans » button of the map shows it at once (1 Nov 2026).
+      tvScreensChanged.value++;
     }on SarcadeHttpException catch(e){
       _say(e.statusCode==401||e.statusCode==403?'tv.signIn':'tv.unknownCode');
     }catch(_){
@@ -220,16 +223,17 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
   Future<void> _view(Map<String,dynamic> d,{required bool mine}) async {
     final v=mine?currentMapView?.call():null;
     if(mine&&v==null){_say('tv.noMap');return;}
-    Map<String,dynamic>? json;
+    Map<String,dynamic>? json; bool? messages;
     if(v!=null){
       final o=currentMapOptions?.call();
       final m=await _confirmView(v,o,d['messages']!=false);
       if(m==null||!mounted)return;
       json=tvViewJson(v,options:o==null?null:(layers:o.layers,opacity:o.opacity,messages:m),from:myActorId,theme:themeMode.value);
       if(o==null)json['messages']=m;
+      messages=m;
     }
     try{
-      await widget.api.sendDisplayView(widget.eventId,'${d['id']}',json);
+      await widget.api.sendDisplayView(widget.eventId,'${d['id']}',json,messages:messages);
       await _load();
       _say(mine?'tv.viewSent':'tv.autoSent');
     }on SarcadeHttpException catch(e){
