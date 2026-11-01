@@ -6,6 +6,10 @@
   the definition is set for every target, plugins included.
 - Native start window with the SARCADE logo, shown at the click on the icon
   and closed at the first image of Flutter (tool/windows_runner/).
+- One SARCADE per session: a second process is refused first thing in
+  wWinMain, brings the window already open to the front and returns
+  (tool/windows_runner/single_instance.*); channel « sarcade/runner » so the
+  Dart code quits without exit() (tool/windows_runner/runner_channel.*).
 
 Idempotent, and fails loudly if the template changed shape.
 """
@@ -52,6 +56,8 @@ def main() -> int:
     ico.write_bytes(Path("assets/icon/generated/windows/app_icon.ico").read_bytes())
     print(f"patched {ico}")
     if not patch_splash():
+        return 1
+    if not patch_single_instance():
         return 1
     return 0
 
@@ -120,6 +126,69 @@ def patch_splash() -> bool:
         text, n = re.subn(r'(\n(\s*)this->Show\(\);\n)', r'\1\2splash_window::Close();\n', text, count=1)
         if n != 1:
             return _fail("this->Show() not found in windows/runner/flutter_window.cpp")
+        window_cpp.write_text(text, encoding="utf-8")
+    print(f"patched {window_cpp}")
+    return True
+
+
+def patch_single_instance() -> bool:
+    """Card « Windows : pastille de liaison grise alors que le Diagnostic dit
+    Tout fonctionne » (lot 19, points 1, 2 and 6): the second process is
+    refused by the runner before the start window and the engine, and the
+    Dart code ends the process through the runner (no exit() while the
+    start window and the engine run: crash 0xc0000409)."""
+    for name in ("single_instance.h", "single_instance.cpp", "runner_channel.h", "runner_channel.cpp"):
+        (RUNNER / name).write_bytes((SPLASH_SOURCES / name).read_bytes())
+    cmake = RUNNER / "CMakeLists.txt"
+    text = cmake.read_text(encoding="utf-8")
+    for source in ("single_instance.cpp", "runner_channel.cpp"):
+        if f'"{source}"' not in text:
+            text, n = re.subn(r'(\n(\s*)"splash_window\.cpp"\n)', r'\1\2"%s"\n' % source, text, count=1)
+            if n != 1:
+                return _fail("splash_window.cpp not found in windows/runner/CMakeLists.txt")
+    cmake.write_text(text, encoding="utf-8")
+    print(f"patched {cmake}")
+    main_cpp = RUNNER / "main.cpp"
+    text = main_cpp.read_text(encoding="utf-8")
+    if "single_instance::Acquire" not in text:
+        text, n = re.subn(r'(#include "splash_window.h"\n)',
+                          r'\1#include "single_instance.h"\n#include "runner_channel.h"\n', text, count=1)
+        if n != 1:
+            return _fail('#include "splash_window.h" not found in windows/runner/main.cpp')
+        guard = (
+            "  // One SARCADE per session: a second process brings the window\n"
+            "  // already open to the front and returns, before the start window\n"
+            "  // and the engine (single_instance.h).\n"
+            "  if (!single_instance::Acquire()) {\n"
+            "    single_instance::ShowExisting();\n"
+            "    return EXIT_SUCCESS;\n"
+            "  }\n"
+        )
+        text, n = re.subn(r'(\n)(  splash_window::Start\(instance\);\n)', lambda m: m.group(1) + guard + m.group(2), text, count=1)
+        if n != 1:
+            return _fail("splash_window::Start not found in windows/runner/main.cpp")
+        # End of the process: the start window thread ends first, and the
+        # exit code asked by the Dart code (runner_channel.h) is returned.
+        text, n = re.subn(r'(\n(\s*))::CoUninitialize\(\);(\s*)return EXIT_SUCCESS;',
+                          r'\1splash_window::Stop();\1::CoUninitialize();\3return runner_channel::ExitCode();', text, count=1)
+        if n != 1:
+            return _fail("::CoUninitialize(); return EXIT_SUCCESS; not found in windows/runner/main.cpp")
+        main_cpp.write_text(text, encoding="utf-8")
+    print(f"patched {main_cpp}")
+    window_cpp = RUNNER / "flutter_window.cpp"
+    text = window_cpp.read_text(encoding="utf-8")
+    if "runner_channel::Register" not in text:
+        text, n = re.subn(r'(#include "splash_window.h"\n)', r'\1#include "runner_channel.h"\n', text, count=1)
+        if n != 1:
+            return _fail('#include "splash_window.h" not found in windows/runner/flutter_window.cpp')
+        text, n = re.subn(r'(\n(\s*)RegisterPlugins\(flutter_controller_->engine\(\)\);\n)',
+                          r'\1\2runner_channel::Register(flutter_controller_->engine()->messenger(), GetHandle());\n',
+                          text, count=1)
+        if n != 1:
+            return _fail("RegisterPlugins not found in windows/runner/flutter_window.cpp")
+        text, n = re.subn(r'(\n(\s*)flutter_controller_ = nullptr;)', r'\n\2runner_channel::Release();\1', text, count=1)
+        if n != 1:
+            return _fail("flutter_controller_ = nullptr not found in windows/runner/flutter_window.cpp")
         window_cpp.write_text(text, encoding="utf-8")
     print(f"patched {window_cpp}")
     return True
