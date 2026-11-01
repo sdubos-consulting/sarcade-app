@@ -3,6 +3,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../operations/event_settings.dart';
 import '../services/sarcade_api.dart';
+import 'event_access.dart';
 import 'local_store.dart';
 import 'outbox_policy.dart';
 import 'sync_operation.dart';
@@ -27,8 +28,17 @@ class OfflineSyncService {
   /// answer at all: a refusal or a server error is an answer, the server is
   /// reachable (« Robustesse de la synchronisation »).
   bool lastSyncOk=false; DateTime? lastServerContact;
+  /// Answer of the server for the event (card « Windows : pastille de
+  /// liaison grise… », lot 19, point 9): a refused changes feed (404
+  /// unknown event, or another code) is no longer a successful
+  /// synchronisation; the Diagnostic and the link dot say why.
+  EventAccess eventAccess=EventAccess.ok;
+  /// HTTP code of the last refusal of the changes feed.
+  int? eventRefusedStatus;
   /// The current event does not exist on this server (changes feed 404).
-  bool eventUnknown=false;
+  bool get eventUnknown=>eventAccess==EventAccess.unknown;
+  /// No answer from the server (not a refusal of the event).
+  bool get serverDown=>!lastSyncOk&&eventAccess==EventAccess.ok;
   OfflineSyncService({required this.api,required this.store,required this.eventId,this.onRemoteChange});
 
   String get server=>api.baseUrl;
@@ -147,11 +157,12 @@ class OfflineSyncService {
   Future<({List<Map<String,dynamic>> changes,String nextCursor})?> _changes(int cursor) async {
     try{
       final feed=await api.changes(eventId,cursor);
-      eventUnknown=false;
+      eventAccess=EventAccess.ok; eventRefusedStatus=null;
       return feed;
     }on SarcadeHttpException catch(e){
-      eventUnknown=e.statusCode==404;
-      lastSyncOk=true; lastServerContact=DateTime.now();
+      // The server answered (reachable), but the event is refused.
+      eventAccess=eventAccessOf(e.statusCode); eventRefusedStatus=e.statusCode;
+      lastSyncOk=false; lastServerContact=DateTime.now();
       return null;
     }
   }
