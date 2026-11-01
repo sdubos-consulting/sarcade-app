@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:universal_ble/universal_ble.dart';
 
 import '../../offline/local_store.dart';
+import '../../l10n/strings.dart';
 import 'meshcore_protocol.dart';
 
 enum MeshCoreState { none, connecting, connected, reconnecting, failed }
@@ -29,6 +30,15 @@ String meshCorePillTone(MeshCoreState s)=>switch(s){
 /// Delay before the next attempt to join the module again: 5 s, 15 s,
 /// 30 s, then every minute.
 Duration meshCoreRetryDelay(int attempt)=>Duration(seconds:const [5,15,30,60][attempt.clamp(0,3)]);
+
+/// Text shown when the module cannot be reached (card « MeshCore : message
+/// d'erreur lisible », validated 1 Nov 2026, 8 h 15): the technical error
+/// stays in the journal only.
+String? meshCoreProblem({required MeshCoreState state,required bool trying,String? error,Duration? retryIn}){
+  if(error==null||trying||state==MeshCoreState.connected||state==MeshCoreState.none)return null;
+  final wait=retryIn==null?'':' ${S.t('mesh.retryIn',{'s':retryIn.inSeconds})}';
+  return '${S.t('mesh.unreachable')}$wait';
+}
 
 /// Nodes sorted for the list: heard most recently first, unnamed last.
 List<MeshCoreContact> sortedContacts(Iterable<MeshCoreContact> all)=>all.toList()
@@ -50,6 +60,10 @@ class MeshCoreLink extends ChangeNotifier {
   int framesIn=0, framesOut=0;
   DateTime? lastFrameAt, connectedSince, contactsAt;
   final List<String> journal=[];
+  /// A connection attempt is running (the spinner turns only then).
+  bool trying=false;
+  /// Delay before the next attempt after a failure.
+  Duration? retryIn;
 
   StreamSubscription<Uint8List>? _valueSub;
   StreamSubscription<bool>? _connSub;
@@ -102,6 +116,7 @@ class MeshCoreLink extends ChangeNotifier {
   Future<void> _join() async {
     final id=deviceId; if(id==null)return;
     _retry?.cancel();
+    trying=true; retryIn=null;
     _set(_attempt==0?MeshCoreState.connecting:MeshCoreState.reconnecting);
     try{
       log('connexion à ${deviceName??id}');
@@ -114,7 +129,7 @@ class MeshCoreLink extends ChangeNotifier {
       await UniversalBle.subscribeNotifications(id,meshCoreService,meshCoreTx);
       await _connSub?.cancel();
       _connSub=UniversalBle.connectionStream(id).listen((up){if(!up)_lost();});
-      connectedSince=DateTime.now(); _attempt=0;
+      connectedSince=DateTime.now(); _attempt=0; trying=false;
       _set(MeshCoreState.connected);
       await _send(deviceQuery(),'DEVICE_QUERY');
       await Future<void>.delayed(const Duration(milliseconds:300));
@@ -125,6 +140,7 @@ class MeshCoreLink extends ChangeNotifier {
       _poll=Timer.periodic(const Duration(minutes:1),(_)=>unawaited(refresh()));
     }catch(e){
       log('échec : $e');
+      trying=false;
       _schedule('$e');
     }
   }
@@ -139,6 +155,7 @@ class MeshCoreLink extends ChangeNotifier {
   void _schedule(String? err){
     if(deviceId==null)return;
     final wait=meshCoreRetryDelay(_attempt++);
+    retryIn=wait;
     _set(_attempt>3?MeshCoreState.failed:MeshCoreState.reconnecting,err:err);
     _retry?.cancel();
     _retry=Timer(wait,()=>unawaited(_join()));

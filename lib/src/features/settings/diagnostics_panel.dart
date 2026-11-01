@@ -26,7 +26,8 @@ import '../../config/version.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart' show eventModules;
 import '../meshcore/meshcore_link.dart';
-import '../meshcore/meshcore_link_card.dart';
+import '../meshcore/meshcore_page.dart';
+import '../../ui/overlay_page.dart';
 import '../../models/comm_group.dart' show myRoles;
 import '../../offline/sync_service.dart';
 import '../../offline/unsent_page.dart';
@@ -196,6 +197,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       (block:lk,label:S.t('aprs.is'),value:S.t('aprs.link.${linkState(link('aprs_is'))}'),state:linkState(link('aprs_is'))),
       (block:lk,label:S.t('aprs.radio'),value:S.t('aprs.link.${linkState(link('radio'))}'),state:linkState(link('radio'))),
       ?adsbDiagLine(lk,adsb,DateTime.now()),
+      // MeshCore: one status line; everything else in Outils › MeshCore.
+      if(MeshCoreLink.instance.supported)meshCoreDiagLine(lk,MeshCoreLink.instance),
     ];
     var server=<DiagLine>[]; String? err;
     if(_pco){
@@ -283,9 +286,12 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       if(!_loading||all.isNotEmpty)_summary(all),
       if(_device.isNotEmpty)_block(S.t('diag.device'),_device),
       if(links.isNotEmpty)_block(S.t('diag.links'),links,
-        footer:sync==null?null:UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});})),
-      // Liaisons: the MeshCore module, remembered (lot D, 1 Nov 2026).
-      if(MeshCoreLink.instance.supported)const MeshCoreLinkCard(),
+        footer:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          if(MeshCoreLink.instance.supported)Align(alignment:Alignment.centerLeft,child:Padding(padding:const EdgeInsets.symmetric(horizontal:8),
+            child:TextButton.icon(key:const ValueKey('diag-open-meshcore'),onPressed:()=>showOverlayPage<void>(context,(_)=>const MeshCorePage()),
+              icon:const Icon(Icons.hub_outlined),label:Text(S.t('mesh.openTool'))))),
+          if(sync!=null)UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});}),
+        ])),
       if(_pco&&(_server.isNotEmpty||_serverError!=null))_block(S.t('diag.server'),_server,
         footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!))),
       // Every « Connexion requise » of Cloudflare on this device (1 Nov 2026).
@@ -317,6 +323,12 @@ DiagLine? adsbDiagLine(String block,Map<String,dynamic>? st,DateTime now){
   if(detail.isNotEmpty)return (block:block,label:label,value:'${S.t('adsb.diag.error')} ($detail) · $day',state:'red');
   return (block:block,label:label,value:'${S.t('adsb.diag.idle')} · $day',state:null);
 }
+
+/// Line « Module MeshCore » of Liaisons (1 Nov 2026, 8 h 17): connected,
+/// out of reach, or no module chosen.
+DiagLine meshCoreDiagLine(String block,MeshCoreLink link)=>(block:block,label:S.t('mesh.tool'),
+  value:link.remembered?'${link.deviceName??link.deviceId} · ${S.t('mesh.state.${link.state.name}')}':S.t('mesh.state.none'),
+  state:!link.remembered?null:switch(meshCorePillTone(link.state)){'ok'=>'green','wait'=>'orange',_=>'red'});
 
 /// Where itineraries are computed: 'server', 'device' or 'none'.
 String routingWhere({required bool server,required bool device})=>server?'server':device?'device':'none';
