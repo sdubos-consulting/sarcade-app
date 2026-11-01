@@ -195,6 +195,76 @@ double _wRadius(LatLng c,List<({LatLng p,double w})> pts){
   return (crossings:[for(final e in pts)e.p],centre:c,radiusM:r,bearings:used.length,excluded:excluded,autoExcluded:autoIds);
 }
 
+/// Several beacons on one signal (card « Zone probable : plusieurs zones
+/// quand il y a plusieurs balises », option 1 validated 1 Nov 2026, 7 h 44).
+/// Same rule as the server (`tv.split_zones`), keep in step.
+const seedMaxRadiusM=2000.0, zoneMaxRadiusM=3000.0, minOriginSpreadM=100.0, maxZones=4;
+
+typedef BearingZone=({List<LatLng> crossings,LatLng? centre,double radiusM,int bearings,List<String> excluded,List<String> autoExcluded,int index});
+
+bool _spread(List<Bearing> g,Iterable<int> ids){
+  final pts=[for(final i in ids)g[i].origin];
+  for(var x=0;x<pts.length;x++){for(var y=x+1;y<pts.length;y++){if(geo.distanceM(pts[x],pts[y])>=minOriginSpreadM)return true;}}
+  return false;
+}
+
+/// Two zones or more when the bearings of one signal point at several
+/// places: the tightest three bearings (crossing within 2 km, taken from
+/// two places at least) seed a zone, the bearings that agree with it (on
+/// the drawn line) join, and again with the others. Null for a single zone
+/// (the robust zone applies, unchanged) or when a bearing was put in the
+/// zone by hand.
+List<BearingZone>? splitZones(List<Bearing> g){
+  final cand=[for(var i=0;i<g.length;i++)if(g[i].zone!='out')i];
+  if(cand.length<2*minKeptBearings||cand.any((i)=>g[i].zone=='in'))return null;
+  final remaining={...cand};
+  final found=<({Set<int> members,LatLng centre,double radius,List<LatLng> crossings})>[];
+  while(found.length<maxZones&&remaining.length>=minKeptBearings){
+    ({double r,Set<int> seed,LatLng c})? best;
+    final ids=remaining.toList()..sort();
+    for(var x=0;x<ids.length;x++){for(var y=x+1;y<ids.length;y++){for(var z=y+1;z<ids.length;z++){
+      final seed={ids[x],ids[y],ids[z]};
+      final pts=_weightedCrossings(g,seed,robust:true);
+      if(pts.length<3||!_spread(g,seed))continue;
+      final c=_wCentre(pts);
+      final r=pts.map((e)=>geo.distanceM(c,e.p)).fold<double>(0,math.max);
+      if(r<=seedMaxRadiusM&&(best==null||r<best.r))best=(r:r,seed:seed,c:c);
+    }}}
+    if(best==null)break;
+    final members={...best.seed};
+    for(final i in (remaining.difference(members).toList()..sort())){
+      final m=_miss(g[i],best.c);
+      final tol=math.max(minZoneToleranceM,m.along*math.tan(math.max(g[i].coneDeg,1)*math.pi/180))+0.5*best.r;
+      if(m.miss<=tol&&m.along<=g[i].lengthM+tol)members.add(i);
+    }
+    final pts=_weightedCrossings(g,members,robust:true);
+    final c=_wCentre(pts); final r=_wRadius(c,pts);
+    if(r>zoneMaxRadiusM)break;
+    found.add((members:members,centre:c,radius:r,crossings:[for(final e in pts)e.p]));
+    remaining.removeAll(members);
+  }
+  if(found.length<2)return null;
+  found.sort((a,b)=>b.members.length.compareTo(a.members.length));
+  final inside={for(final z in found)...z.members};
+  final excluded=[for(var i=0;i<g.length;i++)if(!inside.contains(i))g[i].id];
+  return [for(var n=0;n<found.length;n++)(crossings:found[n].crossings,centre:found[n].centre,radiusM:found[n].radius,
+    bearings:found[n].members.length,excluded:excluded,autoExcluded:const <String>[],index:n+1)];
+}
+
+/// Zones of one signal: several when [splitZones] finds them, otherwise the
+/// robust zone ([probableZone]) with index 0.
+List<BearingZone> probableZones(List<Bearing> g){
+  final split=splitZones(g);
+  if(split!=null)return split;
+  final z=probableZone(g);
+  return [(crossings:z.crossings,centre:z.centre,radiusM:z.radiusM,bearings:z.bearings,excluded:z.excluded,autoExcluded:z.autoExcluded,index:0)];
+}
+
+/// Label of a zone: « Zone 2 · ±900 m · 3 relevés » when there are several;
+/// the bearings set aside are counted on the first one only.
+String zonesLabel(BearingZone z)=>z.index==0?zoneLabel(z.radiusM,z.bearings,z.excluded.length)
+  :'${S.t('bearings.zoneN',{'n':z.index})} · ${zoneLabel(z.radiusM,z.bearings,z.index==1?z.excluded.length:0)}';
+
 /// « ±700 m · 4 relevés · 1 écarté » (server: tv.zone_label).
 /// Two bearings make one crossing, not a measured precision:
 /// « zone approximative · 2 relevés ».
