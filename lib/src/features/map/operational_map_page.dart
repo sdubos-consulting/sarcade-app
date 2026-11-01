@@ -737,7 +737,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       messages:widget.store.messages().map(SarcadeMessage.fromJson).toList(),
       groups:{for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)},
       acks:widget.store.acks().map(SarcadeAck.fromJson).toList(),orders:_moveOrders,pois:_pois.values.toList(),
-      references:_adrasec?_references.values.toList():const [],positions:_positions.values.toList(),devices:_devices,
+      references:_adrasec?[for(final r in _references.values)if(r.isHighPoint||r.isRelay)(id:r.id,name:r.name,relay:r.isRelay,lat:r.lat,lon:r.lon,mhz:r.txMhz,altM:r.altM)]:const [],positions:_positions.values.toList(),devices:_devices,
       here:_me??_positionOf(widget.deviceId),inDistress:_inDistress,now:DateTime.now()),
     actions:CarScreenActions(
       order:(o,s)=>_routes.setMoveOrderStatus(o.json,s),

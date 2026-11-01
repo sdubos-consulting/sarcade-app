@@ -24,7 +24,6 @@ import '../../models/comm_group.dart';
 import '../../models/message.dart';
 import '../../models/poi.dart';
 import '../../models/position.dart';
-import '../../modules/adrasec/reference/reference_site.dart';
 import '../../ui/operator_color.dart';
 import '../map/drawing/geometry.dart' show bearingDeg, distanceM, formatDistance;
 import '../map/operator_icons.dart' show chosenIcon;
@@ -47,6 +46,10 @@ const carReferencesPerKind=5;
 
 const _highPointColor=0xFF6D4C41, _relayColor=0xFF8E24AA, _allColor=0xFF1E88E5;
 
+/// High point or relay of the radio reference (ADRASEC module), given by
+/// the map page: the Core does not import the module.
+typedef CarSite=({String id,String name,bool relay,double lat,double lon,double? mhz,double? altM});
+
 /// What the application knows when the car asks (see the map page).
 class CarScreenInput {
   final String me, eventId;
@@ -55,7 +58,7 @@ class CarScreenInput {
   final List<SarcadeAck> acks;
   final List<MoveOrder> orders;
   final List<SarcadePoi> pois;
-  final List<ReferenceSite> references;
+  final List<CarSite> references;
   final List<SarcadePosition> positions;
   final Map<String,Map<String,dynamic>> devices;
   /// Position of this phone, null when unknown (no distance then).
@@ -174,17 +177,17 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
     },
   ];
   if(here!=null){
-    final near=[...i.references.where((r)=>(r.isHighPoint||r.isRelay)&&dist(r.lat,r.lon)<=carReferenceRadiusM)]
+    final near=[...i.references.where((r)=>dist(r.lat,r.lon)<=carReferenceRadiusM)]
       ..sort((a,b)=>dist(a.lat,a.lon).compareTo(dist(b.lat,b.lon)));
-    final refs=[...near.where((r)=>r.isHighPoint).take(carReferencesPerKind),...near.where((r)=>r.isRelay).take(carReferencesPerKind)]
+    final refs=[...near.where((r)=>!r.relay).take(carReferencesPerKind),...near.where((r)=>r.relay).take(carReferencesPerKind)]
       ..sort((a,b)=>dist(a.lat,a.lon).compareTo(dist(b.lat,b.lon)));
     for(final r in refs){
       out.add({
-        'id':r.id,'kind':r.isRelay?'relay':'high','icon':r.isRelay?'relay':'high','color':r.isRelay?_relayColor:_highPointColor,
+        'id':r.id,'kind':r.relay?'relay':'high','icon':r.relay?'relay':'high','color':r.relay?_relayColor:_highPointColor,
         'title':r.name,
-        'text':_join([carAway(here,LatLng(r.lat,r.lon)),r.isRelay?S.t('car.relay'):S.t('car.highPoint'),
-          if(r.isRelay&&r.txMhz!=null)'${r.txMhz!.toStringAsFixed(4).replaceAll('.',',')} MHz',
-          if(r.isHighPoint&&r.altM!=null)'${r.altM!.round()} m']),
+        'text':_join([carAway(here,LatLng(r.lat,r.lon)),r.relay?S.t('car.relay'):S.t('car.highPoint'),
+          if(r.relay&&r.mhz!=null)'${r.mhz!.toStringAsFixed(4).replaceAll('.',',')} MHz',
+          if(!r.relay&&r.altM!=null)'${r.altM!.round()} m']),
         'lat':r.lat,'lon':r.lon,
       });
     }

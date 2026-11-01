@@ -14,7 +14,6 @@ import 'package:sarcade_app/src/models/comm_group.dart';
 import 'package:sarcade_app/src/models/message.dart';
 import 'package:sarcade_app/src/models/poi.dart';
 import 'package:sarcade_app/src/models/position.dart';
-import 'package:sarcade_app/src/modules/adrasec/reference/reference_site.dart';
 import 'package:sarcade_app/src/ui/operator_color.dart';
 
 final now=DateTime.utc(2026,11,1,10,0);
@@ -30,13 +29,13 @@ MoveOrder order(String id,String status,{String target='TEL-1',double lat=48.83,
 SarcadePosition pos(String device,double lat,{String source='device'})=>SarcadePosition(id:'p-$device',eventId:'e',deviceId:device,
   lat:lat,lon:1.95,time:now.subtract(const Duration(minutes:2)),source:source);
 
-ReferenceSite ref(String id,String category,double lat)=>ReferenceSite(id:id,category:category,name:'Site $id',lat:lat,lon:1.95,
-  source:'test',sourceLayer:'test',status:'active',txMhz:category=='RELAY'?145.6125:null,altM:category=='HIGH_POINT'?180:null);
+CarSite ref(String id,String category,double lat)=>(id:id,name:'Site $id',relay:category=='RELAY',lat:lat,lon:1.95,
+  mhz:category=='RELAY'?145.6125:null,altM:category=='HIGH_POINT'?180.0:null);
 
 final team=CommGroup(id:'g1',eventId:'e',name:'Équipe 2',createdBy:'PCO',updatedBy:'PCO',updatedAt:now,color:0xFF43A047);
 
 CarScreenInput input({List<SarcadeMessage>? messages,List<SarcadeAck> acks=const [],List<MoveOrder> orders=const [],
-    List<ReferenceSite> references=const [],bool inDistress=false,LatLng? at=here})=>CarScreenInput(
+    List<CarSite> references=const [],bool inDistress=false,LatLng? at=here})=>CarScreenInput(
   me:'TEL-1',eventId:'e',now:now,here:at,inDistress:inDistress,acks:acks,orders:orders,references:references,
   groups:{'g1':team},
   messages:messages??[
