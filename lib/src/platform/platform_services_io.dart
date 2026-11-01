@@ -73,6 +73,10 @@ const canOpenSavedFiles=true;
 /// Address of the server that served the app, only meaningful in a browser.
 String? servingOrigin()=>null;
 
+/// Web Bluetooth is a browser matter: the installed apps use Bluetooth
+/// directly (lot 17, MeshCore from the web app).
+bool webBluetoothAvailable()=>false;
+
 /// WebSocket with headers (Cloudflare Access session of the server).
 WebSocketChannel openWebSocket(Uri uri,Map<String,String> headers)=>
   headers.isEmpty?WebSocketChannel.connect(uri):IOWebSocketChannel.connect(uri,headers:headers);
