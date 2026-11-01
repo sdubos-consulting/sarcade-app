@@ -196,11 +196,20 @@ double _wRadius(LatLng c,List<({LatLng p,double w})> pts){
 }
 
 /// Several beacons on one signal (card « Zone probable : plusieurs zones
-/// quand il y a plusieurs balises », option 1 validated 1 Nov 2026, 7 h 44).
-/// Same rule as the server (`tv.split_zones`), keep in step.
+/// quand il y a plusieurs balises », option 1 validated 1 Nov 2026, 7 h 44;
+/// corrected by the card « Plusieurs zones : le découpage ne se fait pas
+/// quand un relevé est gardé à la main », points 1 to 13 validated 1 Nov
+/// 2026, 11 h 11 and 11 h 52). Same rule as the server (`tv.split_zones`),
+/// keep in step.
 const seedMaxRadiusM=2000.0, zoneMaxRadiusM=3000.0, minOriginSpreadM=100.0, maxZones=4;
+/// Mode of a searched signal (point 8), kept on the server for the event
+/// and the signal (point 11, settings `zone_modes`): 'auto' (automatic
+/// splitting), 'multi' (« Plusieurs balises »: relaxed thresholds, seeds
+/// and zones up to 5 km), 'single' (« Une seule balise »: one circle).
+const zoneModes=['auto','multi','single'];
+const multiSeedMaxRadiusM=5000.0, multiZoneMaxRadiusM=5000.0;
 
-typedef BearingZone=({List<LatLng> crossings,LatLng? centre,double radiusM,int bearings,List<String> excluded,List<String> autoExcluded,int index});
+typedef BearingZone=({List<LatLng> crossings,LatLng? centre,double radiusM,int bearings,List<String> excluded,List<String> autoExcluded,int index,String mode});
 
 bool _spread(List<Bearing> g,Iterable<int> ids){
   final pts=[for(final i in ids)g[i].origin];
@@ -208,17 +217,45 @@ bool _spread(List<Bearing> g,Iterable<int> ids){
   return false;
 }
 
+/// Miss of a bearing over its tolerance for a zone (≤ 1: it agrees); null
+/// when the zone lies on the extension of the drawn bearing.
+double? _agreement(Bearing b,LatLng c,double r){
+  final m=_miss(b,c);
+  final tol=math.max(minZoneToleranceM,m.along*math.tan(math.max(b.coneDeg,1)*math.pi/180))+0.5*r;
+  if(m.along>b.lengthM+tol)return null;
+  return m.miss/tol;
+}
+
+typedef _Found=({Set<int> members,LatLng centre,double radius,List<LatLng> crossings});
+
+_Found _geometry(List<Bearing> g,Set<int> members){
+  final pts=_weightedCrossings(g,members,robust:true);
+  final c=_wCentre(pts);
+  return (members:members,centre:c,radius:_wRadius(c,pts),crossings:[for(final e in pts)e.p]);
+}
+
 /// Two zones or more when the bearings of one signal point at several
-/// places: the tightest three bearings (crossing within 2 km, taken from
-/// two places at least) seed a zone, the bearings that agree with it (on
-/// the drawn line) join, and again with the others. Null for a single zone
-/// (the robust zone applies, unchanged) or when a bearing was put in the
-/// zone by hand.
-List<BearingZone>? splitZones(List<Bearing> g){
+/// places: the tightest three bearings (crossing within the seed radius,
+/// taken from two places at least) seed a zone, the bearings that agree
+/// with it (on the drawn line) join, and again with the others. Null for a
+/// single zone (the robust zone applies) or in 'single' mode.
+/// - a bearing set aside by hand ('out') stays out (point 3);
+/// - a bearing kept by hand ('in') no longer prevents the splitting
+///   (point 1): left alone, it joins the zone it agrees with, else zone 1
+///   (point 2);
+/// - a zone that grows beyond the zone radius keeps its seed and only the
+///   bearings that do not widen it beyond; the zones already found are
+///   never given up (points 5 and 6);
+/// - 'multi': seeds and zones up to 5 km (point 8).
+/// [maxRadiusM]: another zone radius, for the tests only.
+List<BearingZone>? splitZones(List<Bearing> g,{String mode='auto',double? maxRadiusM}){
+  if(mode=='single')return null;
+  final seedMax=mode=='multi'?multiSeedMaxRadiusM:seedMaxRadiusM;
+  final zoneMax=maxRadiusM??(mode=='multi'?multiZoneMaxRadiusM:zoneMaxRadiusM);
   final cand=[for(var i=0;i<g.length;i++)if(g[i].zone!='out')i];
-  if(cand.length<2*minKeptBearings||cand.any((i)=>g[i].zone=='in'))return null;
+  if(cand.length<2*minKeptBearings)return null;
   final remaining={...cand};
-  final found=<({Set<int> members,LatLng centre,double radius,List<LatLng> crossings})>[];
+  final found=<_Found>[];
   while(found.length<maxZones&&remaining.length>=minKeptBearings){
     ({double r,Set<int> seed,LatLng c})? best;
     final ids=remaining.toList()..sort();
@@ -228,42 +265,67 @@ List<BearingZone>? splitZones(List<Bearing> g){
       if(pts.length<3||!_spread(g,seed))continue;
       final c=_wCentre(pts);
       final r=pts.map((e)=>geo.distanceM(c,e.p)).fold<double>(0,math.max);
-      if(r<=seedMaxRadiusM&&(best==null||r<best.r))best=(r:r,seed:seed,c:c);
+      if(r<=seedMax&&(best==null||r<best.r))best=(r:r,seed:seed,c:c);
     }}}
     if(best==null)break;
-    final members={...best.seed};
-    for(final i in (remaining.difference(members).toList()..sort())){
-      final m=_miss(g[i],best.c);
-      final tol=math.max(minZoneToleranceM,m.along*math.tan(math.max(g[i].coneDeg,1)*math.pi/180))+0.5*best.r;
-      if(m.miss<=tol&&m.along<=g[i].lengthM+tol)members.add(i);
+    final agree=<({double ratio,int i})>[];
+    for(final i in (remaining.difference(best.seed).toList()..sort())){
+      final ratio=_agreement(g[i],best.c,best.r);
+      if(ratio!=null&&ratio<=1)agree.add((ratio:ratio,i:i));
     }
-    final pts=_weightedCrossings(g,members,robust:true);
-    final c=_wCentre(pts); final r=_wRadius(c,pts);
-    if(r>zoneMaxRadiusM)break;
-    found.add((members:members,centre:c,radius:r,crossings:[for(final e in pts)e.p]));
-    remaining.removeAll(members);
+    var zone=_geometry(g,{...best.seed,for(final a in agree)a.i});
+    if(zone.radius>zoneMax){
+      // Point 5: the seed, then the bearings that agree best, each one only
+      // if the zone stays within the zone radius.
+      final members={...best.seed};
+      agree.sort((a,b)=>a.ratio!=b.ratio?a.ratio.compareTo(b.ratio):a.i.compareTo(b.i));
+      for(final a in agree){if(_geometry(g,{...members,a.i}).radius<=zoneMax)members.add(a.i);}
+      zone=_geometry(g,members);
+    }
+    found.add(zone);
+    remaining.removeAll(zone.members);
   }
   if(found.length<2)return null;
-  found.sort((a,b)=>b.members.length.compareTo(a.members.length));
-  final inside={for(final z in found)...z.members};
+  // Stable, as Python's sort: the largest zone first.
+  final order=[for(var n=0;n<found.length;n++)n]..sort((a,b){final d=found[b].members.length.compareTo(found[a].members.length);return d!=0?d:a.compareTo(b);});
+  final zones=[for(final n in order)found[n]];
+  // Point 2: a bearing kept by hand left alone joins the zone it agrees
+  // with best, else zone 1.
+  for(final i in (remaining.toList()..sort())){
+    if(g[i].zone!='in')continue;
+    var target=0; double? bestRatio;
+    for(var n=0;n<zones.length;n++){
+      final r=_agreement(g[i],zones[n].centre,zones[n].radius);
+      if(r!=null&&r<=1&&(bestRatio==null||r<bestRatio)){bestRatio=r;target=n;}
+    }
+    zones[target]=_geometry(g,{...zones[target].members,i});
+  }
+  final inside={for(final z in zones)...z.members};
   final excluded=[for(var i=0;i<g.length;i++)if(!inside.contains(i))g[i].id];
-  return [for(var n=0;n<found.length;n++)(crossings:found[n].crossings,centre:found[n].centre,radiusM:found[n].radius,
-    bearings:found[n].members.length,excluded:excluded,autoExcluded:const <String>[],index:n+1)];
+  final auto=[for(var i=0;i<g.length;i++)if(!inside.contains(i)&&g[i].zone!='out')g[i].id];
+  return [for(var n=0;n<zones.length;n++)(crossings:zones[n].crossings,centre:zones[n].centre,radiusM:zones[n].radius,
+    bearings:zones[n].members.length,excluded:excluded,autoExcluded:auto,index:n+1,mode:mode)];
 }
 
-/// Zones of one signal: several when [splitZones] finds them, otherwise the
-/// robust zone ([probableZone]) with index 0.
-List<BearingZone> probableZones(List<Bearing> g){
-  final split=splitZones(g);
+/// Zones of one signal in its [mode]: several when [splitZones] finds them,
+/// otherwise the robust zone ([probableZone]) with index 0.
+List<BearingZone> probableZones(List<Bearing> g,{String mode='auto'}){
+  final m=zoneModes.contains(mode)?mode:'auto';
+  final split=splitZones(g,mode:m);
   if(split!=null)return split;
   final z=probableZone(g);
-  return [(crossings:z.crossings,centre:z.centre,radiusM:z.radiusM,bearings:z.bearings,excluded:z.excluded,autoExcluded:z.autoExcluded,index:0)];
+  return [(crossings:z.crossings,centre:z.centre,radiusM:z.radiusM,bearings:z.bearings,excluded:z.excluded,autoExcluded:z.autoExcluded,index:0,mode:m)];
 }
 
 /// Label of a zone: « Zone 2 · ±900 m · 3 relevés » when there are several;
-/// the bearings set aside are counted on the first one only.
-String zonesLabel(BearingZone z)=>z.index==0?zoneLabel(z.radiusM,z.bearings,z.excluded.length)
-  :'${S.t('bearings.zoneN',{'n':z.index})} · ${zoneLabel(z.radiusM,z.bearings,z.index==1?z.excluded.length:0)}';
+/// the bearings set aside are counted on the first one only. The mode when
+/// it is not Auto (point 12): « Zone 1 · plusieurs balises · ±700 m · … »,
+/// « Une seule balise · ±7,7 km · … » (server: tv.probable_zones).
+String zonesLabel(BearingZone z){
+  final text=zoneLabel(z.radiusM,z.bearings,z.index<=1?z.excluded.length:0);
+  if(z.index==0)return z.mode=='auto'?text:'${S.t('zones.head.${z.mode}')} · $text';
+  return [S.t('bearings.zoneN',{'n':z.index}),if(z.mode!='auto')S.t('zones.tag.${z.mode}'),text].join(' · ');
+}
 
 /// « ±700 m · 4 relevés · 1 écarté » (server: tv.zone_label).
 /// Two bearings make one crossing, not a measured precision:
@@ -275,13 +337,13 @@ String zoneLabel(double radiusM,int used,int excluded)=>[
 ].join(' · ');
 
 /// Line of the bearing sheet about the probable zone, or null when the
-/// bearing simply counts.
-String? bearingZoneStatus(Bearing b,Iterable<Bearing> all){
+/// bearing simply counts; in the [mode] of its signal.
+String? bearingZoneStatus(Bearing b,Iterable<Bearing> all,{String mode='auto'}){
   if(b.zone=='out')return S.t('bearings.excludedHand');
   if(b.zone=='in')return S.t('bearings.keptHand');
   if(b.search.isEmpty)return null;
   final same=all.where((x)=>searchKey(x.search)==searchKey(b.search)).toList();
-  final z=probableZone(same);
+  final z=probableZones(same,mode:mode).first;
   if(!z.autoExcluded.contains(b.id))return null;
   return S.t('bearings.excludedAuto',{'n':same.length-1});
 }
@@ -300,6 +362,28 @@ String roundedDistance(double m){
 /// server (`tv.search_key`).
 String searchKey(String s)=>s.replaceAll(RegExp('[\u2019\u2018\u02BC`\u00B4]'),"'").replaceAll(RegExp('[\u201C\u201D\u00AB\u00BB]'),'"')
   .replaceAll(RegExp(r'\s+'),' ').trim().toLowerCase();
+
+/// Key of a signal in the settings `zone_modes`: [searchKey] without the
+/// accents, as `tv.search_key` of the server (NFKD, combining marks
+/// dropped) for the letters used in French and its neighbours.
+String zoneModeKey(String s){
+  const from='àáâãäåāăąçćčďèéêëēėęěìíîïīįñńňòóôõöōőùúûüūůűųýÿžźżśšşřťľĺ';
+  const to='aaaaaaaaacccdeeeeeeeeiiiiiinnnooooooouuuuuuuuyyzzzsssrtll';
+  final k=searchKey(s);
+  final out=StringBuffer();
+  for(final ch in k.split('')){final i=from.indexOf(ch);out.write(i<0?ch:to[i]);}
+  return out.toString();
+}
+
+/// Modes of the signals of the event (settings `zone_modes`).
+Map<String,String> zoneModesOf(Map<String,dynamic> settings){
+  final m=settings['zone_modes'];
+  if(m is! Map)return const {};
+  return {for(final e in m.entries)if(e.value is String&&zoneModes.contains(e.value))'${e.key}':e.value as String};
+}
+
+/// Mode of the zones of [search]: 'auto' unless set for the event.
+String zoneModeOf(Map<String,String> modes,String search)=>modes[zoneModeKey(search)]??'auto';
 
 /// Name shown for each search key: the one of its most recent bearing.
 Map<String,String> searchNames(Iterable<Bearing> list){

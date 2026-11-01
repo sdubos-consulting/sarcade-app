@@ -1,24 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 
 import '../../../l10n/strings.dart';
 import '../../../features/map/drawing/geometry.dart' as geo;
 import 'bearing_models.dart';
+import 'zone_window.dart';
 
 /// Bearings on the map: cone, line, point where taken; crossings and the
 /// probable zone of each search; the bearing being taken, in bold.
 /// Line and cone take the colour of the signal (crossings readable), or of
 /// the operator when [byOperator]; the dot where it was taken always the
-/// operator's, with initials.
+/// operator's, with initials. [zoneModes]: mode of each signal (settings
+/// `zone_modes`); touching the label or the circle of a zone calls
+/// [onTapZone] (card « Plusieurs zones », point 9).
 List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? draft,bool byOperator=false,LayerHitNotifier<Bearing>? hits,
-    required void Function(Bearing) onTapBearing,required void Function(LatLng centre,String search) onTapZone}){
+    Map<String,String> zoneModes=const {},required void Function(Bearing) onTapBearing,required void Function(ZoneTap tap) onTapZone}){
   final groups=bySearch(bearings);
   final names=searchNames(bearings);
   String shown(Bearing b)=>names[searchKey(b.search)]??b.search;
-  final zones={for(final e in groups.entries)e.key:probableZones(e.value)};
+  final zones={for(final e in groups.entries)e.key:probableZones(e.value,mode:zoneModeOf(zoneModes,e.key))};
   final excluded={for(final zs in zones.values)for(final z in zs)...z.excluded};
   final cones=<Polygon>[], lines=<Polyline<Bearing>>[], markers=<Marker>[], circles=<CircleMarker>[], outlines=<Polyline>[];
+  // Zone circles under the bearing lines: a touch on a line still selects
+  // the bearing, elsewhere in the circle it opens the zone window.
+  final zoneCircles=<CircleMarker<ZoneTap Function(Offset)>>[];
+  final LayerHitNotifier<ZoneTap Function(Offset)> zoneHits=ValueNotifier(null);
   void add(Bearing b,{bool live=false}){
     // A bearing set aside from the zone: grey dashed line, no cone.
     if(!live&&excluded.contains(b.id)){
@@ -47,8 +53,9 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
     // its edge by a short line, white text, « EX » pill.
     final ex=e.value.any((b)=>b.exercise);
     final zc=ex?const Color(0xFFFF9F1C):const Color(0xFFFF4D5E);
-    circles.add(CircleMarker(point:z.centre!,radius:z.radiusM,useRadiusInMeter:true,color:zc.withValues(alpha:0.13),
-      borderColor:ex?Colors.transparent:zc,borderStrokeWidth:ex?0:2));
+    ZoneTap tap(Offset at)=>ZoneTap(search:e.key,zone:z,bearings:e.value,position:at);
+    zoneCircles.add(CircleMarker<ZoneTap Function(Offset)>(point:z.centre!,radius:z.radiusM,useRadiusInMeter:true,color:zc.withValues(alpha:0.13),
+      borderColor:ex?Colors.transparent:zc,borderStrokeWidth:ex?0:2,hitValue:tap));
     if(ex){
       outlines.add(Polyline(points:[for(var a=0;a<=360;a+=5)geo.destination(z.centre!,z.radiusM,a.toDouble())],color:zc,strokeWidth:3,
         pattern:StrokePattern.dashed(segments:const [14,9])));
@@ -57,7 +64,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
     outlines.add(Polyline(points:[edge,tip],color:zc,strokeWidth:2));
     final freq=e.value.map((b)=>b.frequencyMhz).whereType<double>().toSet();
     final parts=zonesLabel(z).split(' · ');
-    markers.add(Marker(point:tip,width:240,height:28,alignment:Alignment.centerRight,child:GestureDetector(onTap:()=>onTapZone(z.centre!,e.key),
+    markers.add(Marker(point:tip,width:240,height:28,alignment:Alignment.centerRight,child:GestureDetector(onTapUp:(d)=>onTapZone(tap(d.globalPosition)),
       child:Tooltip(message:[S.t('bearings.zoneTitle'),if(e.key.isNotEmpty)e.key,for(final f in freq)'${f.toStringAsFixed(3)} MHz',if(ex)'EXERCICE'].join(' · '),
         child:Align(alignment:Alignment.centerLeft,child:Container(key:const ValueKey('bearing-zone-label'),padding:const EdgeInsets.symmetric(horizontal:7,vertical:3),
           decoration:BoxDecoration(color:const Color(0xF208111C),borderRadius:BorderRadius.circular(7),border:Border.all(color:zc,width:1.5)),
@@ -70,6 +77,9 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
   }}
   return [
     if(cones.isNotEmpty)PolygonLayer(polygons:cones),
+    if(zoneCircles.isNotEmpty)MouseRegion(hitTestBehavior:HitTestBehavior.deferToChild,cursor:SystemMouseCursors.click,child:GestureDetector(
+      onTapUp:(d){final h=zoneHits.value;if(h!=null&&h.hitValues.isNotEmpty)onTapZone(h.hitValues.first(d.globalPosition));},
+      child:CircleLayer<ZoneTap Function(Offset)>(hitNotifier:zoneHits,circles:zoneCircles))),
     // The whole line selects the bearing (« Relevés, sélection »), not only
     // the dot often hidden under an operator; wide touch area around it.
     if(lines.isNotEmpty)hits==null?PolylineLayer<Bearing>(polylines:lines):MouseRegion(hitTestBehavior:HitTestBehavior.deferToChild,

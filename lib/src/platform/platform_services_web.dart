@@ -186,6 +186,13 @@ Stream<CompassReading>? compassReadings(){
   return out.stream;
 }
 
+/// Web Bluetooth in this browser (Chrome, Edge; not Safari nor Firefox):
+/// a MeshCore module can then be joined from the web app (lot 17).
+bool webBluetoothAvailable(){
+  final nav=globalContext['navigator'];
+  return nav!=null&&(nav as JSObject).has('bluetooth');
+}
+
 /// The browser does not give the local address (Paramètres › Diagnostic).
 Future<List<String>> localAddresses() async=>const [];
 
