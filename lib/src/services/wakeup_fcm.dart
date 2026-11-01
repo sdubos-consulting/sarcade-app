@@ -5,9 +5,11 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../features/car/car_android.dart';
 import '../features/car/car_background.dart' show fetchWokenMessage;
+import '../features/car/car_messaging.dart' show carConversation;
 import '../l10n/strings.dart';
-import 'notification_actions.dart' show NotificationPayload, actionOpen, actionsFor, notificationIdFor;
+import 'notification_actions.dart' show NotificationPayload, notificationIdFor;
 
 /// Wake-up of Android when SARCADE is closed (note « Réveil des appareils »).
 /// The Firebase project is given at build time by the CI (secret
@@ -75,15 +77,16 @@ Future<void> showWakeNotification(Map<String,dynamic> data) async {
   final woken=data['kind']=='test'?null:await fetchWokenMessage(data);
   final m=woken?.message;
   final payload=m==null?null:NotificationPayload(eventId:m.eventId,messageId:m.id,deviceId:woken!.deviceId,
-    priority:m.priority,tag:'${data['tag']}');
+    priority:m.priority,tag:'${data['tag']}',senderId:m.senderId);
   // Same title as the notification shown by the application.
   final title=m==null?wakeTitle(data):'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}';
   await plugin.show(wakeNotificationId(data),title,m?.body??'Ouvrez SARCADE pour le lire.',
     NotificationDetails(android:AndroidNotificationDetails(wakeChannel(data),wakeChannel(data),
       importance:urgent?Importance.max:Importance.defaultImportance,priority:urgent?Priority.max:Priority.defaultPriority,
       category:AndroidNotificationCategory.message,
-      actions:payload==null?null:[for(final a in actionsFor(m!.priority))
-        AndroidNotificationAction(a,S.t('notif.action.$a'),showsUserInterface:a==actionOpen)])),
+      // Conversation format, Répondre and Lu for Android Auto (lot 1b).
+      styleInformation:payload==null?null:carStyle(carConversation(m!,me:woken!.deviceId)),
+      actions:payload==null?null:carActions(m!.priority))),
     payload:payload?.encode());
 }
 

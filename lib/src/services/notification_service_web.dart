@@ -3,6 +3,7 @@ import 'dart:js_interop';
 import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
 import '../l10n/strings.dart';
+import '../features/car/car_messaging.dart' show CarConversation;
 import 'notification_actions.dart';
 
 export 'notification_actions.dart' show isUrgentPriority, NotificationPayload, PendingAnswer;
@@ -80,7 +81,7 @@ class NotificationService {
     }
   }
 
-  Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload}) async {
+  Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload,CarConversation? car}) async {
     if(_permission!='granted'){debugPrint('SARCADE notification [$priority] $title: $body');return;}
     try{
       if(payload!=null){for(final t in _timers.remove(payload.key)??const <Timer>[]){t.cancel();}}

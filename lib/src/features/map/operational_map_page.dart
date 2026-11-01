@@ -58,7 +58,8 @@ import 'drawing/hit_test.dart';
 import 'drawing/import_formats.dart';
 import 'drawing/map_feature.dart';
 import '../../services/wakeup_fcm.dart';
-import '../car/car_background.dart' show CarContext, saveCarContext;
+import '../car/car_background.dart' show CarContext, saveCarContext, takePendingReplies;
+import '../car/car_messaging.dart' show carConversation;
 import '../../services/wakeup_state.dart';
 import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
@@ -187,6 +188,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_drainingAnswers)return;
     _drainingAnswers=true;
     try{
+      // Answers dictated in the car and not sent yet (lot 1b).
+      for(final r in await takePendingReplies()){
+        await widget.store.cacheMessage(r.toJson());
+        await _sync.queue(objectId:r.id,objectType:'message',payload:r.toJson());
+      }
       final answers=await takePendingAnswers();
       for(final a in answers){
         final ack=a.toAck();
@@ -402,8 +408,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // Realtime and synchronisation may both bring the message: only the
       // first arrival notifies; an old message caught up later stays silent.
       if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
+        // Conversation format for Android Auto (lot 1b): the channel by its name.
+        final gid=m.recipientIds.where((r)=>r.startsWith('group:')).map((r)=>r.substring(6)).firstOrNull;
+        final g=gid==null?null:groups[gid];
         await _notifications.message(title:'SARCADE · ${S.t(priorityKey(m.priority))} · ${m.senderId}',body:m.body,priority:m.priority,
-          payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m)));
+          payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m),senderId:m.senderId),
+          car:carConversation(m,me:widget.deviceId,channelName:g==null?null:(g.kind=='all'?S.t('car.allChannel'):g.name)));
       }
     }
     if(mounted)setState((){});
