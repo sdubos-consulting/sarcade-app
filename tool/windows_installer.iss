@@ -24,7 +24,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-WizardStyle=modern
+; TEST BRANCH ONLY, NOT TO MERGE (card « Installeur Windows : essai du style
+; classique (point 4) », lot 19): classic wizard, to see on the Surface
+; whether the check boxes are drawn whole. main keeps WizardStyle=modern.
+WizardStyle=classic
 ; A little larger wizard: room for the check boxes on high-DPI screens
 ; (Surface, 200 %), where they were cut on the left (31 Oct 2026).
 WizardSizePercent=110
