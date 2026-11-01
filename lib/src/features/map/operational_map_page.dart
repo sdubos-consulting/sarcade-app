@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
@@ -782,6 +783,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// « Outils »: Itinéraires first; « Mesure » removed, the measure starts
   /// from the point menu (30 Oct 2026, 1 h 48). Phone: the « Outils » tab.
   List<ToolItem> _toolItems()=>[
+    // Fichiers joins Outils (1 Nov 2026); pinned in the left bar by default.
+    ToolItem(id:'files',icon:Icons.folder_copy_outlined,title:S.t('map.files'),subtitle:S.t('tools.filesHelp'),color:Colors.teal,onTap:_openFiles),
     // Ordered by use (card « Outils, ordre par usage », 30 Oct 2026, 12 h 50).
     ToolItem(id:'weather',icon:Icons.cloud_outlined,title:S.t('weather.menu'),subtitle:S.t('tools.weatherHelp'),color:Colors.orange,onTap:()=>_openWeather()),
     ToolItem(id:'converter',icon:Icons.pin_drop_outlined,title:S.t('converter.title'),subtitle:S.t('tools.converterHelp'),color:Colors.blue,
@@ -805,7 +808,45 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       order:isPco(widget.deviceId)?((p)=>_onMapNow(()=>_sendOperatorHere(p))):null,
       message:_sendText,
       pickOnMap:()=>_startPick(S.t('converter.touchMap'),(p,_)=>_openConverter(initial:p)))));
-  void _openTools(){if(_isCompact){_goTab(3);return;}_openDesk('tools',()=>ToolsPage(key:const ValueKey('desk-tools'),items:_toolItems()));}
+  void _openTools(){if(_isCompact){_goTab(3);return;}_openDesk('tools',()=>ToolsPage(key:ValueKey('desk-tools-${_pins.join(',')}'),items:_toolItems(),
+    pinned:_pins.toSet(),onTogglePin:_togglePin));}
+  void _openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store,drawings:DrawingFileActions(importFile:_importFile,exportAll:_exportGeoJson,count:()=>_drawing.features.length)));
+
+  /// Tools pinned in the left bar, under Carte, Messages, Équipes, Outils
+  /// (card « Barre de gauche personnalisable », 1 Nov 2026): Fichiers by
+  /// default; kept per person by the server, a copy on the device.
+  List<String> get _pins{
+    final raw=widget.store.preference('rail_pins');
+    if(raw==null)return const ['files'];
+    try{return [for(final x in jsonDecode(raw) as List)'$x'];}catch(_){return const ['files'];}
+  }
+  Future<void> _setPins(List<String> pins) async {
+    final v=pins.take(railMaxPins).toList();
+    await widget.store.setPreference('rail_pins',jsonEncode(v));
+    if(mounted)setState((){if(_deskId=='tools')_openTools();});
+    try{await widget.api.patchMyPreferences({'rail_pins':v});}catch(_){/* kept on the device */}
+  }
+  void _togglePin(String id){
+    final p=[..._pins];
+    if(p.contains(id)){p.remove(id);}else if(p.length<railMaxPins){p.add(id);}
+    else{ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('rail.full',{'n':railMaxPins}))));return;}
+    unawaited(_setPins(p));
+  }
+  Future<void> _organizeRail() async {
+    final names={for(final t in _toolItems())t.id:t.title};
+    final order=[for(final id in _pins)if(names.containsKey(id))id];
+    final done=await showDialog<List<String>>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('rail.organize')),
+      content:SizedBox(width:360,child:Column(mainAxisSize:MainAxisSize.min,children:[
+        for(var i=0;i<order.length;i++)ListTile(key:ValueKey('org-${order[i]}'),dense:true,title:Text(names[order[i]]!),trailing:Row(mainAxisSize:MainAxisSize.min,children:[
+          IconButton(tooltip:S.t('rail.up'),onPressed:i==0?null:()=>set((){final x=order.removeAt(i);order.insert(i-1,x);}),icon:const Icon(Icons.arrow_upward)),
+          IconButton(tooltip:S.t('rail.down'),onPressed:i==order.length-1?null:()=>set((){final x=order.removeAt(i);order.insert(i+1,x);}),icon:const Icon(Icons.arrow_downward)),
+          IconButton(tooltip:S.t('rail.unpin'),onPressed:()=>set(()=>order.removeAt(i)),icon:const Icon(Icons.push_pin)),
+        ])),
+        if(order.isEmpty)Padding(padding:const EdgeInsets.all(8),child:Text(S.t('rail.empty'))),
+      ])),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,order),child:Text(S.t('common.save')))])));
+    if(done!=null)await _setPins(done);
+  }
 
   /// A tool acting on the map: back to the map (tab, desk closed) first.
   void _onMapNow(VoidCallback f){setState((){_tab=0;_deskPage=null;_deskId=null;});f();}
@@ -1658,13 +1699,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   /// Phone « Plus »: a normal screen, a list of large buttons.
-  Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.more'))),
-    body:ListView(padding:const EdgeInsets.symmetric(vertical:8),children:[
-      for(final a in items)withId('more.${a.id}',ListTile(minTileHeight:64,leading:Badge(isLabelVisible:a.alert,smallSize:10,child:Icon(a.icon,size:28)),
-        title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap)),
-    ]));
-
-
   /// Weather pill with the link dot (link_weather_pill.dart, decision of
   /// 30 Oct 2026, 1 h 30): the hour to come from the last forecast of the
   /// event, red when a vigilance is orange or red; the « Connecté » pill is
@@ -1745,6 +1779,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(colour is int&&stored!=null&&stored['draw_color']!=colour){
         await widget.store.saveConfig({...stored,'draw_color':colour});
         _drawing.color=colour;_bearings.operatorColor=colour;
+      }
+      // Tools pinned in the left bar, the same on every device (1 Nov 2026).
+      final pins=p['rail_pins'];
+      if(pins is List){
+        await widget.store.setPreference('rail_pins',jsonEncode([for(final x in pins)'$x']));
+        if(mounted)setState((){});
       }
       final remote=p['favourites'];
       if(remote is List){
@@ -2419,29 +2459,29 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Over the map, not beside it: the map keeps its size underneath.
     Widget phonePanel(Widget child)=>Positioned.fill(child:Material(elevation:3,child:SafeArea(bottom:false,child:child)));
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
-    void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store,drawings:DrawingFileActions(importFile:_importFile,exportAll:_exportGeoJson,count:()=>_drawing.features.length)));
+    void openFiles()=>_openFiles();
     void openMessages()=>_openMessages(fromButton:true);
     void showMap()=>_showMapOnly();
     void openSettings(){
       final b=widget.settingsBuilder;
       if(!compact&&b!=null){_openDesk('settings',b);}else{widget.onSettings?.call();}
     }
-    // Phone « Plus » (decision of 30 Oct 2026, 3 h 10): Fichiers and
-    // Paramètres; « Outils » is a tab, « Itinéraires » is in it.
-    final more=<_RailAction>[
-      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,id:'files'),
-      if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!,alert:diagnosticsAlert(),id:'settings'),
-    ];
     // Computer: every entry visible, no « … » (decision of 29 Oct 2026,
     // 12 h 17); Carte and Messages are drawn by the rail itself, Paramètres
     // at the bottom.
+    // Fixed: Équipes, Outils (Carte and Messages drawn by the rail itself),
+    // then the tools pinned by the person (1 Nov 2026).
+    final tools={for(final t in _toolItems())t.id:t};
     final rail=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel,id:'teams'),
-      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,selected:_deskId=='files',id:'files'),
       // « Itinéraires » moved into « Outils » (29 Oct 2026); wrench icon, the
       // handyman glyph did not show on the web.
       _RailAction(Icons.build_outlined,S.t('tools.title'),_openTools,
-        selected:_showResection||_showRoutesPanel||const {'tools','converter','tv','aprs','weather'}.contains(_deskId),id:'tools'),
+        selected:_showResection||_showRoutesPanel||const {'tools','converter','tv','aprs','weather'}.contains(_deskId)&&!_pins.contains(_deskId),id:'tools'),
+      // A pinned tool of a module off for this event (APRS without
+      // ADRASEC) is not shown but keeps its place.
+      for(final id in _pins)if(tools[id]!=null)_RailAction(tools[id]!.icon,tools[id]!.title,tools[id]!.onTap,
+        selected:_deskId==id||(id=='routes'&&_showRoutesPanel)||(id=='resection'&&_showResection),id:id,pinned:true),
     ];
     final railBottom=(widget.onSettings!=null||widget.settingsBuilder!=null)
       ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert(),id:'settings'):null;
@@ -2486,7 +2526,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ?graphBanner,
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
-        if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,mapSelected:_deskPage==null&&_chatPeer==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
+        if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,
+          onUnpin:(id)=>_togglePin(id),onOrganize:_organizeRail,mapSelected:_deskPage==null&&_chatPeer==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
         // Computer: Messages, Fichiers, APRS… open beside the rail, which
         // stays visible (« rail toujours visible », 28 Oct 2026).
         Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Stack(fit:StackFit.expand,children:[Row(children:[
@@ -2687,12 +2728,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           _builtTabs.contains(1)?MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,active:_tab==1,navigator:_messagesNav):const SizedBox.shrink(),
           _builtTabs.contains(2)?_teams(sorted,screen:true):const SizedBox.shrink(),
           _builtTabs.contains(3)?ToolsPage(items:_toolItems()):const SizedBox.shrink(),
-          _builtTabs.contains(4)?_moreScreen(more):const SizedBox.shrink(),
+          // Phone: the fifth button opens Paramètres as a page (1 Nov 2026,
+          // « Plus » removed, Fichiers moved into Outils).
+          const SizedBox.shrink(),
         ],
       ])),
       ])),
       // Phone: tab bar always visible, each tab a real screen.
-      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i)=>i==1?_openMessages(fromButton:true):i==0?_showMapOnly():_goTab(i),moreAlert:diagnosticsAlert()):null,
+      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),
+        onSelect:(i)=>i==1?_openMessages(fromButton:true):i==0?_showMapOnly():i==4?widget.onSettings?.call():_goTab(i),
+        moreAlert:diagnosticsAlert()):null,
     ));
   }
 }
@@ -2702,16 +2747,27 @@ class _RailAction {
   final IconData icon; final String label; final VoidCallback onTap; final bool selected;
   /// Red dot: a problem waits in the Diagnostic (Paramètres).
   final bool alert;
-  /// Test identifier (`nav.<id>` in the rail, `more.<id>` on the phone).
+  /// Test identifier (`nav.<id>`).
   final String id;
-  const _RailAction(this.icon,this.label,this.onTap,{this.selected=false,this.alert=false,this.id=''});
+  /// Pinned by the person: right click or long press to remove or order.
+  final bool pinned;
+  const _RailAction(this.icon,this.label,this.onTap,{this.selected=false,this.alert=false,this.id='',this.pinned=false});
 }
 
 /// Computer: vertical rail on the left, 9 entries (note « Navigation et
 /// menus simplifiés »): Carte, Messages, then [actions], « Plus » last.
 class _Rail extends StatelessWidget {
   final Widget messages; final List<_RailAction> actions; final _RailAction? bottom; final VoidCallback onMap; final bool mapSelected;
-  const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected,this.bottom});
+  final void Function(String id)? onUnpin; final VoidCallback? onOrganize;
+  const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected,this.bottom,this.onUnpin,this.onOrganize});
+  Future<void> _pinMenu(BuildContext context,Offset at,String id) async {
+    final r=await showMenu<String>(context:context,position:RelativeRect.fromLTRB(at.dx,at.dy,at.dx,at.dy),items:[
+      PopupMenuItem(value:'unpin',child:Text(S.t('rail.unpin'))),
+      PopupMenuItem(value:'organize',child:Text(S.t('rail.organize'))),
+    ]);
+    if(r=='unpin')onUnpin?.call(id);
+    if(r=='organize')onOrganize?.call();
+  }
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
     Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false,bool alert=false,String id=''})=>Padding(padding:const EdgeInsets.symmetric(vertical:2),
@@ -2724,7 +2780,12 @@ class _Rail extends StatelessWidget {
         Expanded(child:SingleChildScrollView(padding:const EdgeInsets.symmetric(vertical:8),child:Column(children:[
           button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected,id:'map'),
           Padding(padding:const EdgeInsets.symmetric(vertical:2),child:withId('nav.messages',messages)),
-          for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected,id:a.id),
+          for(final a in actions)if(!a.pinned)button(a.icon,a.label,a.onTap,selected:a.selected,id:a.id),
+          if(actions.any((a)=>a.pinned))const Divider(height:12,indent:18,endIndent:18),
+          for(final a in actions)if(a.pinned)GestureDetector(
+            onSecondaryTapDown:(d)=>_pinMenu(context,d.globalPosition,a.id),
+            onLongPressStart:(d)=>_pinMenu(context,d.globalPosition,a.id),
+            child:button(a.icon,a.label,a.onTap,selected:a.selected,id:a.id)),
         ]))),
         if(bottom!=null)...[
           const Divider(height:1,indent:14,endIndent:14),
@@ -2740,7 +2801,7 @@ class _TabBar extends StatelessWidget {
   const _TabBar({required this.index,required this.messagesIcon,required this.onSelect,this.moreAlert=false});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
-    const ids=['map','messages','teams','tools','more'];
+    const ids=['map','messages','teams','tools','settings'];
     Widget tab(int i,Widget icon,String label,{String? tooltip})=>Expanded(child:Tooltip(message:tooltip??label,excludeFromSemantics:true,child:InkWell(
       onTap:()=>onSelect(i),borderRadius:BorderRadius.circular(28),
       child:Semantics(identifier:'nav.${ids[i]}',button:true,selected:index==i,label:tooltip??label,excludeSemantics:true,child:Container(height:60,
@@ -2760,7 +2821,8 @@ class _TabBar extends StatelessWidget {
         tab(1,messagesIcon,S.t('tabs.messages'),tooltip:S.t('map.messages')),
         tab(2,const Icon(Icons.groups_outlined),S.t('tabs.teams')),
         tab(3,const Icon(Icons.build_outlined),S.t('tools.title')),
-        tab(4,Badge(isLabelVisible:moreAlert,smallSize:10,child:const Icon(Icons.more_horiz)),S.t('tabs.more')),
+        // « Plus » replaced by Paramètres; Fichiers is in Outils (1 Nov 2026).
+        tab(4,Badge(isLabelVisible:moreAlert,smallSize:10,child:const Icon(Icons.settings_outlined)),S.t('map.settings')),
       ])));
   }
 }
@@ -2826,3 +2888,6 @@ String operatorsTitle(int operators,int stations)=>stations==0?S.t('operators.ti
 /// True when a window covers or flanks the map.
 bool mapPanelOpen({required bool teams,required bool reference,required bool routes,required bool resection,required bool chat,required bool desk})=>
   teams||reference||routes||resection||chat||desk;
+
+/// At most 6 tools pinned in the left bar.
+const railMaxPins=6;
