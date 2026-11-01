@@ -78,8 +78,9 @@ internal object CarUi {
     }
 
     /** Round tile of an operator or a point (choice 4): its icon in white on
-     *  its colour, as the avatars of the phone. */
-    fun tile(context: CarContext, res: Int, argb: Int): CarIcon {
+     *  its colour, as the avatars of the phone. [iconArgb] and [pad]: SOS
+     *  badge (see [sosAction]). */
+    fun tile(context: CarContext, res: Int, argb: Int, iconArgb: Int = Color.WHITE, pad: Int = 96 / 5): CarIcon {
         val size = 96
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -88,8 +89,7 @@ internal object CarUi {
         canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
         val drawable = context.resources.getDrawable(res, null)
         drawable.mutate()
-        drawable.setTint(Color.WHITE)
-        val pad = size / 5
+        drawable.setTint(iconArgb)
         drawable.setBounds(pad, pad, size - pad, size - pad)
         drawable.draw(canvas)
         return CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
@@ -167,12 +167,27 @@ internal object CarUi {
         CarToast.makeText(context, text, CarToast.LENGTH_LONG).show()
     }
 
+    /** Red of the SOS badge (red 700): 5:1 on white. */
+    const val SOS_RED = 0xFFD32F2F.toInt()
+
     /** Red SOS action (choice 3), always reachable; [floating]: the round
      *  button of the lists (icon only, red background), otherwise the
-     *  action strip (« SOS » written). */
+     *  action strip (« SOS » written).
+     *
+     *  Lot 18 (card « Android Auto : bouton SOS bleu au lieu de rouge »,
+     *  1 Nov 2026): Android Auto may paint the round button in its own
+     *  colour (blue in the car) whatever the background asked. Choice 2:
+     *  the word « SOS » in red on a white disc, drawn in the picture of the
+     *  button: neither a tint nor a background colour, so the host neither
+     *  checks nor replaces it; recognisable on red as on any colour. The
+     *  round button cannot carry a title (Car App Library: no title on a
+     *  floating button). */
     fun sosAction(context: CarContext, snap: Snapshot, floating: Boolean, onClick: () -> Unit): Action {
         val b = Action.Builder()
-            .setIcon(icon(context, R.drawable.sarcade_car_sos, if (floating) null else CarColor.RED))
+            .setIcon(
+                if (floating) tile(context, R.drawable.sarcade_car_sos, Color.WHITE, SOS_RED, 96 / 8)
+                else icon(context, R.drawable.sarcade_car_sos, CarColor.RED)
+            )
             .setOnClickListener { onClick() }
         if (floating) b.setBackgroundColor(CarColor.RED) else b.setTitle(snap.label("sos"))
         return b.build()
