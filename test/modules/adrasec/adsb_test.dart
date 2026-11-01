@@ -26,7 +26,7 @@ void main(){
   test('aircraft from the server, label and sheet',(){
     final a=Aircraft.fromJson(plane(rotor:true))!;
     expect(a.name,'SAMU75'); expect(a.rotorcraft,isTrue); expect(a.trail.length,2);
-    expect(aircraftLabel(a),'SAMU75 · 3 117 ft (950 m) · 100 kt');
+    expect(aircraftLabel(a),'SAMU75 · 3 117 ft · 100 kt',reason:'feet only on the map');
     final lines={for(final (k,v) in aircraftLines(a,now:DateTime.utc(2026,11,1,0,0,12)))k:v};
     expect(lines['adsb.field.icao'],'3C6444');
     expect(lines['adsb.field.speed'],'100 kt · 185 km/h');
@@ -72,7 +72,7 @@ void main(){
     await t.pumpWidget(MaterialApp(home:Scaffold(body:FlutterMap(options:const MapOptions(initialCenter:LatLng(48.8,2.1),initialZoom:10),children:[
       aircraftTrails([a]),aircraftMarkers([a],onTap:(x)=>tapped=x)]))));
     await t.pump();
-    expect(find.text('SAMU75 · 3 117 ft (950 m) · 100 kt'),findsOneWidget);
+    expect(find.text('SAMU75 · 3 117 ft · 100 kt'),findsNothing,reason:'uncluttered: no label');
     await t.tap(find.byKey(const ValueKey('adsb-3c6444')));
     expect(tapped?.icao24,'3c6444');
   });
