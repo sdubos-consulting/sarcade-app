@@ -49,6 +49,7 @@ import '../../modules/adrasec/bearings/bearing_controller.dart';
 import '../../modules/adrasec/bearings/bearing_layers.dart';
 import '../../modules/adrasec/bearings/bearing_mouse_hud.dart';
 import '../../modules/adrasec/bearings/bearing_models.dart';
+import '../../modules/adrasec/bearings/zone_window.dart';
 import 'drawing/geometry.dart' as geo;
 import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
@@ -2307,10 +2308,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     await _setSignal(sig.name);
   }
 
+  // Zones of each signal in its mode, kept by the server (card « Plusieurs zones »).
+  Map<String,String> get _zoneModes=>zoneModesOf(_ops.settings.raw);
+  Future<bool> _setZoneMode(String search,String mode)=>saveZoneMode(context,api:widget.api,ops:_ops,eventId:widget.eventId,actorId:widget.deviceId,search:search,mode:mode);
+
   /// Details of a bearing; change or delete for its author or the PCO.
   Future<void> _showBearingSheet(Bearing b) async {
     final can=b.canEdit(widget.deviceId,isPco(widget.deviceId)), pco=isPco(widget.deviceId);
-    final zone=bearingZoneStatus(b,_bearings.all);
+    final zone=bearingZoneStatus(b,_bearings.all,mode:zoneModeOf(_zoneModes,b.search));
     final l=b.takenAt.toLocal(); String two(int v)=>v.toString().padLeft(2,'0');
     // Scrolls and grows (31 Oct 2026, 23 h 46: « Supprimer » pushed off an
     // iPhone screen by the zone actions of the PCO).
@@ -2331,6 +2336,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         Text(S.t('bearings.lineCone',{'l':geo.formatDistance(b.lengthM),'c':b.coneDeg.toStringAsFixed(0)}),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant)),
         PlaceLine(describer:_places,point:b.origin),
         if(zone!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text(zone,key:const ValueKey('bearing-zone-status'),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.tertiary))),
+        if(b.search.isNotEmpty)ZoneModeBlock(mode:zoneModeOf(_zoneModes,b.search),onChanged:(m)=>Navigator.pop(c,'zmode:$m')),
         const SizedBox(height:8),
         ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),title:Text(S.t('bearings.fromOrigin')),onTap:()=>Navigator.pop(c,'origin')),
         // The PCO decides by hand when the automatic rule is wrong: one line,
@@ -2350,6 +2356,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ]))));
     if(!mounted)return;
     if(choice=='origin'){await _onLongPress(b.origin);return;}
+    if(choice!=null&&choice.startsWith('zmode:')){await _setZoneMode(b.search,choice.substring(6));return;}
     if(choice!=null&&choice.startsWith('zone:')){
       await _bearings.update(b.copyWith(zone:choice.substring(5),updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));
       return;
@@ -2687,7 +2694,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showRelays)touchableMarkers(ignoring:_placingOnMap,child:_faded('relay',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isRelay).toList(),onSelect:_selectReference))),
           if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
           if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id&&b.id!=_aim?.editing?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
-            onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c))),
+            zoneModes:_zoneModes,onTapBearing:_showBearingSheet,onTapZone:(t)=>unawaited(showZoneWindow(context,t,mode:zoneModeOf(_zoneModes,t.search),onMode:(m)=>_setZoneMode(t.search,m))))),
           if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
           ..._variantLayers(),
           if(_adsb.on&&_adrasec)...[aircraftTrails(_adsb.shown,selectedId:_adsb.selectedId,track:_adsb.track),
