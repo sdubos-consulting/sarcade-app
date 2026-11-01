@@ -4,6 +4,8 @@
 - flutter_local_notifications_windows still includes <experimental/coroutine>,
   refused by recent MSVC (error STL1011) unless the deprecation is silenced:
   the definition is set for every target, plugins included.
+- Native start window with the SARCADE logo, shown at the click on the icon
+  and closed at the first image of Flutter (tool/windows_runner/).
 
 Idempotent, and fails loudly if the template changed shape.
 """
@@ -49,7 +51,78 @@ def main() -> int:
     ico = Path("windows/runner/resources/app_icon.ico")
     ico.write_bytes(Path("assets/icon/generated/windows/app_icon.ico").read_bytes())
     print(f"patched {ico}")
+    if not patch_splash():
+        return 1
     return 0
+
+
+RUNNER = Path("windows/runner")
+SPLASH_SOURCES = Path("tool/windows_runner")
+
+
+def _fail(message: str) -> bool:
+    print(f"error: {message}", file=sys.stderr)
+    return False
+
+
+def patch_splash() -> bool:
+    """Start window (card « Windows : logo SARCADE affiché dès le clic sur
+    l'icône », 1 Nov 2026): the window of Flutter stays hidden until its
+    first image; until then a small native window shows the logo, from the
+    first instant of the process (x64 and ARM64, installer and portable)."""
+    for name in ("splash_window.h", "splash_window.cpp"):
+        (RUNNER / name).write_bytes((SPLASH_SOURCES / name).read_bytes())
+    # Logos of « À propos » (dark and light themes), as resources of the exe.
+    for theme in ("dark", "light"):
+        target = RUNNER / "resources" / f"splash_logo_{theme}.png"
+        target.write_bytes(Path(f"assets/logo/sarcade-logo-{theme}.png").read_bytes())
+    cmake = RUNNER / "CMakeLists.txt"
+    text = cmake.read_text(encoding="utf-8")
+    if '"splash_window.cpp"' not in text:
+        text, n = re.subn(r'(\n(\s*)"win32_window\.cpp"\n)', r'\1\2"splash_window.cpp"\n', text, count=1)
+        if n != 1:
+            return _fail("win32_window.cpp not found in windows/runner/CMakeLists.txt")
+        cmake.write_text(text, encoding="utf-8")
+    print(f"patched {cmake}")
+    rc = RUNNER / "Runner.rc"
+    text = rc.read_text(encoding="utf-8")
+    if "splash_logo_dark.png" not in text:
+        lines = (
+            '\n// Logos of the start window (splash_window.h).\n'
+            '201 RCDATA "resources\\\\splash_logo_dark.png"\n'
+            '202 RCDATA "resources\\\\splash_logo_light.png"\n'
+        )
+        text, n = re.subn(r'(IDI_APP_ICON\s+ICON\s+"[^"]*"\n)', lambda m: m.group(1) + lines, text, count=1)
+        if n != 1:
+            return _fail("IDI_APP_ICON not found in windows/runner/Runner.rc")
+        rc.write_text(text, encoding="utf-8")
+    print(f"patched {rc}")
+    main_cpp = RUNNER / "main.cpp"
+    text = main_cpp.read_text(encoding="utf-8")
+    if "splash_window::Start" not in text:
+        text, n = re.subn(r'(#include "flutter_window.h"\n)', r'\1#include "splash_window.h"\n', text, count=1)
+        if n != 1:
+            return _fail('#include "flutter_window.h" not found in windows/runner/main.cpp')
+        # First thing of the process: shown before the engine loads.
+        text, n = re.subn(r'(wWinMain\([^)]*\)\s*\{\n)', r'\1  splash_window::Start(instance);\n', text, count=1)
+        if n != 1:
+            return _fail("wWinMain not found in windows/runner/main.cpp")
+        main_cpp.write_text(text, encoding="utf-8")
+    print(f"patched {main_cpp}")
+    window_cpp = RUNNER / "flutter_window.cpp"
+    text = window_cpp.read_text(encoding="utf-8")
+    if "splash_window::Close" not in text:
+        text, n = re.subn(r'(#include "flutter_window.h"\n)', r'\1\n#include "splash_window.h"\n', text, count=1)
+        if n != 1:
+            return _fail('#include "flutter_window.h" not found in windows/runner/flutter_window.cpp')
+        # The window of the application shows at the first image of Flutter:
+        # the start window closes then.
+        text, n = re.subn(r'(\n(\s*)this->Show\(\);\n)', r'\1\2splash_window::Close();\n', text, count=1)
+        if n != 1:
+            return _fail("this->Show() not found in windows/runner/flutter_window.cpp")
+        window_cpp.write_text(text, encoding="utf-8")
+    print(f"patched {window_cpp}")
+    return True
 
 
 if __name__ == "__main__":

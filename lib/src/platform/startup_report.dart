@@ -26,8 +26,13 @@ class StartupReport {
   StartupReport._();
   static final errors=<String>[];
   static bool firstFrame=false;
+  /// Time since the Dart code started (card « Windows : logo SARCADE
+  /// affiché dès le clic sur l'icône », point 6: start time in the log; the
+  /// Windows runner adds the times of its start window, from the click).
+  static final clock=Stopwatch();
 
   static void begin(){
+    clock.start();
     writeStartupLog('--- SARCADE $appVersionFull ${appBuild.isEmpty?'':appBuild} '
       '(${kIsWeb?'web':defaultTargetPlatform.name}, ${kReleaseMode?'release':'debug'})');
   }
@@ -47,7 +52,7 @@ class StartupReport {
   static void watchFirstFrame(){
     SchedulerBinding.instance.addPostFrameCallback((_){
       firstFrame=true;
-      note('premier écran affiché');
+      note('premier écran affiché (${clock.elapsedMilliseconds} ms après le début du code Dart)');
       if(smokeReportPath()==null)return;
       Timer(const Duration(seconds:8),(){
         writeSmokeReport(smokeJson());
