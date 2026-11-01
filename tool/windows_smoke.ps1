@@ -3,8 +3,8 @@
 # usable by hand on a PC:
 #   powershell -ExecutionPolicy Bypass -File tool\windows_smoke.ps1 -Exe "C:\Program Files\SARCADE\sarcade_app.exe" -Out smoke
 # Writes to -Out: report.json (from the app), capture.png (screen after a few
-# seconds), demarrage.log (startup log). Exit code 0 when the first screen
-# showed without error.
+# seconds), demarrage.log (startup log). Exit code 0 when the start window
+# showed within one second and the first screen without error.
 param([Parameter(Mandatory=$true)][string]$Exe, [string]$Out = "smoke", [int]$CaptureAfter = 6, [int]$Timeout = 90)
 $ErrorActionPreference = "Continue"
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -16,8 +16,25 @@ Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE ; exe: $Exe"
 # Fresh log: the unit tests of the same machine write to it too.
 $log = Join-Path $env:LOCALAPPDATA "SARCADE\logs\demarrage.log"
 Remove-Item $log -ErrorAction SilentlyContinue
+# Start window (card « Windows : logo SARCADE affiché dès le clic sur
+# l'icône », 1 Nov 2026): it must show in less than one second. Looked for
+# by its class while the app starts; the app also writes the time it took
+# (splash_ms, from the creation of the process) in demarrage.log.
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public static class SplashW32 {
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h); }
+"@
+$clock = [Diagnostics.Stopwatch]::StartNew()
 $p = Start-Process -FilePath $Exe -PassThru
-Start-Sleep -Seconds $CaptureAfter
+$splashSeen = -1
+while ($clock.ElapsedMilliseconds -lt 3000) {
+  $s = [SplashW32]::FindWindow("SARCADE_SPLASH", $null)
+  if ($s -ne [IntPtr]::Zero -and [SplashW32]::IsWindowVisible($s)) { $splashSeen = $clock.ElapsedMilliseconds; break }
+  Start-Sleep -Milliseconds 10
+}
+Start-Sleep -Milliseconds ([Math]::Max(0, $CaptureAfter * 1000 - $clock.ElapsedMilliseconds))
 try {
   Add-Type -AssemblyName System.Windows.Forms, System.Drawing
   $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
@@ -57,6 +74,25 @@ if (-not $p.WaitForExit($Timeout * 1000)) {
   Write-Host "::error title=Windows start::the app did not end within $Timeout s (first screen never drawn?)"
   Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
 }
+$splashMs = -1; $firstMs = -1
+if (Test-Path $log) {
+  $m = Select-String -Path $log -Pattern 'splash_ms=(\d+)' | Select-Object -Last 1
+  if ($m) { $splashMs = [int]$m.Matches[0].Groups[1].Value }
+  $m = Select-String -Path $log -Pattern 'first_frame_ms=(\d+)' | Select-Object -Last 1
+  if ($m) { $firstMs = [int]$m.Matches[0].Groups[1].Value }
+}
+$arch = $env:PROCESSOR_ARCHITECTURE
+$seenText = if ($splashSeen -ge 0) { "seen by the test after $splashSeen ms" } else { "not seen by the test within 3 s" }
+$logText = if ($splashMs -ge 0) { "shown $splashMs ms after the creation of the process" } else { "no time in the log" }
+$firstText = if ($firstMs -ge 0) { "first image of Flutter after $firstMs ms" } else { "first image of Flutter: no time in the log" }
+# The window may close before the test sees it (fast start): the time
+# written by the app is then the measure.
+if (($splashSeen -ge 0 -and $splashSeen -le 1000) -or ($splashMs -ge 0 -and $splashMs -le 1000)) {
+  Write-Host "::notice title=Windows start window ($arch)::$seenText, $logText; $firstText"
+} else {
+  Write-Host "::error title=Windows start window ($arch)::not shown within 1 s: $seenText, $logText; $firstText"
+  $script:splashLate = $true
+}
 if (Test-Path $log) {
   Copy-Item $log (Join-Path $Out "demarrage.log"); Write-Host "--- demarrage.log"; Get-Content $log -Tail 80
   # Readable from the API without downloading the artifact (one annotation).
@@ -68,6 +104,7 @@ if (-not (Test-Path $report)) { Write-Host "::error title=Windows start::no repo
 $r = Get-Content $report -Raw | ConvertFrom-Json
 Write-Host "--- report.json"; Get-Content $report
 if ($script:uniform) { exit 1 }
+if ($script:splashLate) { exit 1 }
 if (-not $r.first_frame) { Write-Host "::error title=Windows start::first screen not drawn"; exit 1 }
 if ($r.errors.Count -gt 0) {
   foreach ($e in $r.errors) { Write-Host "::error title=Windows start::$($e -replace "`r?`n", ' ')" }
