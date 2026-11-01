@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/strings.dart';
 import '../../services/sarcade_api.dart';
+import 'tv_screens_button.dart' show tvScreensChanged;
 
 /// Lot 11 (30 Oct 2026, 16 h 27, high priority): the « Écran à proximité »
 /// dialog opened over the QR scanner on iPhone and no button answered any
@@ -64,13 +65,24 @@ List<String> tvCodesToOffer(List<String> nearby,Set<String> handled,Map<String,D
   return out;
 }
 
+/// Preference « Découverte automatique des écrans » (Outils › Écrans,
+/// 1 Nov 2026, 8 h 01): on by default; off, no « écran à proximité »
+/// window opens, pairing by code or QR stays.
+const tvDiscoveryKey='tv_discovery';
+bool tvDiscoveryOn(String? stored)=>stored!='0';
+/// Current value, read by the watcher and the switch of Outils › Écrans;
+/// loaded and saved by the map page.
+final tvDiscovery=ValueNotifier<bool>(true);
+
 class TvNearbyWatcher {
   final SarcadeApi api;
-  TvNearbyWatcher(this.api);
+  /// Reads the preference each time (changed in Outils › Écrans).
+  final bool Function() enabled;
+  TvNearbyWatcher(this.api,{bool Function()? enabled}):enabled=enabled??(()=>tvDiscovery.value);
   bool _busy=false;
 
   Future<void> check(BuildContext context,String eventId) async {
-    if(_busy||TvNearbyGate.suspended)return;
+    if(_busy||TvNearbyGate.suspended||!enabled())return;
     _busy=true;
     try{
       final codes=TvNearbyGate.toOffer(await api.tvNearby(),DateTime.now());
@@ -85,7 +97,8 @@ class TvNearbyWatcher {
         TvNearbyGate.handled(code);
         if(!context.mounted)return;
         String key='tv.done';
-        try{await api.approveDisplay(code,eventId);}
+        // The screen accepted here shows at once in the « Écrans » button.
+        try{await api.approveDisplay(code,eventId);tvScreensChanged.value++;}
         on SarcadeHttpException catch(e){key=e.statusCode==401||e.statusCode==403?'tv.signIn':'tv.unknownCode';}
         catch(_){key='event.offline';}
         if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t(key))));
