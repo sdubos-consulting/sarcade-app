@@ -2465,7 +2465,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onUpdate:()=>downloadUpdate(context,widget.api,_ops.update),
           accessRequired:AccessManager.instance.requiredFor(widget.api.baseUrl),
           accessRenewBy:_accessRenewBy,onSignIn:_signIn,
-          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline?reloadApp:null,
+          // Web: a server restarting (update of the NAS) is not an expired
+          // session; « Recharger » only after 2 minutes without an answer
+          // (1 Nov 2026), « nouvel essai… » before.
+          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline&&webOutageLong(_sync.lastServerContact!,DateTime.now())?reloadApp:null,
+          serverRetrying:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline&&!webOutageLong(_sync.lastServerContact!,DateTime.now()),
           onEnableNotifications:_notificationsBanner?_enableNotifications:null,
           onDismissNotifications:()=>setState(()=>_notificationsDismissed=true),
           webUpdateChange:versionChange(appVersionFull,_servedVersion),webUpdateBuilds:'$appBuild → ${_servedBuild??'?'}',
@@ -2527,7 +2531,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onLongPress:(_,point)=>_onLongPress(point,gesture:true),
           onSecondaryTap:(_,point){if(_aim!=null){_cancelAim();}else{_onLongPress(point,gesture:true);}},
           onMapEvent:_onMapEvent,
-          onMapReady:(){if(mounted){_onCameraChanged(_map.camera);setState((){});}},
+          // Map moves listened from the start: « Suivre ma vue » no longer
+          // waits for « Ma position » (1 Nov 2026).
+          onMapReady:(){if(mounted){_onCameraChanged(_map.camera);_watchMapMoves();setState((){});}},
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
           interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),

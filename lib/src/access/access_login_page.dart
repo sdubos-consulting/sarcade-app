@@ -107,6 +107,9 @@ class _AccessLoginPageState extends State<AccessLoginPage> {
           decoration:InputDecoration(border:const OutlineInputBorder(),labelText:S.t('access.token'),
             suffixIcon:IconButton(tooltip:S.t('access.paste'),onPressed:_paste,icon:const Icon(Icons.content_paste)))),
         if(session?.email!=null)Padding(padding:const EdgeInsets.only(top:8),child:Text(S.t('access.tokenFor',{'email':session!.email}))),
+        // How long the pasted token lasts (1 Nov 2026).
+        if(session?.expiresAt!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text(S.t('access.validUntil',{'d':accessDate(session!.expiresAt!)}),
+          key:const ValueKey('access-valid-until'),style:Theme.of(context).textTheme.bodySmall)),
         if(_error!=null)Padding(padding:const EdgeInsets.only(top:8),child:Text(_error!,style:TextStyle(color:Theme.of(context).colorScheme.error))),
         const SizedBox(height:16),
         FilledButton(onPressed:session==null?null:()=>_accept(_pasted.text),child:Text(S.t('access.validate'))),
@@ -114,3 +117,7 @@ class _AccessLoginPageState extends State<AccessLoginPage> {
     );
   }
 }
+
+/// « 30/11/2026 à 22:14 », local time.
+String accessDate(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');
+  return '${two(l.day)}/${two(l.month)}/${l.year} ${two(l.hour)}:${two(l.minute)}';}
