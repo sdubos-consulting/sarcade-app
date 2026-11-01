@@ -82,6 +82,8 @@ class _MeshCorePageState extends State<MeshCorePage> {
           if(link.connectedSince!=null)_metric(S.t('mesh.field.since'),meshCoreAge(link.connectedSince,now)),
           _metric(S.t('mesh.field.frames'),S.t('mesh.framesValue',{'in':'${link.framesIn}','out':'${link.framesOut}'})),
           if(link.lastFrameAt!=null)_metric(S.t('mesh.field.lastFrame'),meshCoreAge(link.lastFrameAt,now)),
+          // Lot 19: « Déconnecter » / « Se connecter ».
+          const Padding(padding:EdgeInsets.only(top:10),child:Align(alignment:Alignment.centerLeft,child:MeshCoreConnectButton())),
         ]))),
         if(link.remembered)...[
           // Lot 17: the nodes on the map, also under Fond et affichage.

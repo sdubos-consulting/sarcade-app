@@ -56,6 +56,29 @@ class MeshCoreReconnectBar extends StatelessWidget {
   }
 }
 
+/// « Déconnecter » / « Se connecter » (lot 19, card « MeshCore : bouton
+/// « Déconnecter » le module », validated on 1 Nov 2026, 21 h 44): the
+/// module stays remembered; disconnected on purpose, it is not joined again
+/// by itself, even at the next start. In the card of the module and in
+/// Outils › MeshCore, web included.
+class MeshCoreConnectButton extends StatelessWidget {
+  const MeshCoreConnectButton({super.key});
+  @override Widget build(BuildContext context)=>ListenableBuilder(listenable:MeshCoreLink.instance,builder:(context,_){
+    final link=MeshCoreLink.instance;
+    if(!link.remembered||link.state==MeshCoreState.waitingClick)return const SizedBox.shrink();
+    if(link.state==MeshCoreState.disconnected){
+      return Column(key:const ValueKey('meshcore-off'),mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text(S.t('mesh.off.help'),style:Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height:6),
+        FilledButton.icon(key:const ValueKey('meshcore-connect'),onPressed:()=>unawaited(link.connect()),
+          icon:const Icon(Icons.bluetooth_connected),label:Text(S.t('mesh.connect'))),
+      ]);
+    }
+    return OutlinedButton.icon(key:const ValueKey('meshcore-disconnect'),onPressed:()=>unawaited(link.disconnect()),
+      icon:const Icon(Icons.link_off),label:Text(S.t('mesh.disconnect')));
+  });
+}
+
 /// The bar above the map and in Outils › MeshCore, only when needed.
 class MeshCoreReconnectBanner extends StatelessWidget {
   const MeshCoreReconnectBanner({super.key});
@@ -138,7 +161,9 @@ class _MeshCoreLinkCardState extends State<MeshCoreLinkCard> {
           onPressed:()=>unawaited(link.chooseInBrowser()),icon:const Icon(Icons.bluetooth_searching),label:Text(S.t('mesh.web.reconnect')))),
         if(problem!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text(problem,key:const ValueKey('meshcore-problem'),style:small?.copyWith(color:s.error))),
         const SizedBox(height:8),
-        Wrap(spacing:8,runSpacing:8,children:[
+        Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
+          // Lot 19: « Déconnecter », or « Se connecter » once disconnected.
+          const MeshCoreConnectButton(),
           OutlinedButton.icon(onPressed:link.state==MeshCoreState.connected?()=>unawaited(link.refresh()):null,icon:const Icon(Icons.refresh),label:Text(S.t('mesh.refresh'))),
           OutlinedButton.icon(key:const ValueKey('meshcore-forget'),onPressed:()=>unawaited(link.forget()),icon:const Icon(Icons.bluetooth_disabled),label:Text(S.t('mesh.forget'))),
           if(busy)const Padding(padding:EdgeInsets.all(8),child:SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2))),
