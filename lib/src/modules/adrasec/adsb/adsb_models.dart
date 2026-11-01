@@ -171,12 +171,30 @@ bool aircraftStale(Aircraft a,DateTime now){
   final age=aircraftAgeS(a,now);
   return !a.urgent&&age!=null&&age>adsbEstimateMaxS;
 }
+/// Seconds by which [aircraftEstimated] moves the aircraft forward: 0 when
+/// the position is shown as received (on the ground, no speed or track).
+double aircraftEstimateS(Aircraft a,DateTime now){
+  final kt=a.speedKt;
+  if(a.onGround||kt==null||kt<=0||a.trackDeg==null)return 0;
+  return (aircraftAgeS(a,now)??0).clamp(0,adsbEstimateMaxS).toDouble();
+}
 LatLng aircraftEstimated(Aircraft a,DateTime now){
-  final age=(aircraftAgeS(a,now)??0).clamp(0,adsbEstimateMaxS).toDouble();
-  final kt=a.speedKt, track=a.trackDeg;
-  if(a.onGround||kt==null||kt<=0||track==null||age<=0)return a.position;
-  final m=kt*0.514444*age, t=track*math.pi/180, lat=a.position.latitude;
+  final age=aircraftEstimateS(a,now);
+  if(age<=0)return a.position;
+  final m=a.speedKt!*0.514444*age, t=a.trackDeg!*math.pi/180, lat=a.position.latitude;
   return LatLng(lat+m*math.cos(t)/111320,a.position.longitude+m*math.sin(t)/(111320*math.cos(lat*math.pi/180)));
+}
+
+/// Diagnostic line of the sheet (lot 18, card « ADS-B : avions de la TV 5 à
+/// 10 km plus au sud… », choice 2): age of the OpenSky position by the
+/// server clock, and the advance of the estimate when there is one;
+/// « Position reçue il y a 42 s · estimée +42 s ». Null without position time.
+String? aircraftPositionDiag(Aircraft a,DateTime now){
+  final age=aircraftAgeS(a,now);
+  if(age==null)return null;
+  final received=S.t('adsb.position.received',{'n':'${math.max(0,age.round())}'});
+  final ahead=aircraftEstimateS(a,now).round();
+  return ahead<1?received:'$received · ${S.t('adsb.position.estimated',{'n':'$ahead'})}';
 }
 
 /// Icons by OpenSky category (1 Nov 2026, 12 h 04); many aircraft do not
