@@ -233,6 +233,11 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('display_view',r.statusCode,r.body);
   }
   /// « Messages : afficher / masquer » of one screen, applied at once.
+  /// « Jour / Nuit / Automatique » of one screen (1 Nov 2026, 8 h 27).
+  Future<void> setDisplayTheme(String eventId,String displayId,String theme) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/theme'),headers:_json,body:jsonEncode({'theme':theme}));
+    if(r.statusCode!=200) throw SarcadeHttpException('display_theme',r.statusCode,r.body);
+  }
   Future<void> setDisplayMessages(String eventId,String displayId,bool messages) async {
     final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/messages'),headers:_json,body:jsonEncode({'messages':messages}));
     if(r.statusCode!=200) throw SarcadeHttpException('display_messages',r.statusCode,r.body);
