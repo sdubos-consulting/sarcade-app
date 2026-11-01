@@ -46,6 +46,8 @@ USAGE = {
         "SARCADE utilise le micro pour dicter une recherche ou un message.",
     "NSSpeechRecognitionUsageDescription":
         "SARCADE transforme votre voix en texte pour dicter une recherche ou un message.",
+    "NSBluetoothAlwaysUsageDescription":
+        "SARCADE se connecte en Bluetooth à un module radio LoRa (MeshCore) pour vérifier qu’il répond.",
     "NSCameraUsageDescription":
         "SARCADE permet de prendre une photo et de l’envoyer en message au poste de commandement.",
 }

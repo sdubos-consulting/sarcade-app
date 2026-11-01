@@ -21,7 +21,16 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - run: flutter pub get
+      - name: Dependencies
+        shell: bash
+        run: |
+          # The job log is not always readable: dependency errors as annotations.
+          if ! flutter pub get > pub.log 2>&1; then
+            cat pub.log
+            msg=$(tail -40 pub.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=flutter pub get::${msg}"
+            exit 1
+          fi
       - name: Analyze
         shell: bash
         run: |

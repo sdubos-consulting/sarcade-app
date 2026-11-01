@@ -24,6 +24,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../access/access_manager.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
+import '../meshcore/meshcore_trial.dart';
 import '../../models/comm_group.dart' show myRoles;
 import '../../offline/sync_service.dart';
 import '../../offline/unsent_page.dart';
@@ -275,6 +276,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         footer:sync==null?null:UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});})),
       if(_pco&&(_server.isNotEmpty||_serverError!=null))_block(S.t('diag.server'),_server,
         footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!))),
+      // Trial: does SARCADE talk to a MeshCore module over Bluetooth? (1 Nov 2026)
+      const MeshCoreTrialCard(),
     ]);
   }
 }
