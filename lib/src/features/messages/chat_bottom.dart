@@ -59,6 +59,24 @@ bool chatKeyInView(GlobalKey key){
   return top+box.size.height>0&&top<view.size.height;
 }
 
+/// Watches the « N non lus » separator: seen once it was on screen. Looked
+/// at after the layout of the next frame (during a jump, the positions of
+/// the items are still the old ones).
+class SeparatorWatch {
+  final GlobalKey key=GlobalKey();
+  bool seen=false;
+  bool _pending=false;
+  /// [alive] the screen is still there; [changed] rebuilds it.
+  void check({required bool Function() alive,required VoidCallback changed}){
+    if(seen||_pending)return;
+    _pending=true;
+    WidgetsBinding.instance.addPostFrameCallback((_){
+      _pending=false;
+      if(!seen&&alive()&&chatKeyInView(key)){seen=true;changed();}
+    });
+  }
+}
+
 /// Goes up to the widget of [key], item [index] of [count]: about there
 /// first (the list is built lazily), then exactly.
 Future<void> chatScrollToKey(ScrollController c,GlobalKey key,int index,int count,{required bool Function() alive}) async {

@@ -34,13 +34,14 @@ class _Chat extends StatefulWidget {
   @override State<_Chat> createState()=>_ChatState();
 }
 class _ChatState extends State<_Chat>{
-  final _scroll=ScrollController(); final _separatorKey=GlobalKey();
-  bool _atBottom=true, _unreadSeen=false;
+  final _scroll=ScrollController(); final _separator=SeparatorWatch();
+  bool _atBottom=true;
   @override void initState(){
     super.initState();
     _scroll.addListener((){
-      final atBottom=chatAtBottom(_scroll), seen=_unreadSeen||chatKeyInView(_separatorKey);
-      if(atBottom!=_atBottom||seen!=_unreadSeen)setState((){_atBottom=atBottom;_unreadSeen=seen;});
+      final atBottom=chatAtBottom(_scroll);
+      if(atBottom!=_atBottom)setState(()=>_atBottom=atBottom);
+      _separator.check(alive:()=>mounted,changed:()=>setState((){}));
     });
     WidgetsBinding.instance.addPostFrameCallback((_)=>chatJumpToBottom(_scroll,alive:()=>mounted));
   }
@@ -51,10 +52,10 @@ class _ChatState extends State<_Chat>{
       StickToBottom(controller:_scroll,stick:()=>_atBottom,child:ListView.builder(controller:_scroll,itemCount:widget.messages.length,itemBuilder:(_,i){
         final b=Padding(padding:const EdgeInsets.all(8),child:Text(widget.messages[i]));
         if(i!=widget.firstUnread)return b;
-        return Column(children:[Padding(key:_separatorKey,padding:const EdgeInsets.all(6),child:Text(S.t('messages.unreadSeparator',{'n':n}))),b]);
+        return Column(children:[Padding(key:_separator.key,padding:const EdgeInsets.all(6),child:Text(S.t('messages.unreadSeparator',{'n':n}))),b]);
       })),
-      if(!_unreadSeen)Positioned(top:10,left:0,right:0,child:Center(child:UnreadUpButton(count:n,
-        onPressed:(){setState((){_unreadSeen=true;_atBottom=false;});chatScrollToKey(_scroll,_separatorKey,widget.firstUnread,widget.messages.length,alive:()=>mounted);}))),
+      if(!_separator.seen)Positioned(top:10,left:0,right:0,child:Center(child:UnreadUpButton(count:n,
+        onPressed:(){setState((){_separator.seen=true;_atBottom=false;});chatScrollToKey(_scroll,_separator.key,widget.firstUnread,widget.messages.length,alive:()=>mounted);}))),
     ]);
   }
 }

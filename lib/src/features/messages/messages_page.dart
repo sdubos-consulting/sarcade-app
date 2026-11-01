@@ -57,9 +57,10 @@ class _MessagesPageState extends State<MessagesPage>{
  final _watch=<StreamSubscription>[];
  /// Opening on the last message (lot 19), « ↑ N non lus », ⌄ button,
  /// automatic « read ».
- final _scroll=ScrollController(); final _separatorKey=GlobalKey();
- /// The « N non lus » separator was seen (or reached by « ↑ N non lus »).
- bool _unreadSeen=false;
+ final _scroll=ScrollController();
+ /// The « N non lus » separator, seen or not (« ↑ N non lus »).
+ var _separator=SeparatorWatch();
+ GlobalKey get _separatorKey=>_separator.key;
  bool _atBottom=true; int _maxBuilt=-1; final _readSent=<String>{};
  /// Unread when the screen opened: shown in bold; everything shown counts as
  /// seen (the pastille of the map goes back to zero).
@@ -85,8 +86,8 @@ class _MessagesPageState extends State<MessagesPage>{
    }));}
    _scroll.addListener((){
      final atBottom=chatAtBottom(_scroll);
-     final seen=_unreadSeen||chatKeyInView(_separatorKey);
-     if((atBottom!=_atBottom||seen!=_unreadSeen)&&mounted)setState((){_atBottom=atBottom;_unreadSeen=seen;});
+     if(atBottom!=_atBottom&&mounted)setState(()=>_atBottom=atBottom);
+     _watchSeparator();
    });
    // Always on the last message, even when everything is unread (lot 19).
    WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
@@ -95,14 +96,15 @@ class _MessagesPageState extends State<MessagesPage>{
  void _toBottom(){
    chatJumpToBottom(_scroll,alive:()=>mounted);
    // Short conversation, separator already on screen: no « ↑ N non lus ».
-   WidgetsBinding.instance.addPostFrameCallback((_){if(mounted&&!_unreadSeen&&chatKeyInView(_separatorKey))setState(()=>_unreadSeen=true);});
+   _watchSeparator();
  }
+ void _watchSeparator()=>_separator.check(alive:()=>mounted,changed:()=>setState((){}));
 
  /// « ↑ N non lus »: up to the separator, the first unread message under it.
  Future<void> _toUnread() async {
    final shown=_messages; final first=firstUnreadIndex(shown,_unreadAtOpen);
    // Leaving the bottom: the list no longer sticks to the last message.
-   setState((){_unreadSeen=true;_atBottom=false;});
+   setState((){_separator.seen=true;_atBottom=false;});
    if(first==null)return;
    await chatScrollToKey(_scroll,_separatorKey,first,shown.length,alive:()=>mounted);
  }
@@ -115,7 +117,7 @@ class _MessagesPageState extends State<MessagesPage>{
      _refreshGroups();
      _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
        deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
-     _unreadSeen=false;
+     _separator=SeparatorWatch();
      _markSeen();
      WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
    }
@@ -347,7 +349,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(!_chatOpen)setState(()=>_chatOpen=true);
    if(key==_conv)return;
    _drafts.keep(_conv,_text.text); _text.text=_drafts.take(key);
-   setState((){_conv=key;_maxBuilt=-1;_unreadSeen=false;_atBottom=true;});
+   setState((){_conv=key;_maxBuilt=-1;_separator=SeparatorWatch();_atBottom=true;});
    WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
  }
 
@@ -771,7 +773,7 @@ class _MessagesPageState extends State<MessagesPage>{
          ]);
        })),
        // Unread messages higher up: one touch goes up to them (lot 19).
-       if(unreadHere>0&&!_unreadSeen)Positioned(top:10,left:0,right:0,child:Center(
+       if(unreadHere>0&&!_separator.seen)Positioned(top:10,left:0,right:0,child:Center(
          child:UnreadUpButton(count:unreadHere,onPressed:()=>unawaited(_toUnread())))),
        if(!_atBottom)Positioned(right:12,bottom:12,child:Badge(
          isLabelVisible:below>0,label:Text('$below'),

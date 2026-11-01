@@ -46,10 +46,10 @@ class _MeshCoreChatPageState extends State<MeshCoreChatPage> {
   final _scroll=ScrollController();
   /// Same opening as Messages (lot 19): on the last message, the
   /// « N non lus » separator above the first unread one, « ↑ N non lus ».
-  final _separatorKey=GlobalKey();
+  final _separator=SeparatorWatch();
   String? _firstUnreadId;
   int _unreadAtOpen=0;
-  bool _atBottom=true, _unreadSeen=false;
+  bool _atBottom=true;
 
   @override void initState(){
     super.initState();
@@ -62,8 +62,8 @@ class _MeshCoreChatPageState extends State<MeshCoreChatPage> {
     chats.addListener(_changed); link.addListener(_changed);
     _scroll.addListener((){
       final atBottom=chatAtBottom(_scroll);
-      final seen=_unreadSeen||chatKeyInView(_separatorKey);
-      if((atBottom!=_atBottom||seen!=_unreadSeen)&&mounted)setState((){_atBottom=atBottom;_unreadSeen=seen;});
+      if(atBottom!=_atBottom&&mounted)setState(()=>_atBottom=atBottom);
+      _watchSeparator();
     });
     // After the first frame: the list of Messages rebuilds its unread count.
     WidgetsBinding.instance.addPostFrameCallback((_){chats.markRead(widget.prefix);_toBottom();});
@@ -71,15 +71,16 @@ class _MeshCoreChatPageState extends State<MeshCoreChatPage> {
 
   void _toBottom(){
     chatJumpToBottom(_scroll,alive:()=>mounted);
-    WidgetsBinding.instance.addPostFrameCallback((_){if(mounted&&!_unreadSeen&&chatKeyInView(_separatorKey))setState(()=>_unreadSeen=true);});
+    _watchSeparator();
   }
+  void _watchSeparator()=>_separator.check(alive:()=>mounted,changed:()=>setState((){}));
 
   Future<void> _toUnread() async {
     final messages=chats.thread(widget.prefix)?.messages??const <MeshCoreChatMessage>[];
     final i=messages.indexWhere((m)=>m.id==_firstUnreadId);
-    setState((){_unreadSeen=true;_atBottom=false;});
+    setState((){_separator.seen=true;_atBottom=false;});
     if(i<0)return;
-    await chatScrollToKey(_scroll,_separatorKey,i,messages.length,alive:()=>mounted);
+    await chatScrollToKey(_scroll,_separator.key,i,messages.length,alive:()=>mounted);
   }
   @override void dispose(){
     if(chats.openThread==widget.prefix)chats.openThread=null;
@@ -145,12 +146,12 @@ class _MeshCoreChatPageState extends State<MeshCoreChatPage> {
               final m=messages[i];
               if(m.id!=_firstUnreadId)return _bubble(m);
               return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-                Padding(key:_separatorKey,padding:const EdgeInsets.symmetric(vertical:6),child:Center(child:Chip(
+                Padding(key:_separator.key,padding:const EdgeInsets.symmetric(vertical:6),child:Center(child:Chip(
                   label:Text(S.t('messages.unreadSeparator',{'n':_unreadAtOpen})),visualDensity:VisualDensity.compact))),
                 _bubble(m),
               ]);
             })),
-            if(_firstUnreadId!=null&&_unreadAtOpen>0&&!_unreadSeen)Positioned(top:10,left:0,right:0,child:Center(
+            if(_firstUnreadId!=null&&_unreadAtOpen>0&&!_separator.seen)Positioned(top:10,left:0,right:0,child:Center(
               child:UnreadUpButton(count:_unreadAtOpen,onPressed:()=>unawaited(_toUnread())))),
           ])),
         SafeArea(top:false,child:Padding(padding:const EdgeInsets.fromLTRB(10,4,6,8),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
