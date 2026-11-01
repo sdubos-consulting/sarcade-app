@@ -211,14 +211,29 @@ void main() {
     await onMap('messages › back');
     // Itinéraires and Résection (blocked on a phone before lot 12).
     for (final tool in ['tool.routes', 'tool.resection']) {
-      await t.tap(byId('nav.tools')); await pumpUntil(t, byId(tool));
+      await t.tap(byId('nav.tools')); await t.pump(const Duration(seconds: 1));
+      // The grid is lazy and keeps its scroll: a tile out of view (Fichiers
+      // joined Outils, 1 Nov 2026) is built only once scrolled to, down or up.
+      if (byId(tool).hitTestable().evaluate().isEmpty) {
+        try {
+          await t.scrollUntilVisible(byId(tool), 200, scrollable: find.byType(Scrollable).last, maxScrolls: 15);
+        } catch (_) {
+          await t.scrollUntilVisible(byId(tool), -200, scrollable: find.byType(Scrollable).last, maxScrolls: 15);
+        }
+      }
+      await pumpUntil(t, byId(tool));
       await t.tap(byId(tool)); await t.pump(const Duration(seconds: 1));
       await back();
       await onMap('$tool › back');
     }
     // « Sélectionner une zone » (card C1): back leaves the selection first.
     final centre = t.getCenter(find.byType(Scaffold).first);
-    await t.longPressAt(centre - const Offset(120, 200)); await t.pump(const Duration(seconds: 1));
+    // A long press is sometimes taken for a drag by the emulator (unstable
+    // step): pressed again, a little aside, until the point menu opens.
+    for (var i = 0; i < 3 && byId('point.select').evaluate().isEmpty; i++) {
+      await t.longPressAt(centre - Offset(120.0 - 30 * i, 200)); await t.pump(const Duration(seconds: 1));
+      await pumpUntil(t, byId('point.select'), timeout: const Duration(seconds: 10)).catchError((_) {});
+    }
     await pumpUntil(t, byId('point.select'));
     await t.tap(byId('point.select')); await t.pump(const Duration(seconds: 1));
     expect(find.text(S.t('draw.selectHint')), findsOneWidget, reason: 'selection mode on');
