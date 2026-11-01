@@ -228,7 +228,12 @@ void main() {
     }
     // « Sélectionner une zone » (card C1): back leaves the selection first.
     final centre = t.getCenter(find.byType(Scaffold).first);
-    await t.longPressAt(centre - const Offset(120, 200)); await t.pump(const Duration(seconds: 1));
+    // A long press is sometimes taken for a drag by the emulator (unstable
+    // step): pressed again, a little aside, until the point menu opens.
+    for (var i = 0; i < 3 && byId('point.select').evaluate().isEmpty; i++) {
+      await t.longPressAt(centre - Offset(120.0 - 30 * i, 200)); await t.pump(const Duration(seconds: 1));
+      await pumpUntil(t, byId('point.select'), timeout: const Duration(seconds: 10)).catchError((_) {});
+    }
     await pumpUntil(t, byId('point.select'));
     await t.tap(byId('point.select')); await t.pump(const Duration(seconds: 1));
     expect(find.text(S.t('draw.selectHint')), findsOneWidget, reason: 'selection mode on');
