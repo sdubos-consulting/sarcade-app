@@ -489,7 +489,8 @@ const Texts _fr={
   'diag.copyReport':'Copier le rapport',
   'diag.refresh':'Actualiser',
   'diag.serverForbidden':'Réservé au PCO et aux administrateurs',
-  'diag.serverOld':'Serveur trop ancien pour ce bloc'
+  'diag.serverOld':'Serveur trop ancien pour ce bloc',
+  'diag.accessBrowser':'par le navigateur','diag.accessBrowserRefused':'sans réponse, reconnectez-vous'
 };
 
 const Texts _en={
@@ -917,5 +918,6 @@ const Texts _en={
   'diag.copyReport':'Copy the report',
   'diag.refresh':'Refresh',
   'diag.serverForbidden':'PCO and administrators only',
-  'diag.serverOld':'Server too old for this block'
+  'diag.serverOld':'Server too old for this block',
+  'diag.accessBrowser':'through the browser','diag.accessBrowserRefused':'no answer, sign in again'
 };
