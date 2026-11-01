@@ -2467,7 +2467,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onUpdate:()=>downloadUpdate(context,widget.api,_ops.update),
           accessRequired:AccessManager.instance.requiredFor(widget.api.baseUrl),
           accessRenewBy:_accessRenewBy,onSignIn:_signIn,
-          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline?reloadApp:null,
+          // Web: a server restarting (update of the NAS) is not an expired
+          // session; « Recharger » only after 2 minutes without an answer
+          // (1 Nov 2026), « nouvel essai… » before.
+          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline&&webOutageLong(_sync.lastServerContact!,DateTime.now())?reloadApp:null,
+          serverRetrying:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline&&!webOutageLong(_sync.lastServerContact!,DateTime.now()),
           onEnableNotifications:_notificationsBanner?_enableNotifications:null,
           onDismissNotifications:()=>setState(()=>_notificationsDismissed=true),
           webUpdateChange:versionChange(appVersionFull,_servedVersion),webUpdateBuilds:'$appBuild → ${_servedBuild??'?'}',

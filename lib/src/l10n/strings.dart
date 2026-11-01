@@ -352,7 +352,7 @@ const Texts _fr={
   'access.desktopIntro':'Le serveur {server} est protégé par Cloudflare Access. Ouvrez la page de connexion dans votre navigateur, saisissez votre e-mail puis le code reçu par e-mail.',
   'access.openBrowser':'Ouvrir la page de connexion','access.pasteIntro':'Une fois connecté, la page affiche « Copier le jeton » : copiez-le puis collez-le ici.',
   'access.webExpired':'Le serveur ne répond plus alors que le réseau fonctionne : la session a peut-être expiré',
-  'access.reload':'Recharger la page',
+  'access.reload':'Recharger la page','access.serverRetry':'Serveur momentanément indisponible, nouvel essai…','access.validUntil':'Jeton valable jusqu’au {d}','diag.accessTitle':'Demandes de connexion Cloudflare','diag.accessTokenUntil':'jeton valable jusqu’au {d}','diag.accessNoToken':'aucun jeton enregistré','diag.accessRecovered':'rattrapé par un second essai','diag.accessRetried':'second essai refusé aussi',
   'access.token':'Jeton de connexion','access.paste':'Coller','access.tokenFor':'Jeton de {email}','access.validate':'Valider',
   // Lot 5 (30 Oct 2026): Infos du point, convertisseur, diagnostic, APRS, météo.
   'measure.format.l93':'Lambert 93',
@@ -779,7 +779,7 @@ const Texts _en={
   'access.desktopIntro':'Server {server} is protected by Cloudflare Access. Open the sign-in page in your browser, enter your email then the code received by email.',
   'access.openBrowser':'Open the sign-in page','access.pasteIntro':'Once signed in, the page shows « Copier le jeton »: copy it and paste it here.',
   'access.webExpired':'The server stopped answering while the network works: the session may have expired',
-  'access.reload':'Reload the page',
+  'access.reload':'Reload the page','access.serverRetry':'Server unavailable for a moment, trying again…','access.validUntil':'Token valid until {d}','diag.accessTitle':'Cloudflare sign-in requests','diag.accessTokenUntil':'token valid until {d}','diag.accessNoToken':'no token stored','diag.accessRecovered':'recovered by a second try','diag.accessRetried':'second try refused too',
   'access.token':'Sign-in token','access.paste':'Paste','access.tokenFor':'Token of {email}','access.validate':'Validate',
   // Lot 5 (30 Oct 2026): point details, converter, diagnostics, APRS, weather.
   'measure.format.l93':'Lambert 93',
