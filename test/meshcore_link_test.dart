@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sarcade_app/src/features/map/link_weather_pill.dart';
+import 'package:sarcade_app/src/features/settings/diagnostics_panel.dart' show meshCoreDiagLine;
 import 'package:sarcade_app/src/features/meshcore/meshcore_link.dart';
 import 'package:sarcade_app/src/features/meshcore/meshcore_page.dart';
 import 'package:sarcade_app/src/features/meshcore/meshcore_protocol.dart';
@@ -80,5 +81,18 @@ void main(){
     expect(find.byKey(const ValueKey('pill-mesh')),findsNothing);
     await t.pumpWidget(pill('ok'));
     expect(find.byKey(const ValueKey('pill-mesh')),findsOneWidget);
+  });
+
+  test('a module out of reach in words, the technical error in the journal only (8 h 15)',(){
+    expect(meshCoreProblem(state:MeshCoreState.reconnecting,trying:false,error:'TimeoutException after 0:00:20',retryIn:const Duration(seconds:30)),
+      'Module injoignable : éteint ou hors de portée. Nouvel essai dans 30 s.');
+    expect(meshCoreProblem(state:MeshCoreState.reconnecting,trying:true,error:'x',retryIn:null),isNull,reason:'while trying');
+    expect(meshCoreProblem(state:MeshCoreState.connected,trying:false,error:'x'),isNull);
+    expect(S.t('mesh.help'),contains('123456'));
+  });
+
+  test('one line in Liaisons (8 h 17)',(){
+    final l=meshCoreDiagLine('Liaisons',MeshCoreLink.instance);
+    expect(l.label,'MeshCore'); expect(l.value,'aucun module'); expect(l.state,isNull);
   });
 }
