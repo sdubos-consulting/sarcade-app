@@ -29,6 +29,10 @@ class OfflineSyncService {
   bool lastSyncOk=false; DateTime? lastServerContact;
   /// The current event does not exist on this server (changes feed 404).
   bool eventUnknown=false;
+  /// Told once per service when the server answers 404 for the event
+  /// (lot 19, event_choice.dart: switch or list of the open events).
+  static void Function(String server,String eventId)? onEventUnknown;
+  bool _unknownTold=false;
   OfflineSyncService({required this.api,required this.store,required this.eventId,this.onRemoteChange});
 
   String get server=>api.baseUrl;
@@ -151,6 +155,7 @@ class OfflineSyncService {
       return feed;
     }on SarcadeHttpException catch(e){
       eventUnknown=e.statusCode==404;
+      if(eventUnknown&&!_unknownTold){_unknownTold=true;onEventUnknown?.call(server,eventId);}
       lastSyncOk=true; lastServerContact=DateTime.now();
       return null;
     }
