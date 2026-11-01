@@ -18,7 +18,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
   String shown(Bearing b)=>names[searchKey(b.search)]??b.search;
   final zones={for(final e in groups.entries)e.key:probableZone(e.value)};
   final excluded={for(final z in zones.values)...z.excluded};
-  final cones=<Polygon>[], lines=<Polyline<Bearing>>[], markers=<Marker>[], circles=<CircleMarker>[];
+  final cones=<Polygon>[], lines=<Polyline<Bearing>>[], markers=<Marker>[], circles=<CircleMarker>[], outlines=<Polyline>[];
   void add(Bearing b,{bool live=false}){
     // A bearing set aside from the zone: grey dashed line, no cone.
     if(!live&&excluded.contains(b.id)){
@@ -43,20 +43,30 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
     final c=Color(searchColor(e.key));
     for(final p in z.crossings){circles.add(CircleMarker(point:p,radius:4,color:c));}
     if(z.centre==null)continue;
-    circles.add(CircleMarker(point:z.centre!,radius:z.radiusM,useRadiusInMeter:true,color:const Color(0x22FF4D5E),borderColor:const Color(0xFFFF4D5E),borderStrokeWidth:1.5));
-    // Small one-line label on the east edge of the circle, so it no longer
-    // hides the zone (card « Zone probable », 31 Oct 2026); exercise as a
-    // short « EX » pill, search and frequency in the tooltip.
+    // Signage of the validated mockup (1 Nov 2026): exercise = orange dashed
+    // contour, real search = red solid; label outside the circle, linked to
+    // its edge by a short line, white text, « EX » pill.
     final ex=e.value.any((b)=>b.exercise);
+    final zc=ex?const Color(0xFFFF9F1C):const Color(0xFFFF4D5E);
+    circles.add(CircleMarker(point:z.centre!,radius:z.radiusM,useRadiusInMeter:true,color:zc.withValues(alpha:0.13),
+      borderColor:ex?Colors.transparent:zc,borderStrokeWidth:ex?0:2));
+    if(ex){
+      outlines.add(Polyline(points:[for(var a=0;a<=360;a+=5)geo.destination(z.centre!,z.radiusM,a.toDouble())],color:zc,strokeWidth:3,
+        pattern:StrokePattern.dashed(segments:const [14,9])));
+    }
+    final edge=geo.destination(z.centre!,z.radiusM,60), tip=geo.destination(z.centre!,z.radiusM*1.35+150,60);
+    outlines.add(Polyline(points:[edge,tip],color:zc,strokeWidth:2));
     final freq=e.value.map((b)=>b.frequencyMhz).whereType<double>().toSet();
-    markers.add(Marker(point:geo.destination(z.centre!,z.radiusM,90),width:200,height:22,alignment:Alignment.centerRight,child:GestureDetector(onTap:()=>onTapZone(z.centre!,e.key),
+    final parts=zoneLabel(z.radiusM,z.bearings,z.excluded.length).split(' · ');
+    markers.add(Marker(point:tip,width:240,height:28,alignment:Alignment.centerRight,child:GestureDetector(onTap:()=>onTapZone(z.centre!,e.key),
       child:Tooltip(message:[S.t('bearings.zoneTitle'),if(e.key.isNotEmpty)e.key,for(final f in freq)'${f.toStringAsFixed(3)} MHz',if(ex)'EXERCICE'].join(' · '),
-        child:Align(alignment:Alignment.centerLeft,child:Container(key:const ValueKey('bearing-zone-label'),margin:const EdgeInsets.only(left:4),padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),
-          decoration:BoxDecoration(color:const Color(0xE61A0B0F),borderRadius:BorderRadius.circular(5),border:Border.all(color:const Color(0xFFFF4D5E),width:1)),
+        child:Align(alignment:Alignment.centerLeft,child:Container(key:const ValueKey('bearing-zone-label'),padding:const EdgeInsets.symmetric(horizontal:7,vertical:3),
+          decoration:BoxDecoration(color:const Color(0xF208111C),borderRadius:BorderRadius.circular(7),border:Border.all(color:zc,width:1.5)),
           child:Row(mainAxisSize:MainAxisSize.min,children:[
-            if(ex)Container(margin:const EdgeInsets.only(right:4),padding:const EdgeInsets.symmetric(horizontal:3),decoration:BoxDecoration(color:const Color(0xFFFF9F1C),borderRadius:BorderRadius.circular(3)),
-              child:const Text('EX',style:TextStyle(fontSize:9,fontWeight:FontWeight.w800,color:Colors.black,height:1.3))),
-            Text(zoneLabel(z.radiusM,z.bearings,z.excluded.length),maxLines:1,softWrap:false,style:const TextStyle(fontSize:11,color:Color(0xFFFFC2C8),height:1.2)),
+            if(ex)Container(margin:const EdgeInsets.only(right:5),padding:const EdgeInsets.symmetric(horizontal:4),decoration:BoxDecoration(color:zc,borderRadius:BorderRadius.circular(3)),
+              child:const Text('EX',style:TextStyle(fontSize:10,fontWeight:FontWeight.w900,color:Color(0xFF14201A),height:1.3))),
+            Text(parts.take(2).join(' · '),maxLines:1,softWrap:false,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:Colors.white,height:1.2)),
+            if(parts.length>2)Text(' · ${parts.skip(2).join(' · ')}',maxLines:1,softWrap:false,style:const TextStyle(fontSize:11,color:Color(0xFFB8C6D6),height:1.2)),
           ])))))));
   }
   return [
@@ -68,6 +78,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
         onTap:(){final h=hits.value;if(h!=null&&h.hitValues.isNotEmpty)onTapBearing(h.hitValues.first);},
         child:PolylineLayer<Bearing>(hitNotifier:hits,minimumHitbox:24,polylines:lines))),
     if(circles.isNotEmpty)CircleLayer(circles:circles),
+    if(outlines.isNotEmpty)PolylineLayer(polylines:outlines),
     if(markers.isNotEmpty)MarkerLayer(markers:markers),
   ];
 }
