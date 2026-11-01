@@ -175,7 +175,7 @@ class AdsbController extends ChangeNotifier {
   /// Realtime events of the event.
   void onRealtime(String type,Object? data){
     if(!_on)return;
-    if(type=='adsb.updated'){_take(data);notifyListeners();for(final id in followed.toList())unawaited(_readRoute(id));}
+    if(type=='adsb.updated'){_take(data);notifyListeners();for(final id in followed.toList()){unawaited(_readRoute(id));}}
   }
 
   void _take(Object? data){

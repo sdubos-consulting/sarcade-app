@@ -221,14 +221,21 @@ void main(){
     final c=AdsbController(api:trackApi(),eventId:'e',deviceId:'TEL-1',box:()=>(south:48.7,west:1.9,north:48.9,east:2.2));
     await t.runAsync(()=>c.setOn(true));
     await c.select(c.aircraft.first);
+    t.view.physicalSize=const Size(1200,1600); t.view.devicePixelRatio=1;
+    addTearDown(t.view.reset);
     var closed=0;
     await t.pumpWidget(MaterialApp(home:Scaffold(body:Stack(children:[const Positioned.fill(child:ColoredBox(color:Colors.green)),
       Positioned(top:8,left:8,child:AircraftCard(adsb:c,onClose:(){closed++;c.select(null);}))]))));
     expect(find.byKey(const ValueKey('adsb-card')),findsOneWidget);
     expect(t.getSize(find.byKey(const ValueKey('adsb-card'))).width,300,reason:'small window, the map stays visible');
-    await t.runAsync(() async {await t.tap(find.byKey(const ValueKey('adsb-follow')));await Future<void>.delayed(const Duration(milliseconds:50));});
-    await t.pump();
+    expect(find.text('Catégorie non transmise'),findsOneWidget,reason:'type in words');
+    await t.ensureVisible(find.byKey(const ValueKey('adsb-follow')));
+    await t.tap(find.byKey(const ValueKey('adsb-follow')));
     expect(c.isFollowed('3c6444'),isTrue);
+    expect(c.centredId,'3c6444');
+    await t.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:50)));
+    await t.pump();
+    expect(c.routes['3c6444']?.length,3,reason:'route read from the server');
     expect(find.text('Ne plus suivre'),findsOneWidget);
     await t.tap(find.byKey(const ValueKey('adsb-close')));
     await t.pump();
