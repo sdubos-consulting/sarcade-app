@@ -12,6 +12,12 @@ TvView? Function()? currentMapView;
 /// not a screenshot — layers shown, opacity per layer, Messages panel.
 typedef TvOptions=({Map<String,bool> layers,Map<String,double> opacity,bool messages});
 TvOptions? Function()? currentMapOptions;
+/// Traces shown on the map (1 Nov 2026): window in minutes and the traces
+/// pinned one by one, sent with the layers to the TV.
+({int windowMin,List<String> pinned})? Function()? currentMapTraces;
+
+/// Window of the TV: the server knows 15 min to 24 h; « all » = 24 h.
+int tvTraceWindow(int min)=>min<=0?1440:min;
 
 /// Day / night mode of this device (Paramètres › Affichage), pushed to the
 /// whole TV page with the view (lot 7, 30 Oct 2026).
@@ -25,6 +31,7 @@ Map<String,dynamic> tvViewJson(TvView v,{TvOptions? options,String? from,ThemeMo
     'layers':options.layers,
     'opacity':{for(final e in options.opacity.entries)e.key:double.parse(e.value.clamp(0.1,1.0).toStringAsFixed(2))},
     'messages':options.messages,
+    if(currentMapTraces?.call() case final t?)...{'traces_window':tvTraceWindow(t.windowMin),'traces_ids':t.pinned.take(50).toList()},
   },
   'lat':v.center.latitude,'lon':v.center.longitude,'zoom':double.parse(v.zoom.toStringAsFixed(2)),
   'basemap':v.basemapId,
@@ -35,12 +42,12 @@ Map<String,dynamic> tvViewJson(TvView v,{TvOptions? options,String? from,ThemeMo
 
 /// Opacity keys sent to the TV (one per layer; the server also reads the
 /// former ops / draw / brg / ref).
-const tvOpacityKeys=['ops','aprs','draw','brg','high','relay'];
+const tvOpacityKeys=['ops','aprs','draw','brg','high','relay','traces'];
 
 /// Layers listed in the summary of « Envoyer ma vue » (key of the view,
 /// key of the text); « offline » is a filter, not listed.
 const tvLayerLabels={'operators':'chips.operators','aprs':'APRS','drawings':'chips.drawings','bearings':'chips.bearings',
-  'highpoints':'refs.highPoints','relays':'refs.relays'};
+  'highpoints':'refs.highPoints','relays':'refs.relays','traces':'traces.layer'};
 
 /// Keys of the layers shown, in the order of [tvLayerLabels].
 List<String> tvShownLayers(Map<String,bool> layers)=>[for(final k in tvLayerLabels.keys)if(layers[k]==true)k];
