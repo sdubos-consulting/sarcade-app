@@ -178,7 +178,7 @@ public class SarcadeCarPlaySceneDelegate: UIResponder, CPTemplateApplicationScen
         let s = snap
         var items = [CPInformationItem(title: o.str("title"), detail: o.str("text"))]
         if !o.str("note").isEmpty { items.append(CPInformationItem(title: s.label("note"), detail: o.str("note"))) }
-        func answer(_ status: String, _ label: String, _ style: CPTextButton.Style) -> CPTextButton {
+        func answer(_ status: String, _ label: String, _ style: CPTextButtonStyle) -> CPTextButton {
             return CPTextButton(title: s.label(label), textStyle: style) { [weak self] _ in
                 SarcadeCarData.shared.post(["type": "order", "id": o.str("id"), "status": status])
                 self?.interface?.popTemplate(animated: true, completion: nil)
