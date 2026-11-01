@@ -55,8 +55,8 @@ Future<void> showZoneWindow(BuildContext context,ZoneTap t,{required String mode
     barrierColor:Colors.transparent,transitionDuration:const Duration(milliseconds:120),
     pageBuilder:(_,_,_)=>LayoutBuilder(builder:(c,box){
       final w=math.min(300.0,box.maxWidth-16);
-      final left=(t.position.dx+12).clamp(8.0,math.max(8.0,box.maxWidth-w-8));
-      final top=(t.position.dy-40).clamp(8.0,math.max(8.0,box.maxHeight-260));
+      final left=(t.position.dx+12).clamp(8.0,math.max(8.0,box.maxWidth-w-8)).toDouble();
+      final top=(t.position.dy-40).clamp(8.0,math.max(8.0,box.maxHeight-260)).toDouble();
       final title=[if(t.zone.index>0)S.t('bearings.zoneN',{'n':t.zone.index})else S.t('bearings.zoneTitle'),if(t.search.isNotEmpty)t.search].join(' · ');
       return Stack(children:[Positioned(left:left,top:top,width:w,child:Material(key:const ValueKey('zone-window'),elevation:8,
         borderRadius:BorderRadius.circular(10),color:Theme.of(c).colorScheme.surface,
