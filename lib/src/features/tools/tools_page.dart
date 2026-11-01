@@ -26,7 +26,10 @@ const double toolTileHeight=96;
 
 class ToolsPage extends StatelessWidget {
   final List<ToolItem> items;
-  const ToolsPage({super.key,required this.items});
+  /// Left bar (computer, tablet): tools pinned there, and the pin of each
+  /// tile (card « Barre de gauche personnalisable », 1 Nov 2026).
+  final Set<String> pinned; final void Function(String id)? onTogglePin;
+  const ToolsPage({super.key,required this.items,this.pinned=const {},this.onTogglePin});
 
   @override
   Widget build(BuildContext context){
@@ -50,6 +53,9 @@ class ToolsPage extends StatelessWidget {
                   const SizedBox(height:2),
                   Text(i.subtitle,maxLines:2,overflow:TextOverflow.ellipsis,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
                 ])),
+                if(onTogglePin!=null&&i.id.isNotEmpty)IconButton(key:ValueKey('pin-${i.id}'),
+                  tooltip:S.t(pinned.contains(i.id)?'rail.unpin':'rail.pin'),onPressed:()=>onTogglePin!(i.id),
+                  icon:Icon(pinned.contains(i.id)?Icons.push_pin:Icons.push_pin_outlined,color:pinned.contains(i.id)?t.colorScheme.primary:t.colorScheme.onSurfaceVariant)),
                 Icon(Icons.chevron_right,color:t.colorScheme.onSurfaceVariant),
               ])))));
         return CustomScrollView(slivers:[
