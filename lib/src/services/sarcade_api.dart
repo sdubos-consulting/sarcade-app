@@ -313,6 +313,22 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('wakeup_test',r.statusCode,r.body);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }
+  /// ADS-B (module ADRASEC, step 1): the « Aéronefs » layer is shown with
+  /// this box of the map ([on] false: hidden); answer {enabled, interval_s,
+  /// ttl_s, time, aircraft}.
+  Future<Map<String,dynamic>> adsbWatch(String eventId,String deviceId,{required double south,required double west,
+      required double north,required double east,bool on=true}) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/${Uri.encodeComponent(eventId)}/adsb/watch'),
+      headers:{'content-type':'application/json'},
+      body:jsonEncode({'device_id':deviceId,'lamin':south,'lomin':west,'lamax':north,'lomax':east,'on':on}));
+    if(r.statusCode!=200) throw SarcadeHttpException('adsb_watch',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  Future<Map<String,dynamic>> adsbStatus() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/adsb/status'));
+    if(r.statusCode!=200) throw SarcadeHttpException('adsb_status',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   Future<Map<String,dynamic>> aprsStatus() async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/aprs/status'));
     if(r.statusCode!=200) throw SarcadeHttpException('aprs_status',r.statusCode);
