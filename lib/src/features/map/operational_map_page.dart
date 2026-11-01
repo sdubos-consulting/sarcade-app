@@ -2700,7 +2700,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onMapReady:(){if(mounted){_onCameraChanged(_map.camera);_watchMapMoves();setState((){});}},
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
-          interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
+          // A finger on a handle: the map does not move at all (lot 19).
+          interactionOptions:InteractionOptions(flags:_drawing.handleHeld?InteractiveFlag.none:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
         ),children:[
           // Night: street maps darkened; aerial photos stay as they are.
           TileLayer(key:ValueKey('$_tileUrl|${_darkTiles(context)}'),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble(),
