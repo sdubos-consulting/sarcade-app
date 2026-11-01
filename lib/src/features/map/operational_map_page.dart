@@ -2459,7 +2459,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Over the map, not beside it: the map keeps its size underneath.
     Widget phonePanel(Widget child)=>Positioned.fill(child:Material(elevation:3,child:SafeArea(bottom:false,child:child)));
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
-    void openFiles()=>_openFiles();
     void openMessages()=>_openMessages(fromButton:true);
     void showMap()=>_showMapOnly();
     void openSettings(){
