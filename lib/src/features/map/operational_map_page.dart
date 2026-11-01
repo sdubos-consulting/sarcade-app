@@ -40,6 +40,7 @@ import 'cinematique_escape.dart';
 import '../../ui/theme.dart';
 import 'stations.dart';
 import 'cinematique_touch.dart';
+import 'map_bottom_line.dart';
 import 'sos_placement.dart';
 import '../../modules/adrasec/bearings/bearing_aim.dart';
 import '../../ui/escape_stack.dart';
@@ -1580,7 +1581,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// drawing, bearing and choice of a point included (card « Détresse
   /// encore dans le menu Plus », 30 Oct 2026): no more entry in « Plus ».
   bool get _sosVisible=>true;
-  Widget _sosButton()=>SosButton(inDistress:_inDistress,onTriggered:_sendDistress,onEnd:_distress);
+  Widget _sosButton()=>withId('map.sos',SosButton(inDistress:_inDistress,onTriggered:_sendDistress,onEnd:_distress));
 
   /// Floating button of 48 × 48 px (the small ones were 40 px).
   Widget _fab(String tag,String tooltip,Widget icon,VoidCallback onPressed,{Color? background,Color? foreground})=>
@@ -1848,8 +1849,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ),
         child:Row(mainAxisSize:MainAxisSize.min,children:[
           Icon(on?Icons.my_location:Icons.location_disabled_outlined,size:16,color:on?scheme.primary:scheme.onSurfaceVariant),const SizedBox(width:6),
-          Text(on?S.t('tracking.on',{'interval':intervalLabel(_tracking.intervalS,S.t)}):S.t('tracking.start'),
-            style:TextStyle(fontSize:12,color:on?scheme.onPrimaryContainer:scheme.onSurface)),
+          Flexible(child:Text(on?S.t('tracking.on',{'interval':intervalLabel(_tracking.intervalS,S.t)}):S.t('tracking.start'),
+            maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:12,color:on?scheme.onPrimaryContainer:scheme.onSurface))),
         ]))));
   }
 
@@ -2741,11 +2742,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           buildHandleLayer(_drawing,_globalToLatLng),
           // SOS halos above everything, whatever the filters (lot 17).
           sosHaloLayer(_sosTargets(),DateTime.now().toUtc()),
-          // ⓘ with the licence notice of the base map: on the left, under the
-          // scale, never under SOS (revue d'ergonomie n° 3).
-          SafeArea(child:Padding(padding:EdgeInsets.only(bottom:compact?mapAttributionLift:0),
-            child:RichAttributionWidget(alignment:AttributionAlignment.bottomLeft,
-              attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]))),
+          // ⓘ with the licence notice of the base map: on the left, never
+          // under SOS (revue n° 3) nor under the tab bar (lot 19).
+          mapAttribution(compact:compact,fullBleed:fullBleed,text:_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution),
         ]))),
         if(_drawing.tool==FeatureKind.freehand)Positioned.fill(child:GestureDetector(
           behavior:HitTestBehavior.opaque,
@@ -2761,7 +2760,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         Positioned.fill(child:SafeArea(left:false,right:false,child:Stack(children:[
         // Scale first: behind every panel, never over a button (decision of
         // 30 Oct 2026, 16 h 25; revue n° 14, 18, 31); above the ⓘ.
-        Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
+        // Phone: on the line of « Suivi de position » (map_bottom_line.dart).
+        if(!compact||_bearings.taking||selected!=null)Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
         MeshCoreNodeOverlay(map:_map,me:_me,compact:compact),
         if(_inDistress)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:Material(color:Theme.of(context).colorScheme.error,
           borderRadius:BorderRadius.circular(16),child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_distress,child:Padding(padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
@@ -2830,11 +2830,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(routeEntry!=null)Positioned(left:12,right:12,bottom:12,child:RouteEntryBar(controller:_routes,route:routeEntry,
           onDone:()=>setState(()=>_drawingRouteId=null))),
         // Right column with SOS at its bottom (30 Oct 2026, 3 h 05).
-        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:compact?60:24,
+        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:mapColumnBottom(compact:compact),
           panel:_measure.target!=null||_nav.state!=NavState.idle||_nav.notice!=null,
           rightSheet:!compact&&_bearings.taking&&_aim!=null?bearingSheetWidth:0,child:_mapButtons()),
-        // Phone: « Suivi actif » just above the tab bar.
-        if(compact&&!_bearings.taking&&selected==null)Positioned(left:12,bottom:12,child:_trackingBadge()),
+        // Phone: « Suivi actif » just above the tab bar, the scale on its right.
+        if(compact&&!_bearings.taking&&selected==null)phoneBottomLine(badge:_trackingBadge(),scale:IgnorePointer(child:_scaleBar())),
         if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:bearingSheetWidth,child:_bearingTakeSheet())
         else if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
