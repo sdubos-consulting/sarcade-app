@@ -135,10 +135,11 @@ Future<Map<String,dynamic>?> showNoOpenEvent(BuildContext context,{required Sarc
 /// Name and model, then `POST /events`; null when cancelled or refused
 /// (said in a message).
 Future<Map<String,dynamic>?> createEventDialog(BuildContext context,SarcadeApi api) async {
-  final name=TextEditingController(); var kind=eventKinds.first;
+  // No controller to dispose while the window closes: the field keeps its text.
+  var name=''; var kind=eventKinds.first;
   final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('events.new')),
     content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      TextField(key:const ValueKey('event-new-name'),controller:name,autofocus:true,decoration:InputDecoration(labelText:S.t('events.name'))),
+      TextField(key:const ValueKey('event-new-name'),autofocus:true,onChanged:(v)=>name=v,decoration:InputDecoration(labelText:S.t('events.name'))),
       const SizedBox(height:12),
       DropdownButtonFormField<String>(initialValue:kind,isExpanded:true,decoration:InputDecoration(labelText:S.t('events.model')),
         items:[for(final k in eventKinds)DropdownMenuItem(value:k,child:Text(S.t('events.kind.$k')))],onChanged:(v)=>set(()=>kind=v??kind)),
@@ -147,7 +148,7 @@ Future<Map<String,dynamic>?> createEventDialog(BuildContext context,SarcadeApi a
       TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
       FilledButton(key:const ValueKey('event-new-create'),onPressed:()=>Navigator.pop(c,true),child:Text(S.t('events.create'))),
     ])));
-  final n=name.text.trim(); name.dispose();
+  final n=name.trim();
   if(ok!=true||n.isEmpty||!context.mounted)return null;
   final m=ScaffoldMessenger.maybeOf(context);
   try{
