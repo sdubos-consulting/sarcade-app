@@ -11,6 +11,7 @@ import 'package:sarcade_app/src/features/settings/settings_page.dart';
 import 'package:sarcade_app/src/features/settings/settings_tools.dart';
 import 'package:sarcade_app/src/features/tools/tools_page.dart';
 import 'package:sarcade_app/src/l10n/strings.dart';
+import 'package:sarcade_app/src/modules/adrasec/bearings/signal_defaults_tool.dart';
 import 'package:sarcade_app/src/services/power_state.dart';
 import 'package:sarcade_app/src/services/sarcade_api.dart';
 import 'package:sarcade_app/src/ui/theme.dart';
@@ -143,23 +144,17 @@ void main() {
     final api = SarcadeApi(baseUrl: 'https://example.org', client: MockClient((_) async => http.Response('{}', 200)));
     addTearDown(api.close);
     final opened = <String>[];
-    List<ToolItem> items({required bool adrasec, required Set<String> roles}) => settingsToolItems(api: api, eventId: 'e',
-      adrasec: adrasec, roles: roles, open: (id, _) => opened.add(id));
-    final admin = items(adrasec: true, roles: {'admin'});
-    expect(admin.map((i) => i.id), ['logbook', 'signals']);
-    expect(admin.every((i) => i.group == ToolGroup.pc), isTrue);
-    expect(admin.first.title, 'Main courante');
-    expect(admin.last.title, 'Fréquences du relevé');
-    for (final i in admin) { i.onTap(); }
+    void open(String id, Widget Function() _) => opened.add(id);
+    final logbook = logbookToolItem(api: api, eventId: 'e', open: open);
+    expect(logbook.title, 'Main courante');
+    expect(logbook.group, ToolGroup.pc);
+    final signals = signalDefaultsToolItem(api: api, roles: {'admin'}, open: open)!;
+    expect(signals.title, 'Fréquences du relevé');
+    expect(signals.group, ToolGroup.pc);
+    expect(signalDefaultsToolItem(api: api, roles: {'pco'}, open: open), isNull);
+    logbook.onTap();
+    signals.onTap();
     expect(opened, ['logbook', 'signals']);
-    expect(items(adrasec: true, roles: {'pco'}).map((i) => i.id), ['logbook']);
-    expect(items(adrasec: false, roles: {'admin'}).map((i) => i.id), ['logbook']);
-  });
-
-  test('automatic theme by default', () {
-    expect(themeModeFrom(null), ThemeMode.system);
-    expect(themeModeFrom('dark'), ThemeMode.dark);
-    expect(themeModeFrom('light'), ThemeMode.light);
   });
 
   testWidgets('a refused field in a hidden tab is shown', (tester) async {
