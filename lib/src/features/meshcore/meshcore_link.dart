@@ -4,8 +4,9 @@
 ///
 /// The module chosen once in Paramètres › Liaisons is remembered and joined
 /// again at start and after a drop. The state shows in the link pill of the
-/// map; Outils › MeshCore lists the nodes and the metrics. Read only for
-/// now: SARCADE messages over LoRa come with a later step.
+/// map; Outils › MeshCore lists the nodes and the metrics. Lot 17: the
+/// nodes on the map and private messages with a companion (see
+/// meshcore_chat.dart).
 library;
 
 import 'dart:async';
@@ -15,12 +16,16 @@ import 'package:universal_ble/universal_ble.dart';
 
 import '../../offline/local_store.dart';
 import '../../l10n/strings.dart';
+import '../../services/notification_service.dart';
+import 'meshcore_chat.dart';
 import 'meshcore_protocol.dart';
 
 enum MeshCoreState { none, connecting, connected, reconnecting, failed }
 
 /// Preference keys of the remembered module.
 const meshCoreDeviceKey='meshcore_device', meshCoreNameKey='meshcore_name';
+/// « Afficher les nœuds sur la carte » (lot 17), off by default.
+const meshCoreMapKey='meshcore_map';
 
 /// Colour family of the pill: 'off' (no module), 'ok', 'wait', 'bad'.
 String meshCorePillTone(MeshCoreState s)=>switch(s){
@@ -64,6 +69,8 @@ class MeshCoreLink extends ChangeNotifier {
   bool trying=false;
   /// Delay before the next attempt after a failure.
   Duration? retryIn;
+  /// « Nœuds MeshCore » layer of the map (lot 17), off by default.
+  bool showOnMap=false;
 
   StreamSubscription<Uint8List>? _valueSub;
   StreamSubscription<bool>? _connSub;
@@ -87,6 +94,7 @@ class MeshCoreLink extends ChangeNotifier {
   /// At start: joins the remembered module, if any.
   Future<void> restore(LocalStore store) async {
     _store=store;
+    _wire(store);
     if(!supported||state!=MeshCoreState.none)return;
     deviceId=store.preference(meshCoreDeviceKey); deviceName=store.preference(meshCoreNameKey);
     if(deviceId!=null){notifyListeners();unawaited(_join());}
@@ -95,6 +103,7 @@ class MeshCoreLink extends ChangeNotifier {
   /// Chosen in Paramètres › Liaisons: remembered, then joined.
   Future<void> choose(BleDevice d,{LocalStore? store}) async {
     if(store!=null)_store=store;
+    final st=_store; if(st!=null)_wire(st);
     await _drop();
     deviceId=d.deviceId; deviceName=d.name;
     await _store?.setPreference(meshCoreDeviceKey,deviceId);
@@ -168,14 +177,42 @@ class MeshCoreLink extends ChangeNotifier {
       await _send(batteryQuery(),'BATTERY');
       await Future<void>.delayed(const Duration(milliseconds:300));
       await _send(contactsQuery(),'GET_CONTACTS');
+      // Messages kept by the module while SARCADE was away (lot 17).
+      await Future<void>.delayed(const Duration(milliseconds:300));
+      await _send(syncNextMessage(),'SYNC_NEXT_MESSAGE');
       try{linkRssi=await UniversalBle.readRssi(id);}catch(_){}
       notifyListeners();
     }catch(e){log('échec : $e');}
   }
 
+  /// The private messages (lot 17) go through this link; their threads are
+  /// kept in the preferences of the device.
+  bool _wired=false;
+  void _wire(LocalStore store){
+    final chats=MeshCoreChats.instance;
+    chats.send=(frame,what) async {
+      if(state!=MeshCoreState.connected)throw StateError('no module');
+      await _send(frame,what);
+    };
+    chats.notify??=(title,body)=>unawaited(NotificationService().message(title:title,body:body,priority:'routine'));
+    if(_wired)return;
+    _wired=true;
+    showOnMap=store.preference(meshCoreMapKey)=='1';
+    chats.attach(load:store.preference,save:store.setPreference);
+  }
+
+  /// « Afficher les nœuds sur la carte », remembered on this device.
+  Future<void> setShowOnMap(bool on) async {
+    showOnMap=on; notifyListeners();
+    await _store?.setPreference(meshCoreMapKey,on?'1':null);
+  }
+
+  /// The node whose public key starts with [prefix], if known.
+  MeshCoreContact? contactOf(String prefix)=>_contacts.values.where((c)=>meshCorePrefix(c.key)==meshCorePrefix(prefix)).firstOrNull;
+
   Future<void> _send(Uint8List frame,String what) async {
     final id=deviceId; if(id==null)return;
-    log('→ $what ${meshCoreHex(frame)}');
+    log(what=='SEND_TXT_MSG'?'→ $what':'→ $what ${meshCoreHex(frame)}');
     framesOut++;
     await UniversalBle.write(id,meshCoreService,meshCoreRx,frame);
   }
@@ -192,8 +229,22 @@ class MeshCoreLink extends ChangeNotifier {
         log('${_contacts.length} nœud(s) connu(s)');
       case 'advert':
         unawaited(_send(contactsQuery(),'GET_CONTACTS'));
+      // Private messages (lot 17).
+      case 'sent':
+        final sent=readMeshCoreSent(v); if(sent!=null)MeshCoreChats.instance.onSent(sent.ack,sent.timeout);
+      case 'error':
+        MeshCoreChats.instance.onError();
+      case 'confirmed':
+        final ack=readMeshCoreConfirmed(v); if(ack!=null)MeshCoreChats.instance.onConfirmed(ack);
+      case 'waiting': case 'channelMsg':
+        unawaited(_send(syncNextMessage(),'SYNC_NEXT_MESSAGE'));
+      case 'contactMsg':
+        final msg=readMeshCoreMessage(v);
+        if(msg!=null)MeshCoreChats.instance.onReceived(msg,nameOf:(p){final n=contactOf(p)?.name;return n==null||n.isEmpty?null:n;});
+        unawaited(_send(syncNextMessage(),'SYNC_NEXT_MESSAGE'));
     }
-    if(kind!='contact')log('← $kind ${meshCoreHex(v)}');
+    // The text of a message stays out of the journal.
+    if(kind=='contactMsg'){log('← $kind');}else if(kind!='contact'){log('← $kind ${meshCoreHex(v)}');}
     notifyListeners();
   }
 
