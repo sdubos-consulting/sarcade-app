@@ -1453,6 +1453,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   final _escapes=EscapeStack();
   bool _shiftDown=false;
   /// Maj + glisser (computer) or « Sélection » (phone): selection rectangle.
+  /// A touch on the map places something: drawing a shape, picking a point.
+  bool get _placingOnMap=>_drawing.isDrawing||_pickPoint!=null;
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
   /// Selection mode: a drag moves the map, a pinch or the wheel zooms
@@ -2343,12 +2345,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         LogicalKeyboardKey.keyY when ctrl=>run(_drawing.redo),
         LogicalKeyboardKey.keyD when ctrl&&_drawing.hasSelection=>run(()=>_drawing.duplicateSelected()),
         LogicalKeyboardKey.enter||LogicalKeyboardKey.numpadEnter when _drawing.canFinish=>run(()=>_drawing.finish()),
-        LogicalKeyboardKey.escape when _drawing.isDrawing=>run(()=>_drawing.selectTool(null)),
+        // Constat L3 (1 Nov 2026): Échap first drops the shape being drawn,
+        // then leaves the tool and closes the drawing bar.
+        LogicalKeyboardKey.escape when _drawing.isDrawing&&_drawing.draft.isNotEmpty=>run(_drawing.cancelDraft),
+        LogicalKeyboardKey.escape when _drawing.isDrawing=>run((){_drawing.selectTool(null);if(_drawingTools)_toggleDrawingTools();}),
         LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run(_drawing.endSelection),
         // Card N1 of the cinématique review (31 Oct 2026): Échap also ends
         // « Toucher la carte » (converter), then closes the last window, then
         // clears the measure, then closes an empty drawing bar.
         LogicalKeyboardKey.escape when _pickPoint!=null=>run(_cancelPick),
+        // Constat L2 (1 Nov 2026): Échap closes the sheet of an operator.
+        LogicalKeyboardKey.escape when _selectedDevice!=null||_trace.isNotEmpty=>run(()=>setState((){_selectedDevice=null;_trace=[];})),
         LogicalKeyboardKey.escape when _mapPanelOpen=>_escapePanel(),
         LogicalKeyboardKey.escape when _measure.active=>run((){unawaited(_measure.clear());setState((){});}),
         LogicalKeyboardKey.escape when _drawingTools&&_drawing.selection.isEmpty=>run(_toggleDrawingTools),
@@ -2539,8 +2546,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
           if(_showPois)_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)))),
-          _faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())])),
-          _faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList()))),
+          // Constat L1 (revue du lot 16, 1 Nov 2026): while a shape is drawn
+          // or a point is picked, a touch on an operator places the point
+          // instead of opening the operator.
+          IgnorePointer(ignoring:_placingOnMap,child:_faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())]))),
+          IgnorePointer(ignoring:_placingOnMap,child:_faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList())))),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
             onTap:()=>openMyPositionInfo(context,location:_location,places:_places,fallback:_me,onSendMessage:_sendText),
             child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)]))))]),
