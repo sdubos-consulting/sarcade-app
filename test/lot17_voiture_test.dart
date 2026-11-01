@@ -118,7 +118,7 @@ void main(){
       S.setLanguage(lang);
       final labels=carLabels();
       for(final e in labels.entries){expect(e.value,isNot('car.${e.key}'),reason:'$lang ${e.key}');}
-      expect(labels.length,35);
+      expect(labels.length,37,reason:'lot 18: navigateCar, navigateCarShort');
     }
     S.setLanguage('en');
     expect(carAway(here,const LatLng(48.83,1.95)),'3,34 km north');

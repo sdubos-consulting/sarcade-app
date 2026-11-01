@@ -151,7 +151,7 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
             .setImage(CarUi.tile(carContext, CarUi.pointIcon(p.optString("icon")), p.optInt("color", DEFAULT_COLOR)))
             .setOnClickListener { go() }
         if (level >= TABS_LEVEL) {
-            b.addAction(Action.Builder().setTitle(snap.label("navigate")).setFlags(Action.FLAG_PRIMARY).setOnClickListener { go() }.build())
+            b.addAction(Action.Builder().setTitle(CarUi.navigateTitle(carContext, snap)).setFlags(Action.FLAG_PRIMARY).setOnClickListener { go() }.build())
         }
         return b.build()
     }
@@ -201,7 +201,7 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
                 "sent" -> listOf(answer("refused", "refuse", false), answer("accepted", "accept", true))
                 "accepted" -> listOf(
                     answer("arrived", "arrived", false),
-                    Action.Builder().setTitle(snap.label("navigate")).setFlags(Action.FLAG_PRIMARY)
+                    Action.Builder().setTitle(CarUi.navigateTitle(context, snap)).setFlags(Action.FLAG_PRIMARY)
                         .setOnClickListener { CarUi.navigate(context, snap, o.optDouble("lat"), o.optDouble("lon"), o.optString("title")) }
                         .build(),
                 )
