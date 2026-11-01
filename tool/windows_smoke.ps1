@@ -20,18 +20,33 @@ Remove-Item $log -ErrorAction SilentlyContinue
 # l'icône », 1 Nov 2026): it must show in less than one second. Looked for
 # by its class while the app starts; the app also writes the time it took
 # (splash_ms, from the creation of the process) in demarrage.log.
+# Top-level windows of the process enumerated (as for its main window):
+# FindWindow did not see them on the CI machine.
 Add-Type @"
-using System; using System.Runtime.InteropServices;
+using System; using System.Runtime.InteropServices; using System.Text;
 public static class SplashW32 {
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h); }
+  delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  public static bool Shown(int pid) {
+    bool found = false;
+    EnumWindows(delegate(IntPtr h, IntPtr l) {
+      uint owner; GetWindowThreadProcessId(h, out owner);
+      if (owner != (uint)pid || !IsWindowVisible(h)) return true;
+      StringBuilder name = new StringBuilder(64); GetClassName(h, name, 64);
+      if (name.ToString() == "SARCADE_SPLASH") { found = true; return false; }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  } }
 "@
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $p = Start-Process -FilePath $Exe -PassThru
 $splashSeen = -1
 while ($clock.ElapsedMilliseconds -lt 3000) {
-  $s = [SplashW32]::FindWindow("SARCADE_SPLASH", $null)
-  if ($s -ne [IntPtr]::Zero -and [SplashW32]::IsWindowVisible($s)) { $splashSeen = $clock.ElapsedMilliseconds; break }
+  if ([SplashW32]::Shown($p.Id)) { $splashSeen = $clock.ElapsedMilliseconds; break }
   Start-Sleep -Milliseconds 10
 }
 Start-Sleep -Milliseconds ([Math]::Max(0, $CaptureAfter * 1000 - $clock.ElapsedMilliseconds))
