@@ -86,11 +86,32 @@ List<Widget> buildAimLayers(BearingAim aim,Color colour){
   // Same handles as the drawings (card « Dessin, poignées d'édition »,
   // 30 Oct 2026, 10 h 40): a small arrow head and a dot of 8 px at the tip,
   // inside a touch area of 44 px.
-  return [MarkerLayer(markers:[Marker(point:tip,width:44,height:44,child:MouseRegion(cursor:aim.fixed?SystemMouseCursors.grab:SystemMouseCursors.precise,
-    child:Stack(alignment:Alignment.center,children:[
-      Transform.rotate(angle:az*math.pi/180,child:Icon(Icons.navigation,size:18,color:colour,shadows:const [Shadow(blurRadius:3,color:Colors.black54)])),
-      Container(width:8,height:8,decoration:BoxDecoration(color:Colors.white,shape:BoxShape.circle,border:Border.all(color:colour,width:1.5))),
-    ])))])];
+  return [MarkerLayer(markers:[Marker(point:tip,width:44,height:44,child:AimTip(azimuthDeg:az,colour:colour))])];
+}
+
+/// Cursor over the tip of the arrow (card « Relevé en modification :
+/// curseur en croix », validated 1 Nov 2026, 8 h 27): always the precision
+/// cross, never the hand (a hand made one think the tip was not caught);
+/// the dot grows a little while the mouse is over it.
+const aimTipCursor=SystemMouseCursors.precise;
+
+class AimTip extends StatefulWidget {
+  final double azimuthDeg; final Color colour;
+  const AimTip({super.key,required this.azimuthDeg,required this.colour});
+  @override State<AimTip> createState()=>_AimTipState();
+}
+
+class _AimTipState extends State<AimTip> {
+  bool _over=false;
+  @override Widget build(BuildContext context){
+    final dot=_over?12.0:8.0;
+    return MouseRegion(key:const ValueKey('aim-tip'),cursor:aimTipCursor,
+      onEnter:(_)=>setState(()=>_over=true),onExit:(_)=>setState(()=>_over=false),
+      child:Stack(alignment:Alignment.center,children:[
+        Transform.rotate(angle:widget.azimuthDeg*math.pi/180,child:Icon(Icons.navigation,size:_over?22:18,color:widget.colour,shadows:const [Shadow(blurRadius:3,color:Colors.black54)])),
+        Container(width:dot,height:dot,decoration:BoxDecoration(color:Colors.white,shape:BoxShape.circle,border:Border.all(color:widget.colour,width:_over?2:1.5))),
+      ]));
+  }
 }
 
 /// Azimuth and time of the mouse bearing, corrected with the keyboard.
