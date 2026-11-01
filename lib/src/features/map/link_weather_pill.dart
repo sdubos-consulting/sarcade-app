@@ -29,8 +29,13 @@ class LinkWeatherPill extends StatelessWidget {
   final VoidCallback onLinks; final VoidCallback onWeather;
   /// Phone: no weather icon (the temperature alone, see [pillWeatherText]).
   final bool compact;
+  /// MeshCore module (lot D, 1 Nov 2026): 'ok', 'wait' or 'bad'; null
+  /// when no module is remembered (nothing drawn).
+  final String? mesh;
   const LinkWeatherPill({super.key,required this.dot,required this.linkTooltip,required this.onLinks,required this.onWeather,
-    this.linkWord,this.weatherIcon,this.weatherText,this.alert,this.compact=false});
+    this.linkWord,this.weatherIcon,this.weatherText,this.alert,this.compact=false,this.mesh});
+
+  static Color meshColor(String tone,ColorScheme s)=>switch(tone){'ok'=>Colors.green.shade600,'wait'=>Colors.orange.shade700,_=>s.error};
 
   @override Widget build(BuildContext context){
     final s=Theme.of(context).colorScheme;
@@ -46,6 +51,7 @@ class LinkWeatherPill extends StatelessWidget {
           constraints:const BoxConstraints(minWidth:pillTouch,minHeight:pillTouch),
           child:Padding(padding:EdgeInsets.only(left:14,right:weather?6:14),child:Row(mainAxisSize:MainAxisSize.min,mainAxisAlignment:MainAxisAlignment.center,children:[
             Container(width:10,height:10,decoration:BoxDecoration(color:dot,shape:BoxShape.circle)),
+            if(mesh!=null)...[const SizedBox(width:6),Icon(Icons.settings_input_antenna,key:const ValueKey('pill-mesh'),size:15,color:meshColor(mesh!,s))],
             if(linkWord!=null)...[const SizedBox(width:6),Text(linkWord!,style:TextStyle(fontSize:13,fontWeight:FontWeight.w600,color:s.onSurface))],
           ]))))),
         if(weather)InkWell(customBorder:shape,onTap:onWeather,child:SizedBox(height:pillTouch,child:Padding(padding:const EdgeInsets.only(left:6,right:14),

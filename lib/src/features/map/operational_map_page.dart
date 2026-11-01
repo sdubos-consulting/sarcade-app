@@ -113,6 +113,9 @@ import '../tools/resection_panel.dart';
 import '../tv/tv_screens_page.dart';
 import 'layer_row.dart';
 import 'link_weather_pill.dart';
+import '../meshcore/meshcore_link.dart';
+import '../meshcore/meshcore_link_card.dart' show meshCoreStateText;
+import '../meshcore/meshcore_page.dart';
 import 'locate_button.dart';
 import 'locate_cycle.dart';
 import 'point_menu.dart';
@@ -235,7 +238,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -803,6 +806,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       onTap:()=>_openConverter()),
     ToolItem(id:'routes',icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
     if(_adrasec)ToolItem(id:'resection',icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
+    if(MeshCoreLink.instance.supported)ToolItem(id:'meshcore',icon:Icons.hub_outlined,title:S.t('mesh.tool'),subtitle:S.t('mesh.toolHelp'),color:Colors.cyan,
+      onTap:()=>_openDesk('meshcore',()=>const MeshCorePage())),
     ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
       onTap:_openTvScreens),
     if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
@@ -1728,14 +1733,18 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final next=r?.upcoming(DateTime.now(),n:1)??const [];
     final h=next.isEmpty?null:next.first;
     final alert=(r?.vigilance?.colorId??1)>=3;
-    return LinkWeatherPill(dot:colour,linkTooltip:'${S.t('links.serverLink')} : $label',
+    final mesh=MeshCoreLink.instance;
+    return ListenableBuilder(listenable:mesh,builder:(_,_)=>LinkWeatherPill(dot:colour,
+      linkTooltip:[ '${S.t('links.serverLink')} : $label',
+        if(mesh.remembered)S.t('mesh.pill',{'s':meshCoreStateText(mesh.state)})].join('\n'),
+      mesh:mesh.remembered?meshCorePillTone(mesh.state):null,
       linkWord:state==ServerLink.slowed||state==ServerLink.cut?label:null,
       weatherIcon:h==null?null:weatherIcon(weatherKey(h.weatherCode)),
       weatherText:h==null?null:pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
         wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'),
       compact:_isCompact,
       alert:alert?vigilanceColor(r!.vigilance!.colorId):null,
-      onLinks:_openDiagnostics,onWeather:()=>_openWeather());
+      onLinks:_openDiagnostics,onWeather:()=>_openWeather()));
   }
 
   /// « Suivi actif · 30 s » always in sight (aprs.fi « Beacon »); a tap
