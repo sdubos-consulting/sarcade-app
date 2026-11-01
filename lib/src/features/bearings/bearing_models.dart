@@ -207,7 +207,7 @@ String? bearingZoneStatus(Bearing b,Iterable<Bearing> all){
   if(b.zone=='out')return S.t('bearings.excludedHand');
   if(b.zone=='in')return S.t('bearings.keptHand');
   if(b.search.isEmpty)return null;
-  final same=all.where((x)=>x.search==b.search).toList();
+  final same=all.where((x)=>searchKey(x.search)==searchKey(b.search)).toList();
   final z=probableZone(same);
   if(!z.autoExcluded.contains(b.id))return null;
   return S.t('bearings.excludedAuto',{'n':same.length-1});
@@ -221,9 +221,25 @@ String roundedDistance(double m){
 }
 
 /// Bearings grouped by search, in order of the most recent first.
+/// Key of a searched signal: « Balise d'exercice » and « Balise d’exercice »
+/// are one search (1 Nov 2026: two legends and two zones after the
+/// typographic apostrophe). Same rule as `normalizeSignalName` and as the
+/// server (`tv.search_key`).
+String searchKey(String s)=>s.replaceAll(RegExp('[\u2019\u2018\u02BC`\u00B4]'),"'").replaceAll(RegExp('[\u201C\u201D\u00AB\u00BB]'),'"')
+  .replaceAll(RegExp(r'\s+'),' ').trim().toLowerCase();
+
+/// Name shown for each search key: the one of its most recent bearing.
+Map<String,String> searchNames(Iterable<Bearing> list){
+  final latest=<String,Bearing>{};
+  for(final b in list){final k=searchKey(b.search);final l=latest[k];if(l==null||!b.takenAt.isBefore(l.takenAt))latest[k]=b;}
+  return {for(final e in latest.entries)e.key:e.value.search};
+}
+
+/// Bearings grouped by search, under the name of the most recent one.
 Map<String,List<Bearing>> bySearch(Iterable<Bearing> list){
+  final names=searchNames(list);
   final out=<String,List<Bearing>>{};
-  for(final b in list){(out[b.search]??=[]).add(b);}
+  for(final b in list){(out[names[searchKey(b.search)]!]??=[]).add(b);}
   return out;
 }
 
