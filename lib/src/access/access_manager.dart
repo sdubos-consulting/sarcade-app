@@ -45,6 +45,23 @@ class AccessManager extends ChangeNotifier {
     return s.headers;
   }
 
+  /// « Connexion requise » seen on this device, newest last (card « Jeton
+  /// Cloudflare redemandé régulièrement », 1 Nov 2026): when, which call,
+  /// which answer, and until when the stored token was valid. Shown in the
+  /// Diagnostic, never the token itself.
+  final challenges=<AccessChallenge>[];
+  void noteChallenge(Uri url,int status,{required bool retried,required bool recovered}){
+    final s=_sessions[accessOrigin(url.toString())];
+    challenges.add(AccessChallenge(at:DateTime.now(),path:url.path,status:status,tokenUntil:s?.expiresAt,retried:retried,recovered:recovered));
+    if(challenges.length>20)challenges.removeAt(0);
+  }
+
+  /// A stored token still valid for [url]: worth one more try before asking.
+  bool hasValidSession(Uri url){
+    final s=_sessions[accessOrigin(url.toString())];
+    return s!=null&&!s.expired(DateTime.now().toUtc());
+  }
+
   void markRequired(Uri url){
     if(_required.add(accessOrigin(url.toString())))notifyListeners();
   }
@@ -81,14 +98,33 @@ class AccessHttpClient extends http.BaseClient {
   final http.Client _inner; final AccessManager access;
   AccessHttpClient({http.Client? inner,AccessManager? access}):_inner=inner??http.Client(),access=access??AccessManager.instance;
 
+  bool _challenged(http.StreamedResponse r){
+    // Redirections are followed: a call that ends on the Cloudflare sign-in
+    // page (or is refused by Access) did not reach SARCADE.
+    final Uri? landed=switch(r){http.BaseResponseWithUrl x=>x.url,_=>null};
+    return isAccessChallenge(r.statusCode,r.headers)||(landed!=null&&isAccessPage(landed));
+  }
+
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     request.headers.addAll(access.headersFor(request.url));
-    final response=await _inner.send(request);
-    // Redirections are followed: a call that ends on the Cloudflare sign-in
-    // page (or is refused by Access) did not reach SARCADE.
-    final Uri? landed=switch(response){http.BaseResponseWithUrl r=>r.url,_=>null};
-    if(isAccessChallenge(response.statusCode,response.headers)||(landed!=null&&isAccessPage(landed))){
+    var response=await _inner.send(request);
+    if(_challenged(response)){
+      // A token still valid: one more try a second later before asking for
+      // a new one (a passing refusal is not the end of the session).
+      final again=request is http.Request&&access.hasValidSession(request.url)?_copy(request):null;
+      if(again!=null){
+        await response.stream.drain<void>();
+        await Future<void>.delayed(const Duration(seconds:1));
+        final first=response.statusCode;
+        response=await _inner.send(again);
+        if(!_challenged(response)){
+          access.noteChallenge(request.url,first,retried:true,recovered:true);
+          if(response.statusCode<500)access.markOk(request.url);
+          return response;
+        }
+      }
+      access.noteChallenge(request.url,response.statusCode,retried:again!=null,recovered:false);
       access.markRequired(request.url);
       await response.stream.drain<void>();
       throw AccessRequiredException(accessOrigin(request.url.toString()));
@@ -97,5 +133,16 @@ class AccessHttpClient extends http.BaseClient {
     return response;
   }
 
+  http.Request _copy(http.Request r)=>http.Request(r.method,r.url)
+    ..headers.addAll(r.headers)..bodyBytes=r.bodyBytes..followRedirects=r.followRedirects..maxRedirects=r.maxRedirects;
+
   @override void close()=>_inner.close();
+}
+
+/// One « Connexion requise » of the Diagnostic.
+class AccessChallenge {
+  final DateTime at; final String path; final int status; final DateTime? tokenUntil;
+  /// A second try was made; it succeeded (no sign-in asked).
+  final bool retried, recovered;
+  const AccessChallenge({required this.at,required this.path,required this.status,this.tokenUntil,this.retried=false,this.recovered=false});
 }
