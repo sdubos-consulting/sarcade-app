@@ -1,4 +1,4 @@
-/// Android Auto declaration only (see pubspec.yaml): nothing to call from
-/// Dart. The notifications themselves are built by the application
-/// (lib/src/features/car/car_messaging.dart).
+/// Android Auto (see pubspec.yaml). The application talks to the car screen
+/// through the channel `org.sarcade.car/screen`
+/// (lib/src/features/car/car_screen_channel.dart); nothing to import here.
 library;

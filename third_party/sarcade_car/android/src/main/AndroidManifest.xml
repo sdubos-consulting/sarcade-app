@@ -1,9 +1,26 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Android Auto: SARCADE is a messaging application (notifications read
-         aloud, dictated answer). Lot 1b, 1 Nov 2026. -->
+    <!-- Android Auto, merged into the manifest of the application:
+         - lot 1b (1 Nov 2026): messaging by notifications (read aloud,
+           dictated answer), <uses name="notification"/>;
+         - lot 17 (1 Nov 2026): SARCADE screen with tabs (Messages, Ordres,
+           Points, Équipe, SOS), « points of interest » category of the Car
+           App Library, <uses name="template"/>. -->
     <application>
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+        <!-- Tabs from the car API level 6; level 1 to 5: list with an action
+             strip (see MainScreen.kt). -->
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+        <service
+            android:name="org.sarcade.car.SarcadeCarAppService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.POI" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
