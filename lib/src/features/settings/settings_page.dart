@@ -93,7 +93,10 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     // Red dot on Paramètres: the screen opens on the Diagnostic (card
     // « Diagnostic, point d'arrivée unique des problèmes », 30 Oct 2026).
-    if(!widget.firstRun&&diagnosticsAlert())_tab=_tabs.indexOf('diagnostics');
+    // « Choisir un événement » of the Diagnostic opens Général (lot 19).
+    final asked=settingsRequestedTab; settingsRequestedTab=null;
+    if(asked!=null&&_tabs.contains(asked)){_tab=_tabs.indexOf(asked);}
+    else if(!widget.firstRun&&diagnosticsAlert()){_tab=_tabs.indexOf('diagnostics');}
     _events=widget.cachedEvents?.call(_serverText)??[];
     if(widget.loadEvents!=null)WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_loadEvents();});
   }
@@ -593,7 +596,8 @@ class _SettingsPageState extends State<SettingsPage> {
       return Text(consumptionLine(trackingS:p.trackingS,moving:p.trackingMoving,reduced:p.gpsReduced,
         compass:SharedCompass.instance.running,saver:p.saver,t:S.t));})),
     // Cet appareil, Liaisons, Serveur (PCO / admin), « Copier le rapport » (lot 5).
-    if(widget.api!=null)DiagnosticsPanel(api:widget.api!,server:widget.initial.serverUrl,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
+    if(widget.api!=null)DiagnosticsPanel(api:widget.api!,server:widget.initial.serverUrl,eventId:widget.initial.eventId,actorId:widget.initial.deviceId,
+      onChooseEvent:()=>setState(()=>_tab=_tabs.indexOf('general'))),
   ]);
 
   Widget _tabBody(String id)=>switch(id){
@@ -678,6 +682,10 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+/// Tab the next opening of Paramètres shows (« Choisir un événement » of
+/// the Diagnostic over the map, lot 19); read once.
+String? settingsRequestedTab;
 
 /// The save bar, except on Diagnostic and À propos with nothing changed.
 bool settingsShowsSaveBar({required String tab,required bool firstRun,required bool dirty})=>firstRun||dirty||!(tab=='diagnostics'||tab=='about');
