@@ -79,19 +79,11 @@ void main(){
   group('at start and on a 404',(){
     late BuildContext ctx;
     Future<void> app(WidgetTester t)=>t.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(c){ctx=c;return const SizedBox();}))));
-    // Diagnosis in the CI annotations (« Error: » lines of test.log).
-    Future<void> diag(Future<void> Function() body) async {
-      final orig=FlutterError.onError;
-      FlutterError.onError=(d){debugPrint('Error: ${d.exceptionAsString().split('\n').first} @ ${d.stack.toString().split('\n').where((l)=>l.contains('lot19')||l.contains('event_choice')).take(2).join(' ; ')}');orig?.call(d);};
-      try{await body();}catch(e,st){debugPrint('Error: $e @ ${st.toString().split('\n').take(3).join(' ; ')}');rethrow;}
-      finally{FlutterError.onError=orig;}
-    }
     // The message « Événement suivi » goes away by itself.
     Future<void> settle(WidgetTester t) async {await t.pumpAndSettle();await t.pump(const Duration(seconds:6));await t.pumpAndSettle();}
 
     testWidgets('one open event: followed at once, « Événement suivi : … »',(t) async {
       await app(t);
-      await diag(() async {
       final followed=<(String,bool)>[];
       final pick=await checkFollowedEvent(api:serverWith([ev('a','Test NAS 1','draft'),ev('c','Ancien','closed')]),current:'evt-demo',deviceId:'TEL-01',
         manual:false,context:()=>ctx,follow:(e,{required manual}) async=>followed.add(('${e['id']}',manual)));
@@ -100,12 +92,10 @@ void main(){
       expect(followed,[('a',false)]);
       expect(find.text('Événement suivi : Test NAS 1'),findsOneWidget);
       await settle(t);
-      });
     });
 
     testWidgets('several: the list, the active one first; the choice is by hand',(t) async {
       await app(t);
-      await diag(() async {
       final followed=<(String,bool)>[];
       final done=checkFollowedEvent(api:serverWith([ev('a','Brouillon','draft'),ev('b','En cours','active')]),current:'evt-demo',deviceId:'TEL-01',
         manual:false,context:()=>ctx,follow:(e,{required manual}) async=>followed.add(('${e['id']}',manual)));
@@ -118,12 +108,10 @@ void main(){
       expect(await done,EventPick.choose);
       expect(followed,[('a',true)]);
       await settle(t);
-      });
     });
 
     testWidgets('none: « Aucun événement ouvert », « Créer » for the PCO only',(t) async {
       await app(t);
-      await diag(() async {
       final created=<Map<String,dynamic>>[], followed=<(String,bool)>[];
       var done=checkFollowedEvent(api:serverWith(const []),current:'evt-demo',deviceId:'TEL-01',
         manual:false,context:()=>ctx,follow:(e,{required manual}) async=>followed.add(('${e['id']}',manual)));
@@ -147,12 +135,10 @@ void main(){
       expect(created.single['name'],'Exercice du 2');
       expect(followed,[('evt-new',true)]);
       await settle(t);
-      });
     });
 
     testWidgets('followed event deleted (404): one open → switch, several → list',(t) async {
       await app(t);
-      await diag(() async {
       final followed=<(String,bool)>[];
       expect(await checkFollowedEvent(api:serverWith([ev('a','Test NAS 1','active')]),current:'gone',deviceId:'TEL-01',
         manual:true,unknown:true,context:()=>ctx,follow:(e,{required manual}) async=>followed.add(('${e['id']}',manual))),EventPick.auto);
@@ -165,12 +151,10 @@ void main(){
       await t.pumpAndSettle();
       expect(await done,EventPick.choose);
       await settle(t);
-      });
     });
 
     testWidgets('a closed event chosen by hand stays; without network nothing changes',(t) async {
       await app(t);
-      await diag(() async {
       var calls=0;
       Future<void> follow(Map<String,dynamic> e,{required bool manual}) async=>calls++;
       expect(await checkFollowedEvent(api:serverWith([ev('a','A','active'),ev('c','Ancien','closed')]),current:'c',deviceId:'TEL-01',
@@ -178,7 +162,6 @@ void main(){
       expect(await checkFollowedEvent(api:serverWith(const [],down:true),current:'c',deviceId:'TEL-01',
         manual:false,context:()=>ctx,follow:follow),isNull);
       expect(calls,0);
-      });
     });
   });
 }
