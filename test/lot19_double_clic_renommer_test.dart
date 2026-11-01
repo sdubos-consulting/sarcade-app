@@ -10,6 +10,7 @@ import 'package:sarcade_app/src/features/map/drawing/hit_test.dart';
 import 'package:sarcade_app/src/features/map/drawing/map_feature.dart';
 import 'package:sarcade_app/src/features/map/rename_dialog.dart';
 import 'package:sarcade_app/src/features/poi/poi_list.dart';
+import 'package:sarcade_app/src/features/poi/poi_sheet.dart';
 import 'package:sarcade_app/src/l10n/strings.dart';
 import 'package:sarcade_app/src/models/poi.dart';
 
