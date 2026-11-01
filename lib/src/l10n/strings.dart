@@ -45,6 +45,7 @@ class S {
 }
 
 const Texts _fr={
+  'win.starting':'Démarrage…',
   'messages.replyQuote':'Répondre','messages.quoteMissing':'Message introuvable','messages.quotePhoto':'Photo',
   'ext.app.other':'Autre application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Toujours ouvrir avec cette application','ext.warningShort':'Votre position est transmise','ext.warningAll':'Google Maps et Waze reçoivent votre position','settings.navApp':'Application de navigation','settings.navAppAsk':'Demander à chaque fois',
   'nav.downloadGraph':'Télécharger les routes sur l’appareil','nav.downloadGraphSize':'Télécharger les routes ({mb} Mo, Wi-Fi conseillé)',
@@ -488,10 +489,12 @@ const Texts _fr={
   'diag.copyReport':'Copier le rapport',
   'diag.refresh':'Actualiser',
   'diag.serverForbidden':'Réservé au PCO et aux administrateurs',
-  'diag.serverOld':'Serveur trop ancien pour ce bloc'
+  'diag.serverOld':'Serveur trop ancien pour ce bloc',
+  'diag.accessBrowser':'par le navigateur','diag.accessBrowserRefused':'sans réponse, reconnectez-vous'
 };
 
 const Texts _en={
+  'win.starting':'Starting…',
   'messages.replyQuote':'Reply','messages.quoteMissing':'Message not found','messages.quotePhoto':'Photo',
   'ext.app.other':'Other application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Always open with this application','ext.warningShort':'Your position is shared','ext.warningAll':'Google Maps and Waze receive your position','settings.navApp':'Navigation application','settings.navAppAsk':'Ask every time',
   'nav.downloadGraph':'Download the roads on the device','nav.downloadGraphSize':'Download the roads ({mb} MB, Wi-Fi advised)',
@@ -915,5 +918,6 @@ const Texts _en={
   'diag.copyReport':'Copy the report',
   'diag.refresh':'Refresh',
   'diag.serverForbidden':'PCO and administrators only',
-  'diag.serverOld':'Server too old for this block'
+  'diag.serverOld':'Server too old for this block',
+  'diag.accessBrowser':'through the browser','diag.accessBrowserRefused':'no answer, sign in again'
 };
