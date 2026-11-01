@@ -4,10 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'src/access/access_manager.dart';
 import 'src/app.dart';
+import 'src/l10n/strings.dart';
 import 'src/offline/local_store.dart';
 import 'src/platform/platform_services.dart';
 import 'src/platform/startup_report.dart';
 import 'src/services/power_state.dart';
+import 'src/ui/startup_splash.dart';
 
 Future<void> main() async {
   // Every error, also outside Flutter's own handlers, goes to the startup
@@ -33,6 +35,13 @@ Future<void> _start() async {
     StartupReport.note('deuxième instance refusée');
     quitApp();
     return;
+  }
+  if(showsStartupSplash){
+    // Same logo as the native start window, until the local start is done
+    // (card « Windows : logo SARCADE affiché dès le clic sur l'icône »).
+    S.setLanguage('system',systemLanguage:PlatformDispatcher.instance.locale.languageCode);
+    StartupReport.note('écran de chargement');
+    runApp(const StartupSplash());
   }
   final LocalStore store;
   try{
