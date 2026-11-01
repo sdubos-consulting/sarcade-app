@@ -2,15 +2,15 @@
 /// known point and to see the sights).
 library;
 
-import '../../ui/choice_pills.dart';
+import '../../../ui/choice_pills.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 
-import '../../l10n/strings.dart';
-import '../../models/reference_site.dart';
-import '../map/drawing/geometry.dart' as geo;
-import '../measure/coordinates.dart';
-import '../measure/measure_controller.dart' show formatDeclination;
+import '../../../l10n/strings.dart';
+import '../reference/reference_site.dart';
+import '../../../features/map/drawing/geometry.dart' as geo;
+import '../../../features/measure/coordinates.dart';
+import '../../../features/measure/measure_controller.dart' show formatDeclination;
 import 'resection.dart';
 
 class ResectionPanel extends StatefulWidget {

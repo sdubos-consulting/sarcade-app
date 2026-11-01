@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sarcade_app/src/features/aprs/aprs_models.dart';
-import 'package:sarcade_app/src/features/aprs/callsign_links.dart';
+import 'package:sarcade_app/src/modules/adrasec/aprs/aprs_models.dart';
+import 'package:sarcade_app/src/modules/adrasec/aprs/callsign_links.dart';
 import 'package:sarcade_app/src/features/map/point_menu.dart';
 import 'package:sarcade_app/src/features/measure/coordinates.dart';
 import 'package:sarcade_app/src/features/measure/point_info_page.dart';

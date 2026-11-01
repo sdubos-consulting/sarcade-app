@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../l10n/strings.dart';
-import '../../models/position.dart';
-import '../../services/sarcade_api.dart';
-import '../measure/coordinates.dart';
+import '../../../l10n/strings.dart';
+import '../../../models/position.dart';
+import '../../../services/sarcade_api.dart';
+import '../../../features/measure/coordinates.dart';
 import 'aprs_models.dart';
-import '../../ui/action_buttons.dart';
-import '../../ui/link_status.dart';
+import '../../../ui/action_buttons.dart';
+import '../../../ui/link_status.dart';
 
 /// PCO screen « APRS de l'événement » (vault note « APRS »): callsign groups
 /// followed by the event, callsigns added for it, local radio transmission,

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../ui/overlay_page.dart';
 import '../../l10n/strings.dart';
 import '../../services/sarcade_api.dart';
-import '../aprs/aprs_page.dart';
+import '../../modules/adrasec/aprs/aprs_page.dart';
 import 'quick_messages_editor.dart';
 import '../../services/event_names.dart';
 import '../../operations/event_settings.dart' show eventModules, eventModuleIds;

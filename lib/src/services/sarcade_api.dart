@@ -5,7 +5,7 @@ import '../models/poi.dart';
 import '../models/position.dart';
 import '../models/message.dart';
 import '../models/shared_file.dart';
-import '../models/reference_site.dart';
+import '../modules/adrasec/reference/reference_site.dart';
 
 /// HTTP refusal from the server, with its status for retry decisions.
 class SarcadeHttpException implements Exception {

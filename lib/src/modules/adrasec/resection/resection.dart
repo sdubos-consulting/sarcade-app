@@ -10,11 +10,11 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../models/reference_site.dart';
+import '../reference/reference_site.dart';
 import '../bearings/bearing_models.dart' show resection;
-import '../map/drawing/geometry.dart' as geo;
-import '../compass/shared_compass.dart';
-import '../measure/wmm.dart';
+import '../../../features/map/drawing/geometry.dart' as geo;
+import '../../../features/compass/shared_compass.dart';
+import '../../../features/measure/wmm.dart';
 
 /// A known point: a site of the radio directory, or a point of the map.
 class KnownPoint {

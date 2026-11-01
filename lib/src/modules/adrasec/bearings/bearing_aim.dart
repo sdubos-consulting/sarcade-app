@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../l10n/strings.dart';
-import '../map/drawing/geometry.dart' as geo;
+import '../../../l10n/strings.dart';
+import '../../../features/map/drawing/geometry.dart' as geo;
 import 'bearing_models.dart';
 
 /// Bearing taken with the mouse on a computer (decision of the project

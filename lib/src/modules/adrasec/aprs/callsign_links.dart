@@ -7,7 +7,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../l10n/strings.dart';
+import '../../../l10n/strings.dart';
 import 'aprs_models.dart';
 
 /// The first of [names] that looks like a callsign, else null.

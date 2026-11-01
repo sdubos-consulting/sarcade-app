@@ -14,7 +14,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../l10n/strings.dart';
 import '../../models/position.dart';
-import '../bearings/bearing_models.dart' show operatorColor;
+import '../../ui/operator_color.dart';
 
 /// Windows offered, in minutes; 0 = the whole event.
 const traceWindows=[30,60,120,360,0];

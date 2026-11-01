@@ -13,7 +13,7 @@ import '../../models/comm_group.dart' show isPco;
 import '../../models/poi.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
-import '../bearings/bearing_models.dart' show operatorColor;
+import '../../ui/operator_color.dart';
 import '../measure/coordinates.dart';
 import 'poi_icons.dart';
 

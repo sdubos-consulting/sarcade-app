@@ -10,8 +10,8 @@ library;
 import 'package:latlong2/latlong.dart';
 
 import '../../models/position.dart';
-import 'drawing/geometry.dart' as geo;
-import 'stations.dart';
+import '../../features/map/drawing/geometry.dart' as geo;
+import '../../features/map/stations.dart';
 
 /// Symbols of stations that do not move.
 const fixedSymbolKinds={'igate','digipeater','repeater','house','weather'};
