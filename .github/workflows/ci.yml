@@ -127,12 +127,43 @@ jobs:
         run: |
           $v = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
           $env:SARCADE_VERSION = $v
-          # Latest Inno Setup, not the one of the GitHub machine: its wizard
-          # cut the check boxes on a 200 % screen (Surface, 31 Oct 2026).
-          choco upgrade innosetup -y --no-progress | Out-Null
+          # A precise Inno Setup version, not « the latest » nor the one of the
+          # GitHub machine (card « Installeur Windows : case encore coupée
+          # après #156 », 1 Nov 2026). If Chocolatey cannot install it, the
+          # version already installed is kept and a warning says so.
+          $innoWanted = "6.7.1"
+          choco upgrade innosetup --version $innoWanted --allow-downgrade -y --no-progress | Out-Null
+          if ($LASTEXITCODE -notin 0, 1641, 3010) {
+            Write-Host "::warning title=Inno Setup::Chocolatey could not install Inno Setup $innoWanted (code $LASTEXITCODE): the version already installed is used"
+          }
+          $global:LASTEXITCODE = 0
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { $iscc = (Get-ChildItem "${env:ProgramFiles(x86)}","${env:ProgramFiles}" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
-          Write-Host "::notice title=Inno Setup::$((Get-Item $iscc).VersionInfo.ProductVersion)"
+          # The real version: ProductVersion of ISCC.exe is empty (« 0.0.0.0 »);
+          # FileVersion of the compiler files, then Chocolatey, then the
+          # banner of ISCC.exe.
+          $innoDir = Split-Path $iscc
+          $innoVersion = ""
+          foreach ($f in "ISCmplr.dll", "Compil32.exe", "ISCC.exe") {
+            $p = Join-Path $innoDir $f
+            if (-not $innoVersion -and (Test-Path $p)) {
+              $fv = (Get-Item $p).VersionInfo.FileVersion
+              if ($fv -and $fv -notmatch '^0[.,\s]*0[.,\s]*0[.,\s]*0$') { $innoVersion = ($fv -replace '\s', '') -replace ',', '.' }
+            }
+          }
+          $chocoVersion = ""
+          $chocoLine = (choco list innosetup --exact --limit-output) | Where-Object { $_ -match '^innosetup\|' } | Select-Object -First 1
+          if ($chocoLine) { $chocoVersion = ($chocoLine -split '\|')[1] }
+          $global:LASTEXITCODE = 0
+          if (-not $innoVersion) { $innoVersion = $chocoVersion }
+          $banner = ""
+          try { $banner = [string]((& $iscc "/?" 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match 'Inno Setup' }) | Select-Object -First 1) } catch { }
+          $global:LASTEXITCODE = 0
+          if (-not $innoVersion) { $innoVersion = $banner }
+          Write-Host "::notice title=Inno Setup::$innoVersion (wanted $innoWanted, Chocolatey: $chocoVersion, ISCC: $banner)"
+          if ($chocoVersion -and $chocoVersion -ne $innoWanted) {
+            Write-Host "::warning title=Inno Setup::Inno Setup $chocoVersion used instead of $innoWanted"
+          }
           & $iscc tool\windows_installer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\installer\sarcade-windows-portable.zip
