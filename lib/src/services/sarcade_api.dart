@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart' show LatLng;
 import '../access/access_manager.dart';
 import '../models/poi.dart';
 import '../models/position.dart';
@@ -328,6 +329,13 @@ class SarcadeApi {
       body:jsonEncode({'device_id':deviceId,'lamin':south,'lomin':west,'lamax':north,'lomax':east,'on':on}));
     if(r.statusCode!=200) throw SarcadeHttpException('adsb_watch',r.statusCode,r.body);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Whole known trace of one aircraft (30 min at most), [lat, lon] pairs.
+  Future<List<LatLng>> adsbTrack(String eventId,String icao24) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/${Uri.encodeComponent(eventId)}/adsb/${Uri.encodeComponent(icao24)}/track'));
+    if(r.statusCode!=200) throw SarcadeHttpException('adsb_track',r.statusCode);
+    final t=(jsonDecode(r.body) as Map)['track'];
+    return [for(final p in (t as List?)??const [])if(p is List&&p.length==2)LatLng((p[0] as num).toDouble(),(p[1] as num).toDouble())];
   }
   Future<Map<String,dynamic>> adsbStatus() async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/adsb/status'));

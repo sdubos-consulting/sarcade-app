@@ -24,6 +24,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../access/access_manager.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
+import '../../operations/event_settings.dart' show eventModules;
 import '../meshcore/meshcore_link.dart';
 import '../meshcore/meshcore_page.dart';
 import '../../ui/overlay_page.dart';
@@ -163,6 +164,13 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     final access=AccessManager.instance.sessionFor(widget.server);
     Map<String,dynamic>? aprs;
     try{aprs=await widget.api.aprsStatus().timeout(const Duration(seconds:5));}catch(_){aprs=null;}
+    // ADS-B (OpenSky): only for an event with the ADRASEC module (8 h 15).
+    Map<String,dynamic>? adsb;
+    try{
+      final ev=await widget.api.event(widget.eventId).timeout(const Duration(seconds:5));
+      final settings=ev['settings'] is Map?Map<String,dynamic>.from(ev['settings'] as Map):null;
+      if(eventModules(settings).contains('adrasec'))adsb=await widget.api.adsbStatus().timeout(const Duration(seconds:5));
+    }catch(_){adsb=null;}
     bool engine=false;
     try{engine=(await widget.api.routingStatus().timeout(const Duration(seconds:5)))['available']==true;}catch(_){engine=false;}
     Map<String,dynamic>? link(String k)=>aprs?[k] is Map?Map<String,dynamic>.from(aprs![k] as Map):null;
@@ -188,6 +196,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         state:switch(routingWhere(server:engine,device:RoadGraphService.active?.graph!=null)){'server'=>'green','device'=>'orange',_=>'red'}),
       (block:lk,label:S.t('aprs.is'),value:S.t('aprs.link.${linkState(link('aprs_is'))}'),state:linkState(link('aprs_is'))),
       (block:lk,label:S.t('aprs.radio'),value:S.t('aprs.link.${linkState(link('radio'))}'),state:linkState(link('radio'))),
+      ?adsbDiagLine(lk,adsb,DateTime.now()),
       // MeshCore: one status line; everything else in Outils › MeshCore.
       if(MeshCoreLink.instance.supported)meshCoreDiagLine(lk,MeshCoreLink.instance),
     ];
@@ -295,6 +304,24 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         ]))),
     ]);
   }
+}
+
+/// Line « ADS-B (OpenSky) » of Liaisons (card validated 1 Nov 2026, 8 h 15),
+/// from /adsb/status; null without the ADRASEC module.
+DiagLine? adsbDiagLine(String block,Map<String,dynamic>? st,DateTime now){
+  if(st==null)return null;
+  final label=S.t('adsb.diag');
+  if(st['enabled']!=true)return (block:block,label:label,value:S.t('adsb.diag.off'),state:null);
+  if(st['paused']==true)return (block:block,label:label,value:S.t('adsb.diag.quota'),state:'orange');
+  final n=(st['requests_today'] as num?)?.toInt()??0, credits=(st['credits_per_day'] as num?)?.toInt()??4000;
+  final day=S.t('adsb.diag.day',{'n':'$n','left':'${(credits-n).clamp(0,credits)}'});
+  final last=DateTime.tryParse('${st['last_ok_at']??''}');
+  if(st['connected']==true&&last!=null){
+    return (block:block,label:label,value:'${S.t('adsb.diag.ok',{'s':'${now.toUtc().difference(last.toUtc()).inSeconds.clamp(0,86400)}'})} · $day',state:'green');
+  }
+  final detail='${st['detail']??''}';
+  if(detail.isNotEmpty)return (block:block,label:label,value:'${S.t('adsb.diag.error')} ($detail) · $day',state:'red');
+  return (block:block,label:label,value:'${S.t('adsb.diag.idle')} · $day',state:null);
 }
 
 /// Line « Module MeshCore » of Liaisons (1 Nov 2026, 8 h 17): connected,

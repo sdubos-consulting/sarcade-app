@@ -254,7 +254,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// ADS-B (module ADRASEC, step 1, 1 Nov 2026): the visible map is the box
   /// asked to the server; a new emergency squawk is announced once.
   void _initAdsb(){
-    _adsb=AdsbController(api:widget.api,eventId:widget.eventId,deviceId:widget.deviceId,box:(){
+    _adsb=AdsbController(api:widget.api,eventId:widget.eventId,deviceId:widget.deviceId,store:widget.store,box:(){
       try{
         final b=_map.camera.visibleBounds;
         return (south:b.south,west:b.west,north:b.north,east:b.east);
@@ -264,9 +264,28 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(!mounted)return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(backgroundColor:adsbUrgentColor,duration:const Duration(seconds:20),
         content:Text(S.t('adsb.alert',{'name':a.name,'what':emergencyText(a.emergency!)})),
-        action:SnackBarAction(label:S.t('adsb.see'),textColor:Colors.white,onPressed:(){_fitPoints([a.position]);unawaited(showAircraftSheet(context,a));})));
+        action:SnackBarAction(label:S.t('adsb.see'),textColor:Colors.white,onPressed:(){_fitPoints([a.position]);unawaited(_selectAircraft(a));})));
     };
-    _adsb.addListener((){if(mounted)setState((){});});
+    _adsb.addListener(_onAdsb);
+  }
+  void _onAdsb(){
+    if(!mounted)return;
+    // « Suivre »: the map stays on the selected aircraft.
+    final a=_adsb.selected;
+    if(_adsb.follow&&a!=null){try{_map.move(a.position,_map.camera.zoom);}catch(_){/* map not ready */}}
+    setState((){});
+  }
+
+  /// Sheet of one aircraft: side panel on computers and tablets, bottom
+  /// sheet on a phone (card validated 1 Nov 2026, 8 h 21).
+  Future<void> _selectAircraft(Aircraft a) async {
+    unawaited(_adsb.select(a));
+    if(_isCompact){await showAircraftSheet(context,_adsb);return;}
+    setState((){_deskId='adsb-aircraft';_deskPage=AircraftPanel(adsb:_adsb,onClose:_closeAircraft);_showPanel=false;});
+  }
+  void _closeAircraft(){
+    unawaited(_adsb.select(null));
+    if(_deskId=='adsb-aircraft')setState((){_deskId=null;_deskPage=null;});
   }
 
   /// Rights given by the server for the checked email (PCO, administrator).
@@ -837,7 +856,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ToolItem(id:'routes',icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
     if(_adrasec)ToolItem(id:'resection',icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
     if(_adrasec)ToolItem(id:'adsb',icon:Icons.flight,title:S.t('adsb.title'),subtitle:S.t('adsb.toolHelp'),color:Colors.lightBlue,
-      onTap:()=>_openDesk('adsb',()=>AdsbPage(adsb:_adsb,onShow:(a)=>unawaited(showAircraftSheet(context,a))))),
+      onTap:()=>_openDesk('adsb',()=>AdsbPage(adsb:_adsb,onShow:(a)=>unawaited(_selectAircraft(a))))),
     if(MeshCoreLink.instance.supported)ToolItem(id:'meshcore',icon:Icons.hub_outlined,title:S.t('mesh.tool'),subtitle:S.t('mesh.toolHelp'),color:Colors.cyan,
       onTap:()=>_openDesk('meshcore',()=>const MeshCorePage())),
     ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
@@ -1684,6 +1703,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         row(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPointsPref=v),op:'high'),
         row(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelaysPref=v),op:'relay'),
         row(S.t('adsb.layer'),_adsb.on,(v) async {await _adsb.setOn(v);refresh((){});}),
+        if(_adsb.on)Padding(padding:const EdgeInsets.only(left:24,right:8),child:AdsbFiltersTiles(adsb:_adsb)),
       ],
       const SizedBox(height:12),
     ];
@@ -2469,7 +2489,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
+  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).
@@ -2484,7 +2504,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Filters and opacities of this map, applied by the TV (step 2).
   TvOptions _tvOptions()=>(
     layers:{'operators':_showOperators,'aprs':_showAprs,'offline':true,'drawings':_showDrawings,'bearings':_showBearings,
-      'highpoints':_showHighPoints,'relays':_showRelays,'traces':_allTraces},
+      'highpoints':_showHighPoints,'relays':_showRelays,'traces':_allTraces,'aircraft':_adsb.on&&_adrasec},
     // One opacity per layer, as in the Affichage tab (lot 4, 30 Oct 2026).
     opacity:{for(final k in tvOpacityKeys)k:_layerOpacity(k)},
     messages:true,
@@ -2492,6 +2512,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   @override Widget build(BuildContext context){
     currentMapView=_tvView; currentMapOptions=_tvOptions;
+    // ADS-B filters of this map, applied by the TV (1 Nov 2026, 8 h 22).
+    currentMapExtras=()=>_adsb.on&&_adrasec?_adsb.filters.tvJson():const <String,dynamic>{};
     currentMapTraces=()=>(windowMin:_traceWindow,pinned:_traces.pinned.toList()..sort());
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     // Old stations stay in the list and the search, not on the map.
@@ -2650,7 +2672,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c))),
           if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
           ..._variantLayers(),
-          if(_adsb.on&&_adrasec)...[aircraftTrails(_adsb.aircraft),aircraftMarkers(_adsb.aircraft,onTap:(a)=>unawaited(showAircraftSheet(context,a)))],
+          if(_adsb.on&&_adrasec)...[aircraftTrails(_adsb.shown,selectedId:_adsb.selectedId,track:_adsb.track),
+            aircraftMarkers(_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),labels:_adsb.filters.labels,selectedId:_adsb.selectedId)],
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             lineHits:_routeHits,onWaypointTap:(w)=>unawaited(_openWaypoint(w))),
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
