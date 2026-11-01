@@ -9,7 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
-import '../features/car/car_background_io.dart' show sendAnswerNow;
+import '../features/car/car_android.dart';
+import '../features/car/car_background_io.dart' show appendPendingReply, sendAnswerNow, sendReplyNow;
+import '../features/car/car_messaging.dart';
 import '../l10n/strings.dart';
 import '../platform/startup_report.dart';
 import 'notification_actions.dart';
@@ -97,7 +99,12 @@ Future<List<PendingAnswer>> takePendingAnswers() async {
 Future<void> notificationBackgroundHandler(NotificationResponse response) async {
   DartPluginRegistrant.ensureInitialized();
   final payload=NotificationPayload.decode(response.payload);
-  final status=ackStatusForAction(resolveAction(response.actionId,response.payload));
+  final action=resolveAction(response.actionId,response.payload);
+  // Android Auto « Répondre » (lot 1b): the dictated answer leaves at once,
+  // and the message counts as read.
+  final reply=payload==null?null:replyOf(payload,action,response.input);
+  if(reply!=null&&!await sendReplyNow(reply))await appendPendingReply(reply);
+  final status=reply!=null?'read':ackStatusForAction(action);
   if(payload==null||status==null)return;
   final answer=PendingAnswer(id:const Uuid().v4(),eventId:payload.eventId,messageId:payload.messageId,
     deviceId:payload.deviceId,status:status,time:DateTime.now().toUtc());
@@ -205,7 +212,10 @@ class NotificationService {
   Future<void> _onResponse(NotificationResponse response) async {
     final payload=NotificationPayload.decode(response.payload);
     if(payload==null)return;
-    final status=ackStatusForAction(resolveAction(response.actionId,response.payload));
+    final action=resolveAction(response.actionId,response.payload);
+    final reply=replyOf(payload,action,response.input);
+    if(reply!=null)await appendPendingReply(reply); // queued by the application
+    final status=reply!=null?'read':ackStatusForAction(action);
     if(status==null){_opens.add(payload.messageId);return;}
     await appendPendingAnswer(PendingAnswer(id:const Uuid().v4(),eventId:payload.eventId,messageId:payload.messageId,
       deviceId:payload.deviceId,status:status,time:DateTime.now().toUtc()));
@@ -278,7 +288,7 @@ class NotificationService {
     return _urgentChannel;
   }
 
-  Future<NotificationDetails> _details(String priority,NotificationPayload? payload,{bool sos=false,int? timeoutAfter}) async {
+  Future<NotificationDetails> _details(String priority,NotificationPayload? payload,{bool sos=false,int? timeoutAfter,CarConversation? car}) async {
     final urgent=isUrgentPriority(priority), immediate=priority=='immediate';
     final sound=soundFor(priority,sounds,sos:sos);
     final quiet=sound==soundSilent||sound==soundDiscreet;
@@ -293,7 +303,11 @@ class NotificationService {
         // Immediate message: each reminder takes the place of the previous
         // one (one notification per message, 30 Oct 2026, 12 h 45).
         timeoutAfter:timeoutAfter,
-        actions:[for(final a in actions)AndroidNotificationAction(a,S.t('notif.action.$a'),showsUserInterface:a==actionOpen)]),
+        // Conversation format, Répondre and Lu: read aloud by Android Auto
+        // (lot 1b, 1 Nov 2026).
+        styleInformation:car==null||payload==null?null:carStyle(car),
+        actions:car!=null&&payload!=null?carActions(priority)
+          :[for(final a in actions)AndroidNotificationAction(a,S.t('notif.action.$a'),showsUserInterface:a==actionOpen)]),
       iOS:DarwinNotificationDetails(interruptionLevel:urgent?InterruptionLevel.timeSensitive:(quiet?InterruptionLevel.passive:InterruptionLevel.active),
         presentSound:!quiet,
         categoryIdentifier:payload==null?null:(urgent?'sarcade_urgent':'sarcade_routine')),
@@ -310,7 +324,7 @@ class NotificationService {
   /// Shows a notification; with [payload] (a message addressed to this
   /// terminal) it carries the actions, and an immediate message is reminded
   /// every 2 minutes, at most 3 times, until the operator answers.
-  Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload}) async {
+  Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload,CarConversation? car}) async {
     if(!_ready){debugPrint('SARCADE notification [$priority] $title: $body');return;}
     try{
       final id=payload==null?(_id++ & 0x0fffffff)|0x40000000:notificationIdFor(payload.key);
@@ -318,8 +332,8 @@ class NotificationService {
       // Same key (a new distress, its « Fin de détresse »): the reminders
       // of the previous notification stop, the new one takes its place.
       if(payload!=null)await _stop(payload.key);
-      await _plugin.show(id,title,body,await _details(priority,payload,sos:isSosBody(body),timeoutAfter:reminded&&_schedules?_replacedAfter:null),payload:payload?.encode());
-      if(reminded)await _scheduleReminders(title,body,payload);
+      await _plugin.show(id,title,body,await _details(priority,payload,sos:isSosBody(body),timeoutAfter:reminded&&_schedules?_replacedAfter:null,car:car),payload:payload?.encode());
+      if(reminded)await _scheduleReminders(title,body,payload,car:car);
     }catch(e){
       debugPrint('SARCADE notification failed: $e');
     }
@@ -337,11 +351,11 @@ class NotificationService {
     }
   }
 
-  Future<void> _scheduleReminders(String title,String body,NotificationPayload payload) async {
+  Future<void> _scheduleReminders(String title,String body,NotificationPayload payload,{CarConversation? car}) async {
     final times=reminderTimes(DateTime.now().toUtc());
     for(var k=1;k<=times.length;k++){
       final reminderTitle=S.t('notif.reminder',{'n':k,'total':times.length,'title':title});
-      final details=await _details(payload.priority,payload,sos:isSosBody(body),timeoutAfter:k<times.length?_replacedAfter:null);
+      final details=await _details(payload.priority,payload,sos:isSosBody(body),timeoutAfter:k<times.length?_replacedAfter:null,car:car);
       final id=notificationIdFor(payload.key,k);
       if(_schedules){
         try{
