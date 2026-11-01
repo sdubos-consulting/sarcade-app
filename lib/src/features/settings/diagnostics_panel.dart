@@ -276,6 +276,14 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         footer:sync==null?null:UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});})),
       if(_pco&&(_server.isNotEmpty||_serverError!=null))_block(S.t('diag.server'),_server,
         footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!))),
+      // Every « Connexion requise » of Cloudflare on this device (1 Nov 2026).
+      if(AccessManager.instance.challenges.isNotEmpty)Card(key:const ValueKey('diag-access'),margin:const EdgeInsets.only(top:12),child:Padding(padding:const EdgeInsets.all(14),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          Text(S.t('diag.accessTitle'),style:Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height:6),
+          for(final c in AccessManager.instance.challenges.reversed)Padding(padding:const EdgeInsets.symmetric(vertical:2),
+            child:Text(accessChallengeLine(c),style:Theme.of(context).textTheme.bodySmall)),
+        ]))),
       // Trial: does SARCADE talk to a MeshCore module over Bluetooth? (1 Nov 2026)
       const MeshCoreTrialCard(),
     ]);
@@ -284,3 +292,13 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
 
 /// Where itineraries are computed: 'server', 'device' or 'none'.
 String routingWhere({required bool server,required bool device})=>server?'server':device?'device':'none';
+
+/// « 31/10 22:14 · /api/v0.1/sync · 403 · jeton valable jusqu'au 30/11 ·
+/// rattrapé par un second essai ».
+String accessChallengeLine(AccessChallenge c){
+  String two(int v)=>v.toString().padLeft(2,'0');
+  String d(DateTime t){final l=t.toLocal();return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}';}
+  return [d(c.at),c.path,'${c.status}',
+    c.tokenUntil==null?S.t('diag.accessNoToken'):S.t('diag.accessTokenUntil',{'d':d(c.tokenUntil!)}),
+    if(c.recovered)S.t('diag.accessRecovered') else if(c.retried)S.t('diag.accessRetried')].join(' · ');
+}

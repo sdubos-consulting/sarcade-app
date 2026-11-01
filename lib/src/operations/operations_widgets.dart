@@ -19,6 +19,8 @@ class OperationsBanners extends StatelessWidget {
   /// Web client: the server stopped answering while the browser is online,
   /// usually an expired session; reloading the page signs in again.
   final VoidCallback? onReload;
+  /// Web: the server stopped answering a moment ago (restart, update).
+  final bool serverRetrying;
   /// Web client: notifications not yet allowed; the browser only asks after
   /// a click, hence this banner.
   final VoidCallback? onEnableNotifications; final VoidCallback? onDismissNotifications;
@@ -31,7 +33,7 @@ class OperationsBanners extends StatelessWidget {
   final String? alertWhat; final VoidCallback? onOpenUnsent;
   const OperationsBanners({super.key,required this.settings,required this.update,required this.alert,
     required this.heldPhotos,required this.onSyncNow,required this.onUpdate,
-    this.accessRequired=false,this.accessRenewBy,this.onSignIn,this.onReload,
+    this.accessRequired=false,this.accessRenewBy,this.onSignIn,this.onReload,this.serverRetrying=false,
     this.onEnableNotifications,this.onDismissNotifications,this.onWebUpdate,this.alertWhat,this.onOpenUnsent,this.webUpdateChange='',this.webUpdateBuilds=''});
 
   static String _date(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}';}
@@ -40,7 +42,7 @@ class OperationsBanners extends StatelessWidget {
 
   /// Something to show: the phone map then starts below the banners
   /// instead of under the status bar.
-  bool get visible=>accessRequired||accessRenewBy!=null||onReload!=null||onWebUpdate!=null||onEnableNotifications!=null||
+  bool get visible=>accessRequired||accessRenewBy!=null||onReload!=null||serverRetrying||onWebUpdate!=null||onEnableNotifications!=null||
     settings.eventEnded||update.status==UpdateStatus.invited||update.status==UpdateStatus.deferred||settings.lowBandwidth||alert!=null;
 
   @override
@@ -53,6 +55,7 @@ class OperationsBanners extends StatelessWidget {
       if(!accessRequired&&accessRenewBy!=null)_Banner(icon:Icons.lock_clock,color:Colors.amber.shade100,
         text:S.t('access.renew',{'date':_date(accessRenewBy!)}),
         action:onSignIn==null?null:OutlinedButton(onPressed:onSignIn,child:Text(S.t('access.signInAgain')))),
+      if(serverRetrying&&onReload==null)_Banner(icon:Icons.sync,color:Colors.amber.shade100,text:S.t('access.serverRetry')),
       if(onReload!=null)_Banner(icon:Icons.refresh,color:Colors.orange.shade100,
         text:S.t('access.webExpired'),
         action:OutlinedButton(onPressed:onReload,child:Text(S.t('access.reload')))),
@@ -166,3 +169,7 @@ Future<void> showTrackingSheet(BuildContext context,{required TrackingService tr
     ])));
   }));
 }
+
+/// Web: no answer from the server for more than 2 minutes while the network
+/// works; shorter, it is most likely a restart (update of the server).
+bool webOutageLong(DateTime lastContact,DateTime now)=>now.difference(lastContact)>const Duration(minutes:2);
