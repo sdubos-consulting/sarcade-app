@@ -120,6 +120,7 @@ import '../../modules/adrasec/adsb/adsb_page.dart';
 import '../meshcore/meshcore_link.dart';
 import '../meshcore/meshcore_link_card.dart' show meshCoreStateText;
 import '../meshcore/meshcore_page.dart';
+import '../meshcore/meshcore_map.dart';
 import 'locate_button.dart';
 import 'locate_cycle.dart';
 import 'point_menu.dart';
@@ -858,7 +859,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adrasec)ToolItem(id:'adsb',icon:Icons.flight,title:S.t('adsb.title'),subtitle:S.t('adsb.toolHelp'),color:Colors.lightBlue,
       onTap:()=>_openDesk('adsb',()=>AdsbPage(adsb:_adsb,onShow:(a)=>unawaited(_selectAircraft(a))))),
     if(MeshCoreLink.instance.supported)ToolItem(id:'meshcore',icon:Icons.hub_outlined,title:S.t('mesh.tool'),subtitle:S.t('mesh.toolHelp'),color:Colors.cyan,
-      onTap:()=>_openDesk('meshcore',()=>const MeshCorePage())),
+      onTap:()=>_openDesk('meshcore',()=>MeshCorePage(onShowOnMap:(n){if(_isCompact)Navigator.of(context).pop();_onMapNow(()=>unawaited(meshCoreShowOnMap(_map,n)));}))),
     ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
       onTap:_openTvScreens),
     if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
@@ -1376,6 +1377,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _onMapTap(TapPosition tap,LatLng point) async {
+    meshCoreSelected.value=null;
     final pick=_pickPoint;
     if(pick!=null){setState((){_pickPoint=null;_pickHint=null;});pick(point,null);return;}
     if(_adjusting!=null){_adjustTowards(point);return;}
@@ -1705,6 +1707,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         row(S.t('adsb.layer'),_adsb.on,(v) async {await _adsb.setOn(v);refresh((){});}),
         if(_adsb.on)Padding(padding:const EdgeInsets.only(left:24,right:8),child:AdsbFiltersTiles(adsb:_adsb)),
       ],
+      // Lot 17: « Nœuds MeshCore » (Core), set too in Outils › MeshCore.
+      if(MeshCoreLink.instance.remembered)row(S.t('mesh.layer'),MeshCoreLink.instance.showOnMap,(v)=>MeshCoreLink.instance.setShowOnMap(v)),
       const SizedBox(height:12),
     ];
   }
@@ -2674,6 +2678,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ..._variantLayers(),
           if(_adsb.on&&_adrasec)...[aircraftTrails(_adsb.shown,selectedId:_adsb.selectedId,track:_adsb.track),
             aircraftMarkers(_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),labels:_adsb.filters.labels,selectedId:_adsb.selectedId)],
+          IgnorePointer(ignoring:_placingOnMap,child:const MeshCoreNodesLayer()),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             lineHits:_routeHits,onWaypointTap:(w)=>unawaited(_openWaypoint(w))),
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
@@ -2716,6 +2721,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         // Scale first: behind every panel, never over a button (decision of
         // 30 Oct 2026, 16 h 25; revue n° 14, 18, 31); above the ⓘ.
         Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
+        MeshCoreNodeOverlay(map:_map,me:_me,compact:compact),
         if(_inDistress)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:Material(color:Theme.of(context).colorScheme.error,
           borderRadius:BorderRadius.circular(16),child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_distress,child:Padding(padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
             child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.sos,color:Theme.of(context).colorScheme.onError),const SizedBox(width:8),
