@@ -50,8 +50,10 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
     final zc=ex?const Color(0xFFFF9F1C):const Color(0xFFFF4D5E);
     circles.add(CircleMarker(point:z.centre!,radius:z.radiusM,useRadiusInMeter:true,color:zc.withValues(alpha:0.13),
       borderColor:ex?Colors.transparent:zc,borderStrokeWidth:ex?0:2));
-    if(ex)outlines.add(Polyline(points:[for(var a=0;a<=360;a+=5)geo.destination(z.centre!,z.radiusM,a.toDouble())],color:zc,strokeWidth:3,
-      pattern:StrokePattern.dashed(segments:const [14,9])));
+    if(ex){
+      outlines.add(Polyline(points:[for(var a=0;a<=360;a+=5)geo.destination(z.centre!,z.radiusM,a.toDouble())],color:zc,strokeWidth:3,
+        pattern:StrokePattern.dashed(segments:const [14,9])));
+    }
     final edge=geo.destination(z.centre!,z.radiusM,60), tip=geo.destination(z.centre!,z.radiusM*1.35+150,60);
     outlines.add(Polyline(points:[edge,tip],color:zc,strokeWidth:2));
     final freq=e.value.map((b)=>b.frequencyMhz).whereType<double>().toSet();
