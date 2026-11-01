@@ -14,6 +14,7 @@ import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
+import androidx.car.app.model.CarText
 import androidx.car.app.model.ForegroundCarColorSpan
 import androidx.core.graphics.drawable.IconCompat
 import org.json.JSONArray
@@ -138,6 +139,17 @@ internal object CarUi {
         if (context.carAppApiLevel < 2) 6
         else context.getCarService(ConstraintManager::class.java).getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_LIST)
     }.getOrDefault(6).coerceAtLeast(1)
+
+    /** Title of « Naviguer » (lot 18, card « Android Auto : « Naviguer »
+     *  ouvre directement une application… », choice 1): « Naviguer
+     *  (application de la voiture) », Android Auto choosing the navigation
+     *  application itself; « Naviguer · voiture » when the long title does
+     *  not fit the button (text variants, car API level 2). */
+    fun navigateTitle(context: CarContext, snap: Snapshot): CarText {
+        val b = CarText.Builder(snap.label("navigateCar"))
+        if (context.carAppApiLevel >= 2) b.addVariant(snap.label("navigateCarShort"))
+        return b.build()
+    }
 
     /** « Naviguer » : the navigation application of the car (Google Maps,
      *  Waze…), towards the point. */

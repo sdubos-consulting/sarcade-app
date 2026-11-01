@@ -284,6 +284,8 @@ const Texts _fr={
   'car.arrived':'Je suis arrivé','car.read':'Lire','car.reply':'Répondre','car.replyTo':'Réponse à {who}','car.listening':'Parlez, je vous écoute',
   'car.dictationFailed':'Réponse non comprise','car.retry':'Réessayer','car.send':'Envoyer','car.sent':'Envoyé',
   'car.stale':'Données de {time} : ouvrez SARCADE sur le téléphone','car.sections':'Rubriques','car.gone':'N’existe plus','car.note':'Consigne','car.order':'Ordre',
+  // Android Auto, lot 18 (1 Nov 2026): « Naviguer » opens the navigation application of the car; short form when the long one does not fit.
+  'car.navigateCar':'Naviguer (application de la voiture)','car.navigateCarShort':'Naviguer · voiture',
   'car.you':'Vous','car.photo':'Photo','car.speak':'{prio}{who} : {text}.','car.seen':'vu il y a {age}','car.here':'Ici',
   'car.highPoint':'Point haut','car.relay':'Relais','car.away':'{d} {dir}',
   'car.dir.n':'au nord','car.dir.ne':'au nord-est','car.dir.e':'à l’est','car.dir.se':'au sud-est','car.dir.s':'au sud','car.dir.sw':'au sud-ouest','car.dir.w':'à l’ouest','car.dir.nw':'au nord-ouest',
@@ -737,6 +739,8 @@ const Texts _en={
   'car.arrived':'I have arrived','car.read':'Read','car.reply':'Reply','car.replyTo':'Answer to {who}','car.listening':'Speak, I am listening',
   'car.dictationFailed':'Answer not understood','car.retry':'Try again','car.send':'Send','car.sent':'Sent',
   'car.stale':'Data of {time}: open SARCADE on the phone','car.sections':'Sections','car.gone':'No longer exists','car.note':'Instruction','car.order':'Order',
+  // Android Auto, lot 18 (1 Nov 2026): « Naviguer » opens the navigation application of the car; short form when the long one does not fit.
+  'car.navigateCar':'Navigate (car navigation app)','car.navigateCarShort':'Navigate · car',
   'car.you':'You','car.photo':'Photo','car.speak':'{prio}{who}: {text}.','car.seen':'seen {age} ago','car.here':'Here',
   'car.highPoint':'High point','car.relay':'Relay','car.away':'{d} {dir}',
   'car.dir.n':'north','car.dir.ne':'north-east','car.dir.e':'east','car.dir.se':'south-east','car.dir.s':'south','car.dir.sw':'south-west','car.dir.w':'west','car.dir.nw':'north-west',

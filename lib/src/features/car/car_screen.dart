@@ -216,7 +216,7 @@ List<Map<String,Object?>> carTeam(CarScreenInput i){
 Map<String,String> carLabels()=>{
   for(final t in const ['messages','orders','points','team'])'tab.$t':S.t('car.tab.$t'),
   for(final t in const ['messages','orders','points','team'])'empty.$t':S.t('car.empty.$t'),
-  for(final k in const ['sos','sosTitle','sosAsk','sosSend','sosSent','sosOn','sosEnd','sosEnded','cancel','navigate','navigateFailed',
+  for(final k in const ['sos','sosTitle','sosAsk','sosSend','sosSent','sosOn','sosEnd','sosEnded','cancel','navigate','navigateCar','navigateCarShort','navigateFailed',
     'accept','refuse','arrived','read','reply','replyTo','listening','dictationFailed','retry','send','sent','stale','sections',
     'gone','note','order'])k:S.t('car.$k'),
 };
