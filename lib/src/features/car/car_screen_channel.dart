@@ -7,7 +7,8 @@
 ///   here (`actions` from the plugin, at start, and after each write), then
 ///   applied by [applyCarAction].
 ///
-/// Android only; nothing happens elsewhere.
+/// Android Auto, and CarPlay once Apple grants its entitlement (step 2b);
+/// nothing happens elsewhere.
 library;
 
 import 'dart:async';
@@ -28,10 +29,10 @@ class CarScreenBridge {
   final CarScreenInput? Function() read;
   final CarScreenActions actions;
   final MethodChannel channel;
-  /// False on the platforms without Android Auto (tests may force it).
+  /// False on the platforms without Android Auto nor CarPlay (tests may force it).
   final bool enabled;
   CarScreenBridge({required this.read,required this.actions,this.channel=carScreenChannel,bool? enabled})
-    : enabled=enabled??(!kIsWeb&&defaultTargetPlatform==TargetPlatform.android);
+    : enabled=enabled??(!kIsWeb&&(defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS));
 
   bool _active=false, _draining=false, _started=false;
   Timer? _timer;
