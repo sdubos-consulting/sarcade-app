@@ -36,8 +36,10 @@ import '../compass/shared_compass.dart';
 import '../compass/compass_status.dart';
 import '../measure/wmm.dart' show magneticDeclination;
 import 'drawing/export_formats.dart';
+import 'cinematique_escape.dart';
 import '../../ui/theme.dart';
 import 'stations.dart';
+import 'cinematique_touch.dart';
 import 'sos_placement.dart';
 import '../../modules/adrasec/bearings/bearing_aim.dart';
 import '../../ui/escape_stack.dart';
@@ -370,7 +372,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Each opening of the tools starts from the profile colour.
     // Closing the bar ends any selection: the map is never left blocked
     // (bug of 30 Oct 2026, 17 h 35).
-    if(_drawingTools){_drawing.selectTool(null);_drawing.endSelection();}else{
+    // « Fermer les outils » also closes the sheet of an operator (card L1, lot 17).
+    if(_drawingTools){_drawing.selectTool(null);_drawing.endSelection();_selectedDevice=null;_trace=[];_history=[];_scrub=null;}else{
       _drawing.color=_profileDrawColor;
       _bearings.operatorColor=_profileDrawColor;
       // Drawing with the drawings hidden shows nothing (28 Oct 2026): shown again.
@@ -1579,7 +1582,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Maj + glisser (computer) or « Sélection » (phone): selection rectangle.
   /// A touch on the map places something: drawing a shape, picking a point.
   double _mapZoomOr(double v){try{return _map.camera.zoom;}catch(_){return v;}}
-  bool get _placingOnMap=>_drawing.isDrawing||_pickPoint!=null;
+  // Drawing, measure or bearing: markers let the touch through (card L1, lot 17).
+  bool get _placingOnMap=>markersIgnoreTouches(drawing:_drawing.isDrawing||_drawingRouteId!=null||_drawingClosure,picking:_pickPoint!=null,
+    measuring:_measure.active||_pickingOrigin,bearing:_bearings.taking||_aim!=null||_adjusting!=null);
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
   /// Selection mode: a drag moves the map, a pinch or the wheel zooms
@@ -2481,17 +2486,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         LogicalKeyboardKey.keyY when ctrl=>run(_drawing.redo),
         LogicalKeyboardKey.keyD when ctrl&&_drawing.hasSelection=>run(()=>_drawing.duplicateSelected()),
         LogicalKeyboardKey.enter||LogicalKeyboardKey.numpadEnter when _drawing.canFinish=>run(()=>_drawing.finish()),
-        // Constat L3 (1 Nov 2026): Échap first drops the shape being drawn,
+        // Constat L3 (lot 17): Échap first drops the shape being drawn,
         // then leaves the tool and closes the drawing bar.
-        LogicalKeyboardKey.escape when _drawing.isDrawing&&_drawing.draft.isNotEmpty=>run(_drawing.cancelDraft),
-        LogicalKeyboardKey.escape when _drawing.isDrawing=>run((){_drawing.selectTool(null);if(_drawingTools)_toggleDrawingTools();}),
+        LogicalKeyboardKey.escape when _drawing.isDrawing=>escapeDrawing(_drawing,closeBar:(){if(_drawingTools)_toggleDrawingTools();}),
         LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run(_drawing.endSelection),
         // Card N1 of the cinématique review (31 Oct 2026): Échap also ends
         // « Toucher la carte » (converter), then closes the last window, then
         // clears the measure, then closes an empty drawing bar.
         LogicalKeyboardKey.escape when _pickPoint!=null=>run(_cancelPick),
-        // Constat L2 (1 Nov 2026): Échap closes the sheet of an operator.
-        LogicalKeyboardKey.escape when _selectedDevice!=null||_trace.isNotEmpty=>run(()=>setState((){_selectedDevice=null;_trace=[];})),
+        // Constat L2 (lot 17): Échap closes the sheet of an operator, as its ✕.
+        LogicalKeyboardKey.escape when _selectedDevice!=null||_trace.isNotEmpty=>run(()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;})),
         LogicalKeyboardKey.escape when _mapPanelOpen=>_escapePanel(),
         LogicalKeyboardKey.escape when _measure.active=>run((){unawaited(_measure.clear());setState((){});}),
         LogicalKeyboardKey.escape when _drawingTools&&_drawing.selection.isEmpty=>run(_toggleDrawingTools),
@@ -2679,35 +2683,34 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(traced.isNotEmpty)_faded('traces',CircleLayer(circles:traceDots(_traces,traced,windowMin:_traceWindow,zoom:_mapZoomOr(0)))),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Theme.of(context).colorScheme.secondary)).toList()),
           // Reference sites below the drawn objects, grouped when zoomed out.
-          if(_showHighPoints)_faded('high',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isHighPoint).toList(),onSelect:_selectReference)),
-          if(_showRelays)_faded('relay',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isRelay).toList(),onSelect:_selectReference)),
+          if(_showHighPoints)touchableMarkers(ignoring:_placingOnMap,child:_faded('high',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isHighPoint).toList(),onSelect:_selectReference))),
+          if(_showRelays)touchableMarkers(ignoring:_placingOnMap,child:_faded('relay',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isRelay).toList(),onSelect:_selectReference))),
           if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
           if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id&&b.id!=_aim?.editing?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
             onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c))),
           if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
           ..._variantLayers(),
           if(_adsb.on&&_adrasec)...[aircraftTrails(_adsb.shown,selectedId:_adsb.selectedId,track:_adsb.track),
-            aircraftMarkers(_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),labels:_adsb.filters.labels,selectedId:_adsb.selectedId)],
+            touchableMarkers(ignoring:_placingOnMap,child:aircraftMarkers(_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),labels:_adsb.filters.labels,selectedId:_adsb.selectedId))],
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             lineHits:_routeHits,onWaypointTap:(w)=>unawaited(_openWaypoint(w))),
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
-          if(_showPois)_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)))),
-          // Constat L1 (revue du lot 16, 1 Nov 2026): while a shape is drawn
-          // or a point is picked, a touch on an operator places the point
-          // instead of opening the operator.
+          if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p))))),
+          // Card L1 (lot 17): while drawing, measuring or taking a bearing, a
+          // touch on a marker places the point instead of opening the marker.
           IgnorePointer(ignoring:_placingOnMap,child:_faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())]))),
           IgnorePointer(ignoring:_placingOnMap,child:_faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList())))),
-          if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
+          if(_me!=null)touchableMarkers(ignoring:_placingOnMap,child:MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
             onTap:()=>openMyPositionInfo(context,location:_location,places:_places,fallback:_me,onSendMessage:_sendText),
-            child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)]))))]),
+            child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)]))))])),
           if(_trace.isNotEmpty)MarkerLayer(markers:[for(final t in _trace)Marker(point:LatLng(t.lat,t.lon),width:8,height:8,
             child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.secondary,shape:BoxShape.circle)))]),
           if(_scrub!=null)MarkerLayer(markers:[Marker(point:LatLng(_scrub!.lat,_scrub!.lon),width:22,height:22,
             child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.onSecondaryContainer,shape:BoxShape.circle,border:Border.all(color:Theme.of(context).colorScheme.secondary,width:3))))]),
-          if(_searchPin!=null)MarkerLayer(markers:[Marker(point:_searchPin!,width:44,height:44,alignment:Alignment.topCenter,
-            child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))]),
+          if(_searchPin!=null)touchableMarkers(ignoring:_placingOnMap,child:MarkerLayer(markers:[Marker(point:_searchPin!,width:44,height:44,alignment:Alignment.topCenter,
+            child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))])),
           buildHandleLayer(_drawing,_globalToLatLng),
           // SOS halos above everything, whatever the filters (lot 17).
           sosHaloLayer(_sosTargets(),DateTime.now().toUtc()),
