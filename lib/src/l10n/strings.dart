@@ -50,6 +50,10 @@ const Texts _fr={
   'ext.app.other':'Autre application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Toujours ouvrir avec cette application','ext.warningShort':'Votre position est transmise','ext.warningAll':'Google Maps et Waze reçoivent votre position','settings.navApp':'Application de navigation','settings.navAppAsk':'Demander à chaque fois',
   'nav.downloadGraph':'Télécharger les routes sur l’appareil','nav.downloadGraphSize':'Télécharger les routes ({mb} Mo, Wi-Fi conseillé)',
   'diag.routing':'Calcul d’itinéraire','diag.routing.server':'Serveur','diag.routing.device':'Sur l’appareil','diag.routing.none':'Indisponible (ligne droite)',
+  // Lot 19, pastille de liaison et Diagnostic (link_diagnostics.dart, map_load_status.dart).
+  'diag.mapLoad':'Chargement de la carte','diag.mapLoad.ok':'OK','diag.mapLoad.loading':'en cours','diag.mapLoad.failed':'échec',
+  'diag.event.unknown':'inconnu de ce serveur','diag.event.refused':'accès refusé','diag.chooseEvent':'Choisir un événement',
+  'diag.pill.mapNotLoaded':'Carte non chargée','diag.pill.eventUnknown':'Événement inconnu','diag.pill.eventRefused':'Accès refusé',
   'point.selectObject':'Sélectionner « {name} »',
   'weather.broadcast':'Diffuser',
   'paste.title':'Coller une position','paste.button':'Coller','paste.hint':'Texte, message, lien Google Maps, Plans, OpenStreetMap, Waze…','paste.read':'Lire',
@@ -522,6 +526,10 @@ const Texts _en={
   'ext.app.other':'Other application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Always open with this application','ext.warningShort':'Your position is shared','ext.warningAll':'Google Maps and Waze receive your position','settings.navApp':'Navigation application','settings.navAppAsk':'Ask every time',
   'nav.downloadGraph':'Download the roads on the device','nav.downloadGraphSize':'Download the roads ({mb} MB, Wi-Fi advised)',
   'diag.routing':'Itinerary computation','diag.routing.server':'Server','diag.routing.device':'On the device','diag.routing.none':'Unavailable (straight line)',
+  // Lot 19, link dot and Diagnostic (link_diagnostics.dart, map_load_status.dart).
+  'diag.mapLoad':'Map loading','diag.mapLoad.ok':'OK','diag.mapLoad.loading':'in progress','diag.mapLoad.failed':'failed',
+  'diag.event.unknown':'unknown to this server','diag.event.refused':'access refused','diag.chooseEvent':'Choose an event',
+  'diag.pill.mapNotLoaded':'Map not loaded','diag.pill.eventUnknown':'Unknown event','diag.pill.eventRefused':'Access refused',
   'point.selectObject':'Select « {name} »',
   'weather.broadcast':'Broadcast',
   'paste.title':'Paste a position','paste.button':'Paste','paste.hint':'Text, message, Google Maps, Apple Maps, OpenStreetMap, Waze link…','paste.read':'Read',
