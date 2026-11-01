@@ -385,6 +385,15 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('event_settings',r.statusCode,r.body);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }
+  /// Mode of the probable zones of one searched signal: 'auto', 'multi'
+  /// (Plusieurs balises) or 'single' (Une seule balise); any operator of
+  /// the event (card « Plusieurs zones », 1 Nov 2026).
+  Future<Map<String,dynamic>> putZoneMode(String eventId,String actorId,String search,String mode) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/zone-mode'),headers:_json,
+      body:jsonEncode({'actor_id':actorId,'search':search,'mode':mode}));
+    if(r.statusCode!=200) throw SarcadeHttpException('zone_mode',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Addresses and places (Base Adresse Nationale through the server),
   /// nearest to [lat]/[lon] first; 503 when the service is unreachable.
   Future<Map<String,dynamic>> geocode(String q,{double? lat,double? lon}) async {
