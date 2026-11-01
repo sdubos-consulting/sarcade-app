@@ -115,6 +115,7 @@ import 'locate_cycle.dart';
 import 'point_menu.dart';
 import 'map_objects.dart';
 import 'traces_layer.dart';
+import 'operator_icons.dart';
 import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
 import '../routes/waypoint_sheet.dart';
@@ -1035,7 +1036,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _ops=OperationsService(api:widget.api,store:widget.store,sync:_sync,eventId:widget.eventId,deviceId:widget.deviceId,
       platform:widget.platform,
       tracking:()=>(enabled:_tracking.enabled,intervalS:_tracking.intervalS),
-      operator:()=>(callsign:widget.callsign,aprsTxConsent:widget.aprsTxConsent),
+      operator:()=>(callsign:widget.callsign,aprsTxConsent:widget.aprsTxConsent,icon:widget.store.preference(operatorIconKey)??''),
       onHttpsAvailable:widget.onHttpsAvailable);
     _tracking.setInterval(_ops.settings.clampInterval(prefs?.intervalS??_ops.settings.trackingDefaultS));
     _tracking.addListener(_onOperationsChanged);
@@ -1454,6 +1455,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool _shiftDown=false;
   /// Maj + glisser (computer) or « Sélection » (phone): selection rectangle.
   /// A touch on the map places something: drawing a shape, picking a point.
+  double _mapZoomOr(double v){try{return _map.camera.zoom;}catch(_){return v;}}
   bool get _placingOnMap=>_drawing.isDrawing||_pickPoint!=null;
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
@@ -1790,7 +1792,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final s=mapMarkerScheme; final now=DateTime.now().toUtc();
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
     final color=f==Freshness.stale?s.outline:_stationColor(p);
-    final sym=p.isAprs?aprsSymbol(p.aprsSymbol):null;
+    // Icon chosen in SARCADE first (Paramètres › Profil), then the APRS
+    // symbol of the station (1 Nov 2026).
+    final mine=operatorIcon(chosenIcon(_devices,deviceId:p.isAprs?null:p.deviceId,callsign:p.isAprs?p.callsign:null));
+    final sym=mine!=null?(icon:mine,overlay:null,kind:'operator'):p.isAprs?aprsSymbol(p.aprsSymbol):null;
     // Same letters as the avatars of the lists and Messages (revue n° 8).
     final initials=avatarInitials(p.label.trim().isEmpty?p.deviceId:p.label);
     return Stack(clipBehavior:Clip.none,alignment:Alignment.center,children:[
@@ -2531,6 +2536,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           TileLayer(key:ValueKey('$_tileUrl|${_darkTiles(context)}'),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble(),
             tileBuilder:_darkTiles(context)?darkModeTileBuilder:null),
           if(traced.isNotEmpty)_faded('traces',PolylineLayer(polylines:_traces.polylines(traced,windowMin:_traceWindow))),
+          if(traced.isNotEmpty)_faded('traces',CircleLayer(circles:traceDots(_traces,traced,windowMin:_traceWindow,zoom:_mapZoomOr(0)))),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Theme.of(context).colorScheme.secondary)).toList()),
           // Reference sites below the drawn objects, grouped when zoomed out.
           if(_showHighPoints)_faded('high',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isHighPoint).toList(),onSelect:_selectReference)),

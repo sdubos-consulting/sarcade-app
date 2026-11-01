@@ -73,6 +73,9 @@ class TracesStore {
     if(todo.isNotEmpty)onChanged();
   }
 
+  /// Positions kept for [id] (empty when not loaded).
+  List<SarcadePosition> historyOf(String id)=>_history[id]??const [];
+
   void add(SarcadePosition p){final h=_history[p.deviceId];if(h!=null&&(h.isEmpty||h.last.id!=p.id))h.add(p);}
 
   /// Polylines of [ids]: one short line per pair of points, paler with age.
@@ -83,14 +86,26 @@ class TracesStore {
       final colour=Color(operatorColor(id));
       for(final seg in traceSegmentsOf(_history[id]??const [],at,windowMin)){
         for(var i=1;i<seg.length;i++){
-          out.add(Polyline(points:[LatLng(seg[i-1].lat,seg[i-1].lon),LatLng(seg[i].lat,seg[i].lon)],strokeWidth:3.5,
-            color:colour.withValues(alpha:traceAlpha(at.difference(seg[i].time.toUtc()),windowMin))));
+          // As on aprs.fi (1 Nov 2026): thick, a little transparent, round.
+          out.add(Polyline(points:[LatLng(seg[i-1].lat,seg[i-1].lon),LatLng(seg[i].lat,seg[i].lon)],strokeWidth:5,
+            strokeCap:StrokeCap.round,strokeJoin:StrokeJoin.round,
+            color:colour.withValues(alpha:0.8*traceAlpha(at.difference(seg[i].time.toUtc()),windowMin))));
         }
       }
     }
     return out;
   }
 }
+
+/// One small dot per position received (aprs.fi, 1 Nov 2026): the rhythm of
+/// the positions and the gaps; none when zoomed out.
+List<CircleMarker> traceDots(TracesStore traces,Iterable<String> ids,{required int windowMin,required double zoom,DateTime? now}){
+  if(zoom<traceDotsMinZoom)return const [];
+  final at=(now??DateTime.now()).toUtc();
+  return [for(final id in ids)for(final seg in traceSegmentsOf(traces.historyOf(id),at,windowMin))for(final p in seg)
+    CircleMarker(point:LatLng(p.lat,p.lon),radius:3,color:const Color(0xFFB71C1C),borderColor:Colors.white,borderStrokeWidth:1)];
+}
+const traceDotsMinZoom=13.0;
 
 /// « Durée des traces » and its choices (card « Fond et affichage, durée
 /// des traces ambiguë », 30 Oct 2026, 17 h 45): one window for every trace
