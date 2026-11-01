@@ -25,7 +25,7 @@ void main() {
     final v=(center:const LatLng(48.8,2.1),zoom:12.0,basemapId:'osm',tileUrl:null,attribution:'',basemapName:'OpenStreetMap');
     expect(tvViewJson(v,from:' PCO-Web ')['from'],'PCO-Web');
     expect(tvViewJson(v,from:'').containsKey('from'),isFalse);
-    expect(tvOpacityKeys,['ops','aprs','draw','brg','high','relay']);
+    expect(tvOpacityKeys,['ops','aprs','draw','brg','high','relay','traces']);
     expect(tvShownLayers({'relays':true,'operators':true,'offline':true,'aprs':false}),['operators','relays']);
   });
 

@@ -2427,7 +2427,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).
@@ -2442,7 +2442,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Filters and opacities of this map, applied by the TV (step 2).
   TvOptions _tvOptions()=>(
     layers:{'operators':_showOperators,'aprs':_showAprs,'offline':true,'drawings':_showDrawings,'bearings':_showBearings,
-      'highpoints':_showHighPoints,'relays':_showRelays},
+      'highpoints':_showHighPoints,'relays':_showRelays,'traces':_allTraces},
     // One opacity per layer, as in the Affichage tab (lot 4, 30 Oct 2026).
     opacity:{for(final k in tvOpacityKeys)k:_layerOpacity(k)},
     messages:true,
@@ -2450,6 +2450,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   @override Widget build(BuildContext context){
     currentMapView=_tvView; currentMapOptions=_tvOptions;
+    currentMapTraces=()=>(windowMin:_traceWindow,pinned:_traces.pinned.toList()..sort());
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     // Old stations stay in the list and the search, not on the map.
     for(final p in _positions.values){if(p.isAprs)_moves.observe(p);}
