@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'package:sarcade_app/src/features/settings/diagnostics_panel.dart' show adsbDiagLine;
 import 'package:sarcade_app/src/l10n/strings.dart';
 import 'package:sarcade_app/src/modules/adrasec/adsb/adsb_controller.dart';
 import 'package:sarcade_app/src/modules/adrasec/adsb/adsb_layer.dart';
@@ -74,5 +75,57 @@ void main(){
     expect(find.text('SAMU75 · 3 117 ft (950 m) · 100 kt'),findsOneWidget);
     await t.tap(find.byKey(const ValueKey('adsb-3c6444')));
     expect(tapped?.icao24,'3c6444');
+  });
+
+  test('filters: 0 → 10 000 ft by default, ground hidden, emergency always shown',(){
+    const f=AdsbFilters();
+    Aircraft at(int ft,{bool ground=false,String? em})=>Aircraft.fromJson({...plane(),'alt_ft':ft,'on_ground':ground,'emergency':em})!;
+    expect(f.shows(at(2000)),isTrue);
+    expect(f.shows(at(37000)),isFalse);
+    expect(f.shows(at(300,ground:true)),isFalse);
+    expect(f.shows(at(37000,em:'emergency')),isTrue);
+    expect(f.rangeText,'0 ft – 10\u202f000 ft');
+    expect(AdsbFilters.all.shows(at(37000)),isTrue);
+    expect(AdsbFilters.all.rangeText,'0 ft – ∞');
+    final back=AdsbFilters.fromJson(const AdsbFilters(minFt:2000,maxFt:null,ground:true).toJson());
+    expect(back.maxFt,isNull); expect(back.minFt,2000); expect(back.ground,isTrue);
+    expect(AdsbFilters.fromJson(null),const AdsbFilters());
+    expect(f.tvJson(),{'aircraft_min_ft':0,'aircraft_max_ft':10000,'aircraft_ground':false,'aircraft_labels':false});
+  });
+
+  test('labels only for the selected aircraft, an emergency, or when asked',(){
+    final a=Aircraft.fromJson(plane())!, u=Aircraft.fromJson(plane(icao:'u',squawk:'7700',emergency:'emergency'))!;
+    expect(aircraftLabelled(a,labels:false),isFalse);
+    expect(aircraftLabelled(a,labels:false,selectedId:'3c6444'),isTrue);
+    expect(aircraftLabelled(u,labels:false),isTrue);
+    expect(aircraftLabelled(a,labels:true),isTrue);
+    expect(aircraftColorValue(Aircraft.fromJson({...plane(),'alt_ft':1500})!),0xFFF57C00,reason:'low = more visible');
+  });
+
+  test('selected aircraft: whole trace read from the server',() async {
+    final api=SarcadeApi(baseUrl:'http://s',client:MockClient((r) async {
+      if(r.url.path.endsWith('/track'))return http.Response(jsonEncode({'icao24':'3c6444','track':[[48.7,2.0],[48.75,2.05],[48.8,2.1]]}),200);
+      return http.Response(jsonEncode({'enabled':true,'time':'t','aircraft':[plane()]}),200);
+    }));
+    final c=AdsbController(api:api,eventId:'e',deviceId:'TEL-1',box:()=>(south:48.7,west:1.9,north:48.9,east:2.2));
+    await c.setOn(true);
+    await c.select(c.aircraft.single);
+    expect(c.selected?.icao24,'3c6444'); expect(c.track.length,3);
+    c.setFollow(true); expect(c.follow,isTrue);
+    await c.select(null);
+    expect(c.selected,isNull); expect(c.follow,isFalse);
+    c.dispose();
+  });
+
+  test('OpenSky link in Liaisons',(){
+    final now=DateTime.utc(2026,11,1,8,30,40);
+    expect(adsbDiagLine('L',null,now),isNull,reason:'event without ADRASEC');
+    expect(adsbDiagLine('L',{'enabled':false},now)!.value,startsWith('non configuré'));
+    expect(adsbDiagLine('L',{'enabled':true,'paused':true},now)!.state,'orange');
+    final ok=adsbDiagLine('L',{'enabled':true,'connected':true,'last_ok_at':'2026-11-01T08:30:10Z','requests_today':100,'credits_per_day':4000},now)!;
+    expect(ok.state,'green');
+    expect(ok.value,'connecté, dernière réponse il y a 30 s · 100 requêtes aujourd’hui, ≈ 3900 crédits restants');
+    expect(adsbDiagLine('L',{'enabled':true,'connected':false,'detail':''},now)!.value,startsWith('en veille'));
+    expect(adsbDiagLine('L',{'enabled':true,'connected':false,'detail':'ConnectError'},now)!.state,'red');
   });
 }
