@@ -14,6 +14,7 @@ import 'file_tree.dart';
 export 'drawings_section.dart' show DrawingFileActions;
 import '../../ui/action_buttons.dart';
 import '../../ui/link_status.dart';
+import '../../ui/text_fields_dialog.dart';
 
 /// Files screen (« Écran Fichiers enrichi », « Personnel », 28 Oct 2026;
 /// « sous-dossiers et interface plus soignée », 29 Oct 2026): folders up to
@@ -181,15 +182,11 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
       border:Border.all(color:s.primary,width:2)),child:child);
   }
 
-  Future<String?> _askName(String title,{String initial=''}) async {
-    final ctrl=TextEditingController(text:initial);
-    final v=await showDialog<String>(context:context,builder:(c)=>AlertDialog(title:Text(title),
-      content:TextField(controller:ctrl,autofocus:true,maxLength:60,decoration:InputDecoration(labelText:S.t('files.name'))),
+  Future<String?> _askName(String title,{String initial=''})=>
+    showTextFieldsDialog<String>(context,initial:[initial],builder:(c,f,_)=>AlertDialog(title:Text(title),
+      content:TextField(controller:f[0],autofocus:true,maxLength:60,decoration:InputDecoration(labelText:S.t('files.name'))),
       actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text),child:Text(S.t('common.ok')))]));
-    ctrl.dispose();
-    return v;
-  }
+        FilledButton(onPressed:()=>Navigator.pop(c,f[0].text),child:Text(S.t('common.ok')))]));
 
   Future<void> _run(Future<void> Function() action) async {
     try{await action();await _reload();}catch(e){if(mounted)_say(_errorText(e));}

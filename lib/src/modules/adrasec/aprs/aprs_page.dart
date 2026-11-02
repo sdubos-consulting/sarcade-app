@@ -11,6 +11,7 @@ import '../../../features/measure/coordinates.dart';
 import 'aprs_models.dart';
 import '../../../ui/action_buttons.dart';
 import '../../../ui/link_status.dart';
+import '../../../ui/text_fields_dialog.dart';
 
 /// PCO screen « APRS de l'événement » (vault note « APRS »): callsign groups
 /// followed by the event, callsigns added for it, local radio transmission,
@@ -168,24 +169,22 @@ class _AprsPageState extends State<AprsPage> {
   }
 
   Future<void> _editGroup(Map<String,dynamic>? group) async {
-    final name=TextEditingController(text:group==null?'':'${group['name']}');
-    final calls=TextEditingController(text:group==null?'':stringList(group['callsigns']).join(' '));
-    final result=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
+    final answer=await showTextFieldsDialog<(String,String,String)>(context,
+      initial:[group==null?'':'${group['name']}',group==null?'':stringList(group['callsigns']).join(' ')],builder:(c,f,_)=>AlertDialog(
       title:Text(S.t(group==null?'aprs.groupNew':'aprs.groupEdit')),
       content:SizedBox(width:420,child:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextField(controller:name,autofocus:group==null,decoration:InputDecoration(labelText:S.t('aprs.groupName'))),
+        TextField(controller:f[0],autofocus:group==null,decoration:InputDecoration(labelText:S.t('aprs.groupName'))),
         const SizedBox(height:12),
-        TextField(controller:calls,minLines:2,maxLines:5,textCapitalization:TextCapitalization.characters,
+        TextField(controller:f[1],minLines:2,maxLines:5,textCapitalization:TextCapitalization.characters,
           decoration:InputDecoration(labelText:S.t('aprs.groupCallsigns'),helperText:S.t('aprs.ssidHelp'),helperMaxLines:3)),
       ])),
       actions:[
-        if(group!=null)TextButton(onPressed:()=>Navigator.pop(c,'delete'),child:Text(S.t('aprs.groupDelete'),style:TextStyle(color:Theme.of(c).colorScheme.error))),
+        if(group!=null)TextButton(onPressed:()=>Navigator.pop(c,('delete','','')),child:Text(S.t('aprs.groupDelete'),style:TextStyle(color:Theme.of(c).colorScheme.error))),
         TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,'save'),child:Text(S.t('common.save'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,('save',f[0].text.trim(),f[1].text)),child:Text(S.t('common.save'))),
       ]));
-    final nameText=name.text.trim(), callsText=calls.text;
-    name.dispose(); calls.dispose();
-    if(result==null||!mounted)return;
+    if(answer==null||!mounted)return;
+    final (result,nameText,callsText)=answer;
     try{
       if(result=='delete'){
         final gr=group!;

@@ -28,6 +28,7 @@ import '../dictation/dictation_button.dart';
 import '../../ui/action_buttons.dart';
 import '../tv/tv_nearby.dart';
 import '../../ui/link_status.dart';
+import '../../ui/text_fields_dialog.dart';
 import '../meshcore/meshcore_chat_page.dart' show MeshCoreThreadTiles;
 
 class MessagesPage extends StatefulWidget {
@@ -321,8 +322,8 @@ class _MessagesPageState extends State<MessagesPage>{
  /// « Nouvelle discussion »: a direct chat with an operator of the list.
  Future<void> _pickDirect() async {
    final all=directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId);
-   final filter=TextEditingController();
-   final id=await showModalBottomSheet<String>(context:context,showDragHandle:true,isScrollControlled:true,builder:(c)=>StatefulBuilder(builder:(c,set){
+   final id=await showModalBottomSheet<String>(context:context,showDragHandle:true,isScrollControlled:true,builder:(_)=>TextFieldsHost(initial:const [''],builder:(c,f,set){
+     final filter=f[0];
      final q=filter.text.trim().toLowerCase();
      final shown=all.where((x)=>q.isEmpty||x.toLowerCase().contains(q)).toList();
      final typed=filter.text.trim().toUpperCase();
@@ -341,7 +342,6 @@ class _MessagesPageState extends State<MessagesPage>{
          ])),
        ]))));
    }));
-   filter.dispose();
    if(id!=null&&mounted)_open(directKey(id));
  }
 

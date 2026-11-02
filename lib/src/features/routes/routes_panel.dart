@@ -8,6 +8,7 @@ import 'route_models.dart';
 import 'routes_controller.dart';
 import 'routes_layers.dart';
 import '../../ui/link_status.dart';
+import '../../ui/text_fields_dialog.dart';
 
 /// Side panel of the routes: list, waypoints with legs and cumulated
 /// lengths, passages, assignment, GPX export, road closures.
@@ -153,22 +154,21 @@ class RoutesPanel extends StatelessWidget {
   Future<void> _editWaypoint(BuildContext context,Waypoint w)=>editWaypointDialog(context,controller,w);
 
   Future<void> _newRoute(BuildContext context) async {
-    final name=TextEditingController();
     var profile='foot', legMode='straight';
-    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
+    final name=await showTextFieldsDialog<String>(context,initial:const [''],builder:(c,f,set)=>AlertDialog(
       title:Text(S.t('routes.new')),
       content:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextField(controller:name,autofocus:true,maxLength:80,decoration:InputDecoration(labelText:S.t('groups.name'))),
+        TextField(controller:f[0],autofocus:true,maxLength:80,decoration:InputDecoration(labelText:S.t('groups.name'))),
         DropdownButtonFormField<String>(initialValue:profile,decoration:InputDecoration(labelText:S.t('routes.profile')),
           items:[for(final p in const ['foot','vehicle'])DropdownMenuItem(value:p,child:Text(S.t('routes.profile.$p')))],onChanged:(v)=>set(()=>profile=v??profile)),
         DropdownButtonFormField<String>(initialValue:legMode,decoration:InputDecoration(labelText:S.t('routes.legMode')),
           items:[for(final m in const ['straight','paths'])DropdownMenuItem(value:m,child:Text(S.t('routes.leg.$m')))],onChanged:(v)=>set(()=>legMode=v??legMode)),
       ]),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.ok')))],
-    )));
-    final text=name.text.trim();
-    if(ok!=true||text.isEmpty)return;
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,f[0].text),child:Text(S.t('common.ok')))],
+    ));
+    final text=name?.trim()??'';
+    if(text.isEmpty)return;
     final r=await controller.createRoute(name:text,profile:profile,legMode:legMode);
     onSelect(r.id);
     onDraw(r.id);
@@ -207,27 +207,24 @@ class RoutesPanel extends StatelessWidget {
   }
 }
 
-Future<String?> _askText(BuildContext context,String title,String initial){
-  final controller=TextEditingController(text:initial);
-  return showDialog<String>(context:context,builder:(c)=>AlertDialog(
+Future<String?> _askText(BuildContext context,String title,String initial)=>
+  showTextFieldsDialog<String>(context,initial:[initial],builder:(c,f,_)=>AlertDialog(
     title:Text(title),
-    content:TextField(controller:controller,autofocus:true,maxLength:300),
+    content:TextField(controller:f[0],autofocus:true,maxLength:300),
     actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-      FilledButton(onPressed:()=>Navigator.pop(c,controller.text),child:Text(S.t('common.ok')))],
-  )).whenComplete(controller.dispose);
-}
+      FilledButton(onPressed:()=>Navigator.pop(c,f[0].text),child:Text(S.t('common.ok')))],
+  ));
 
 /// Label of a new road closure, asked to the PCO.
 Future<String?> askClosureLabel(BuildContext context)=>_askText(context,S.t('closures.label'),'');
 
 /// « Modifier le point » (panel and the sheet of a waypoint on the map).
 Future<void> editWaypointDialog(BuildContext context,RoutesController controller,Waypoint w) async {
-  final name=TextEditingController(text:w.name), comment=TextEditingController(text:w.comment);
   var type=w.type; var radius=w.radiusM; var legMode=w.legMode;
-  final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
+  final texts=await showTextFieldsDialog<(String,String)>(context,initial:[w.name,w.comment],builder:(c,f,set)=>AlertDialog(
     title:Text(S.t('routes.editPoint')),
     content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-      TextField(controller:name,maxLength:40,decoration:InputDecoration(labelText:S.t('groups.name'))),
+      TextField(controller:f[0],maxLength:40,decoration:InputDecoration(labelText:S.t('groups.name'))),
       DropdownButtonFormField<String>(initialValue:type,decoration:InputDecoration(labelText:S.t('routes.pointType')),
         items:[for(final t in waypointTypes)DropdownMenuItem(value:t,child:Text(S.t('waypoint.$t')))],onChanged:(v)=>set(()=>type=v??type)),
       DropdownButtonFormField<String>(initialValue:legMode,decoration:InputDecoration(labelText:S.t('routes.legMode')),
@@ -235,13 +232,13 @@ Future<void> editWaypointDialog(BuildContext context,RoutesController controller
       const SizedBox(height:8),
       Text(S.t('routes.radius',{'m':radius.round()})),
       Slider(value:radius.clamp(5,1000),min:5,max:300,divisions:59,onChanged:(v)=>set(()=>radius=v)),
-      TextField(controller:comment,maxLength:300,decoration:InputDecoration(labelText:S.t('routes.comment'))),
+      TextField(controller:f[1],maxLength:300,decoration:InputDecoration(labelText:S.t('routes.comment'))),
     ])),
-    actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
-      FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))],
-  )));
-  if(ok==true&&name.text.trim().isNotEmpty){
-    await controller.updateWaypoint(w,{'name':name.text.trim(),'type':type,'radius_m':radius.roundToDouble(),
-      'comment':comment.text.trim(),'leg_mode':legMode});
+    actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+      FilledButton(onPressed:()=>Navigator.pop(c,(f[0].text.trim(),f[1].text.trim())),child:Text(S.t('common.save')))],
+  ));
+  if(texts!=null&&texts.$1.isNotEmpty){
+    await controller.updateWaypoint(w,{'name':texts.$1,'type':type,'radius_m':radius.roundToDouble(),
+      'comment':texts.$2,'leg_mode':legMode});
   }
 }

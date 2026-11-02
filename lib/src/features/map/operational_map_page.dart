@@ -149,6 +149,7 @@ import '../poi/poi_list.dart';
 import '../routes/waypoint_sheet.dart';
 import '../../ui/action_buttons.dart';
 import '../../ui/link_status.dart';
+import '../../ui/text_fields_dialog.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
@@ -635,16 +636,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Future<void> _editDeclination() async {
     final fr=S.lang=='fr';
     String decl(double d)=>formatDeclination(d,decimal:fr?',':'.',west:fr?'O':'W');
-    final ctrl=TextEditingController(text:_measure.declinationOverride==null?'':decl(_measure.declinationOverride!));
     var manual=_measure.manualDeclination;
     String? error;
-    final result=await showDialog<String>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
+    final result=await showTextFieldsDialog<String>(context,initial:[_measure.declinationOverride==null?'':decl(_measure.declinationOverride!)],builder:(c,f,set)=>AlertDialog(
       title:Text(S.t('measure.decl.title')),
       content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
         Text(S.t('measure.decl.wmm',{'v':decl(_measure.wmmDeclination)})),
         if(MeasureController.wmmExpired())Text(S.t('measure.wmmExpired'),style:TextStyle(color:Theme.of(c).colorScheme.error)),
         SwitchListTile(contentPadding:EdgeInsets.zero,title:Text(S.t('measure.decl.manual')),value:manual,onChanged:(v)=>set(()=>manual=v)),
-        if(manual)TextField(controller:ctrl,autofocus:true,decoration:InputDecoration(hintText:S.t('measure.decl.hint'),errorText:error)),
+        if(manual)TextField(controller:f[0],autofocus:true,decoration:InputDecoration(hintText:S.t('measure.decl.hint'),errorText:error)),
         const SizedBox(height:8),
         Text(S.t('measure.decl.help'),style:Theme.of(c).textTheme.bodySmall),
       ]),
@@ -652,13 +652,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
         FilledButton(onPressed:(){
           if(!manual){Navigator.pop(c,'');return;}
-          final v=parseDeclination(ctrl.text);
+          final v=parseDeclination(f[0].text);
           if(v==null){set(()=>error=S.t('measure.decl.invalid'));return;}
           Navigator.pop(c,v.toString());
         },child:Text(S.t('common.save'))),
       ],
-    )));
-    ctrl.dispose();
+    ));
     if(result==null)return;
     await widget.store.setPreference('declination_manual',result.isEmpty?null:result);
     _measure.declinationOverride=result.isEmpty?null:double.parse(result);
@@ -2298,11 +2297,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _typeAzimuth() async {
-    final ctrl=TextEditingController(text:_bearings.trueDeg?.toStringAsFixed(0)??'');
-    final v=await showDialog<String>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('bearings.typeAzimuth')),
-      content:TextField(controller:ctrl,autofocus:true,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(suffixText:'°',helperText:S.t('bearings.typeHelp'))),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text),child:Text(S.t('common.ok')))]));
-    ctrl.dispose();
+    final v=await showTextFieldsDialog<String>(context,initial:[_bearings.trueDeg?.toStringAsFixed(0)??''],builder:(c,f,_)=>AlertDialog(title:Text(S.t('bearings.typeAzimuth')),
+      content:TextField(controller:f[0],autofocus:true,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(suffixText:'°',helperText:S.t('bearings.typeHelp'))),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,f[0].text),child:Text(S.t('common.ok')))]));
     if(v==null)return;
     final d=double.tryParse(v.replaceAll(',','.').trim());
     _bearings.setManual(d==null||d<0||d>360?null:d);
@@ -2335,22 +2332,21 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// « Autre… »: frequency, optional label, real or exercise.
   Future<void> _newSignal() async {
-    final f=TextEditingController(), l=TextEditingController(); var exercise=false;
-    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
+    var exercise=false;
+    final texts=await showTextFieldsDialog<(String,String)>(context,initial:const ['',''],builder:(c,t,set)=>AlertDialog(
       title:Text(S.t('bearings.signalNew')),
       content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        TextField(controller:f,autofocus:true,keyboardType:const TextInputType.numberWithOptions(decimal:true),
+        TextField(controller:t[0],autofocus:true,keyboardType:const TextInputType.numberWithOptions(decimal:true),
           decoration:InputDecoration(labelText:S.t('bearings.signalFreq'),suffixText:'MHz',hintText:'121,375')),
         const SizedBox(height:8),
-        TextField(controller:l,maxLength:50,decoration:InputDecoration(labelText:S.t('bearings.signalLabel'))),
+        TextField(controller:t[1],maxLength:50,decoration:InputDecoration(labelText:S.t('bearings.signalLabel'))),
         ChoicePills<bool>(choices:[(value:false,label:S.t('bearings.signalReal'),icon:null),(value:true,label:S.t('bearings.signalExercise'),icon:null)],
           selected:exercise,onSelected:(v)=>set(()=>exercise=v)),
       ]),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.ok')))])));
-    final freq=parseMhz(f.text), label=l.text.trim();
-    f.dispose(); l.dispose();
-    if(ok!=true)return;
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,(t[0].text,t[1].text)),child:Text(S.t('common.ok')))]));
+    if(texts==null)return;
+    final freq=parseMhz(texts.$1), label=texts.$2.trim();
     if(freq==null&&label.isEmpty){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('bearings.signalInvalid'))));return;}
     final sig=SignalChoice(label:label,frequencyMhz:freq,exercise:exercise);
     _extraSignals.removeWhere((x)=>x.name==sig.name);
@@ -2422,27 +2418,26 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _editBearing(Bearing b) async {
-    final az=TextEditingController(text:b.azimuthDeg.toStringAsFixed(1)), cone=TextEditingController(text:b.coneDeg.toStringAsFixed(0)),
-      len=TextEditingController(text:(b.lengthM/1000).toStringAsFixed(1)), target=TextEditingController(text:b.search), comment=TextEditingController(text:b.comment),
-      when=TextEditingController(text:hhmm(b.takenAt));
-    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('bearings.edit')),content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-      TextField(controller:az,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.azimuth'),suffixText:'°')),
-      TextField(controller:cone,keyboardType:TextInputType.number,decoration:InputDecoration(labelText:S.t('bearings.cone'),suffixText:'± °')),
-      TextField(controller:len,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.length'),suffixText:'km')),
-      TextField(controller:target,decoration:InputDecoration(labelText:S.t('bearings.signal'))),
-      TextField(controller:comment,decoration:InputDecoration(labelText:S.t('bearings.comment'))),
+    final v=await showTextFieldsDialog<List<String>>(context,initial:[b.azimuthDeg.toStringAsFixed(1),b.coneDeg.toStringAsFixed(0),
+      (b.lengthM/1000).toStringAsFixed(1),b.search,b.comment,hhmm(b.takenAt)],
+      builder:(c,f,_)=>AlertDialog(title:Text(S.t('bearings.edit')),content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      TextField(controller:f[0],keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.azimuth'),suffixText:'°')),
+      TextField(controller:f[1],keyboardType:TextInputType.number,decoration:InputDecoration(labelText:S.t('bearings.cone'),suffixText:'± °')),
+      TextField(controller:f[2],keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.length'),suffixText:'km')),
+      TextField(controller:f[3],decoration:InputDecoration(labelText:S.t('bearings.signal'))),
+      TextField(controller:f[4],decoration:InputDecoration(labelText:S.t('bearings.comment'))),
       // Real time of the bearing, set afterwards (taken without GPS).
-      TextField(controller:when,keyboardType:TextInputType.datetime,decoration:InputDecoration(labelText:S.t('bearings.time'),hintText:'14:05')),
-    ])),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))]));
-    double? n(TextEditingController t)=>double.tryParse(t.text.replaceAll(',','.').trim());
-    if(ok==true){
-      final a=n(az),cn=n(cone),ln=n(len);
+      TextField(controller:f[5],keyboardType:TextInputType.datetime,decoration:InputDecoration(labelText:S.t('bearings.time'),hintText:'14:05')),
+    ])),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+      FilledButton(onPressed:()=>Navigator.pop(c,[for(final t in f)t.text]),child:Text(S.t('common.save')))]));
+    double? n(String t)=>double.tryParse(t.replaceAll(',','.').trim());
+    if(v!=null){
+      final a=n(v[0]),cn=n(v[1]),ln=n(v[2]);
       await _bearings.update(b.copyWith(azimuthDeg:a==null||a<0||a>360?null:a%360,coneDeg:cn==null||cn<0||cn>45?null:cn,
-        lengthM:ln==null||ln<0.1||ln>200?null:ln*1000,target:'',search:target.text.trim(),comment:comment.text.trim(),
-        takenAt:withHhmm(b.takenAt,when.text),
+        lengthM:ln==null||ln<0.1||ln>200?null:ln*1000,target:'',search:v[3].trim(),comment:v[4].trim(),
+        takenAt:withHhmm(b.takenAt,v[5]),
         updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));
     }
-    for(final t in [az,cone,len,target,comment,when]){t.dispose();}
   }
 
   // The dialog owns its text controller: disposing it when the Future

@@ -27,6 +27,7 @@ import '../../services/power_state.dart';
 import '../../ui/save_bar.dart';
 import '../../ui/action_buttons.dart';
 import '../../ui/link_status.dart';
+import '../../ui/text_fields_dialog.dart';
 import '../measure/external_maps.dart' show openInChoices, navAppMineKey;
 import '../map/operator_icons.dart';
 
@@ -133,15 +134,13 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _renameServer(SavedServer server) async {
-    final ctrl=TextEditingController(text:server.label);
-    final label=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
+    final label=await showTextFieldsDialog<String>(context,initial:[server.label],builder:(c,f,_)=>AlertDialog(
       title:Text(S.t('servers.rename')),
-      content:TextField(controller:ctrl,autofocus:true,decoration:InputDecoration(labelText:S.t('servers.label'),helperText:server.url)),
+      content:TextField(controller:f[0],autofocus:true,decoration:InputDecoration(labelText:S.t('servers.label'),helperText:server.url)),
       actions:[
         TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text.trim()),child:Text(S.t('common.save'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,f[0].text.trim()),child:Text(S.t('common.save'))),
       ]));
-    ctrl.dispose();
     if(label==null||!mounted)return;
     final list=[for(final s in _servers)serverKey(s.url)==serverKey(server.url)?s.copyWith(label:label.isEmpty?defaultLabel(s.url):label):s];
     setState(()=>_servers=list);
@@ -201,16 +200,14 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _addServer() async {
-    final ctrl=TextEditingController(text:'https://');
-    final url=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
+    final url=await showTextFieldsDialog<String>(context,initial:const ['https://'],builder:(c,f,_)=>AlertDialog(
       title:Text(S.t('servers.add')),
-      content:TextField(controller:ctrl,autofocus:true,keyboardType:TextInputType.url,autocorrect:false,
+      content:TextField(controller:f[0],autofocus:true,keyboardType:TextInputType.url,autocorrect:false,
         decoration:InputDecoration(labelText:S.t('settings.server'),hintText:defaultServerUrl,helperText:S.t('settings.serverHelp'),helperMaxLines:3)),
       actions:[
         TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text.trim()),child:Text(S.t('common.ok'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,f[0].text.trim()),child:Text(S.t('common.ok'))),
       ]));
-    ctrl.dispose();
     if(url==null||!mounted)return;
     if(_url(url)!=null){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('settings.urlExpected'))));return;}
     setState((){_server.text=url;_events=widget.cachedEvents?.call(_serverText)??[];_dirty=true;});
@@ -288,20 +285,20 @@ class _SettingsPageState extends State<SettingsPage> {
     &&normalServer(_serverText)==normalServer(widget.initial.serverUrl);
 
   Future<void> _createEvent() async {
-    final name=TextEditingController(); var kind='exercise';
-    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('events.new')),
+    var kind='exercise';
+    final name=await showTextFieldsDialog<String>(context,initial:const [''],builder:(c,f,set)=>AlertDialog(title:Text(S.t('events.new')),
       content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        TextField(key:const ValueKey('event-new-name'),controller:name,autofocus:true,decoration:InputDecoration(labelText:S.t('events.name'))),
+        TextField(key:const ValueKey('event-new-name'),controller:f[0],autofocus:true,decoration:InputDecoration(labelText:S.t('events.name'))),
         const SizedBox(height:12),
         DropdownButtonFormField<String>(key:const ValueKey('event-new-kind'),initialValue:kind,isExpanded:true,decoration:InputDecoration(labelText:S.t('events.model')),
           items:[for(final k in eventKinds)DropdownMenuItem(value:k,child:Text(S.t('events.kind.$k')))],onChanged:(v)=>set(()=>kind=v??kind)),
         const SizedBox(height:6),
         Text(S.t('events.modulesOf',{'m':eventKindModules(kind)}),style:Theme.of(c).textTheme.bodySmall),
       ]),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
-        FilledButton(key:const ValueKey('event-new-create'),onPressed:()=>Navigator.pop(c,true),child:Text(S.t('events.create')))])));
-    final n=name.text.trim(); name.dispose();
-    if(ok!=true||n.isEmpty||!mounted)return;
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(key:const ValueKey('event-new-create'),onPressed:()=>Navigator.pop(c,f[0].text),child:Text(S.t('events.create')))]));
+    final n=name?.trim()??'';
+    if(n.isEmpty||!mounted)return;
     final m=ScaffoldMessenger.of(context);
     try{
       final e=await widget.api!.createEvent(n,kind);

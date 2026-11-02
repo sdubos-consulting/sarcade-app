@@ -12,6 +12,7 @@ import '../../../services/sarcade_api.dart';
 import '../../../ui/save_bar.dart';
 import 'signals.dart';
 import '../../../ui/link_status.dart';
+import '../../../ui/text_fields_dialog.dart';
 
 class SignalDefaultsPage extends StatefulWidget {
   final SarcadeApi api; final LocalStore? store;
@@ -56,24 +57,22 @@ class _SignalDefaultsPageState extends State<SignalDefaultsPage> {
 
   Future<void> _edit({int? index}) async {
     final old=index==null?null:_list[index];
-    final f=TextEditingController(text:old?.frequencyMhz==null?'':old!.frequencyMhz!.toStringAsFixed(3).replaceAll('.',','));
-    final l=TextEditingController(text:old?.label??'');
     var exercise=old?.exercise??false;
-    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
+    final texts=await showTextFieldsDialog<(String,String)>(context,
+      initial:[old?.frequencyMhz==null?'':old!.frequencyMhz!.toStringAsFixed(3).replaceAll('.',','),old?.label??''],builder:(c,t,set)=>AlertDialog(
       title:Text(S.t(old==null?'signals.add':'signals.edit')),
       content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        TextField(controller:f,autofocus:true,keyboardType:const TextInputType.numberWithOptions(decimal:true),
+        TextField(controller:t[0],autofocus:true,keyboardType:const TextInputType.numberWithOptions(decimal:true),
           decoration:InputDecoration(labelText:S.t('bearings.signalFreq'),suffixText:'MHz')),
         const SizedBox(height:8),
-        TextField(controller:l,maxLength:60,decoration:InputDecoration(labelText:S.t('bearings.signalLabel'))),
+        TextField(controller:t[1],maxLength:60,decoration:InputDecoration(labelText:S.t('bearings.signalLabel'))),
         ChoicePills<bool>(choices:[(value:false,label:S.t('bearings.signalReal'),icon:null),(value:true,label:S.t('bearings.signalExercise'),icon:null)],
           selected:exercise,onSelected:(v)=>set(()=>exercise=v)),
       ]),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.ok')))])));
-    final freq=parseMhz(f.text), label=l.text.trim();
-    f.dispose(); l.dispose();
-    if(ok!=true)return;
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,(t[0].text,t[1].text)),child:Text(S.t('common.ok')))]));
+    if(texts==null)return;
+    final freq=parseMhz(texts.$1), label=texts.$2.trim();
     if(freq==null||label.isEmpty){
       if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('signals.invalid'))));
       return;
