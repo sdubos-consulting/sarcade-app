@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sarcade_app/src/features/map/link_weather_pill.dart';
+import 'package:sarcade_app/src/features/map/map_bottom_line.dart';
 import 'package:sarcade_app/src/features/map/sos_placement.dart';
 import 'package:sarcade_app/src/ui/map_view.dart';
 
@@ -22,7 +23,8 @@ void main() {
   test('revue n° 1, 3: the scale follows the zoom, above the ⓘ', () {
     // At zoom 15.5 (saved view) the scale is about 25 times shorter than at 11.
     expect(scaleBar(15.5, 48.8).meters < scaleBar(11, 48.8).meters / 10, isTrue);
-    expect(mapScaleBottom(compact: true), greaterThan(mapAttributionLift));
+    // Phone (lot 19): the ⓘ above the line of « Suivi de position » and the scale.
+    expect(mapAttributionBottom(compact: true, fullBleed: false), greaterThan(mapScaleBottom(compact: true)));
     expect(mapScaleBottom(compact: false), greaterThan(0));
   });
 
