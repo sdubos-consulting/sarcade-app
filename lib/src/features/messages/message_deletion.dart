@@ -10,9 +10,20 @@ import '../../models/message.dart';
 
 const authorDeleteDelay=Duration(days:2);
 
+/// Distress (« 🆘 », priority `distress`), its « Fin de détresse » and move
+/// orders (« 📍 Ordre de déplacement ») are never deleted for everyone, not
+/// even by the PCO (lot 21, same rule as the server); « Supprimer pour moi »
+/// stays possible.
+bool keptForEveryone(SarcadeMessage m){
+  final b=m.body.trim();
+  if(m.priority=='distress'||(m.priority=='immediate'&&b.startsWith('🆘')))return true;
+  final l=b.toLowerCase();
+  return l.startsWith('fin de détresse')||l.startsWith('end of distress')||b.startsWith('📍 Ordre de déplacement');
+}
+
 /// Whether this operator may delete the message for everyone.
 bool canDeleteForEveryone(SarcadeMessage m,String actorId,{required bool pco,required DateTime now}){
-  if(m.deleted)return false;
+  if(m.deleted||keptForEveryone(m))return false;
   if(pco)return true;
   return m.senderId==actorId&&now.toUtc().difference(m.createdAt.toUtc())<=authorDeleteDelay;
 }
