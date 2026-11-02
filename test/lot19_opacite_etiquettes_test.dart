@@ -18,8 +18,10 @@ double _shown(WidgetTester tester, Finder finder) =>
   tester.widgetList<Opacity>(find.ancestor(of: finder, matching: find.byType(Opacity)))
     .fold(1.0, (v, o) => v * o.opacity);
 
+// Zoom 18: the labels below are far enough apart not to be hidden by the
+// placement of the labels (lot 20, label_declutter.dart).
 Widget _map(List<Widget> layers) => MaterialApp(home: Scaffold(body: FlutterMap(
-  options: const MapOptions(initialCenter: _centre, initialZoom: 14),
+  options: const MapOptions(initialCenter: _centre, initialZoom: 18),
   children: layers)));
 
 MapFeature _feature(String id, FeatureKind kind, List<LatLng> points, {String label = '', double opacity = 1}) => MapFeature(
@@ -49,8 +51,9 @@ void main() {
     await tester.pumpWidget(_map(fadedLayers(0.4, buildDrawingLayers(c))));
     final zone = _shown(tester, find.byWidgetPredicate((w) => w is PolygonLayer));
     expect(zone, closeTo(0.4, 1e-9));
-    for (final label in ['Zone A', 'Point B', 'Mesure D']) {
-      expect(_shown(tester, find.text(label)), closeTo(0.4, 1e-9), reason: label);
+    // A measure of 2 points: name and length in one label (lot 20).
+    for (final label in ['Zone A', 'Point B', 'Mesure D · ']) {
+      expect(_shown(tester, find.textContaining(label)), closeTo(0.4, 1e-9), reason: label);
     }
     // A text drawn at 50 % in a layer at 40 %: 20 %, never above the layer.
     expect(_shown(tester, find.text('Texte C')), closeTo(0.2, 1e-9));
