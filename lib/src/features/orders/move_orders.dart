@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import '../../l10n/strings.dart';
 import '../map/drawing/geometry.dart' show distanceM;
 import '../navigation/point_label.dart';
+import '../../ui/text_fields_dialog.dart';
 
 /// Move order of the PCO to an operator (decision of the porteur of
 /// 29 October 2026): go to a point of the map. The server checks that only
@@ -78,12 +79,11 @@ class MoveOrderDraft {
 
 Future<MoveOrderDraft?> showMoveOrderDialog(BuildContext context,List<({String id,String label,String? age})> operators){
   final chosen=<String>{};
-  final label=TextEditingController(), note=TextEditingController();
-  return showDialog<MoveOrderDraft>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
+  return showTextFieldsDialog<MoveOrderDraft>(context,initial:const ['',''],builder:(c,f,set)=>AlertDialog(
     title:Text(S.t('order.send')),
     content:SizedBox(width:420,child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      TextField(controller:label,decoration:InputDecoration(labelText:S.t('order.label'),hintText:S.t('order.point'))),
-      TextField(controller:note,maxLength:200,decoration:InputDecoration(labelText:S.t('order.note'))),
+      TextField(controller:f[0],decoration:InputDecoration(labelText:S.t('order.label'),hintText:S.t('order.point'))),
+      TextField(controller:f[1],maxLength:200,decoration:InputDecoration(labelText:S.t('order.note'))),
       Padding(padding:const EdgeInsets.only(top:8,bottom:4),child:Text(S.t('order.who'),style:Theme.of(c).textTheme.titleSmall)),
       if(operators.isEmpty)Text(S.t('operators.none')),
       Flexible(child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
@@ -93,10 +93,10 @@ Future<MoveOrderDraft?> showMoveOrderDialog(BuildContext context,List<({String i
     ])),
     actions:[
       TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-      FilledButton(onPressed:chosen.isEmpty?null:()=>Navigator.pop(c,MoveOrderDraft(chosen.toList(),label.text.trim(),note.text.trim())),
+      FilledButton(onPressed:chosen.isEmpty?null:()=>Navigator.pop(c,MoveOrderDraft(chosen.toList(),f[0].text.trim(),f[1].text.trim())),
         child:Text(S.t('order.sendButton'))),
     ],
-  ))).whenComplete((){label.dispose();note.dispose();});
+  ));
 }
 
 /// Operator view: the open order addressed to me, with its answers.
