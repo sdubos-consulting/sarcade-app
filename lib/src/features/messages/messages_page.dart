@@ -21,6 +21,7 @@ import '../../services/sarcade_api.dart';
 import 'photo_attachment.dart';
 import 'message_deletion.dart';
 import 'messages_nav.dart';
+import 'chat_bottom.dart';
 import '../../services/notification_keys.dart';
 import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
 import '../dictation/dictation_button.dart';
@@ -54,8 +55,12 @@ class _MessagesPageState extends State<MessagesPage>{
  String? get _groupId=>groupOf(_conv);
 
  final _watch=<StreamSubscription>[];
- /// Opening on the first unread message, ⌄ button, automatic « read ».
- final _scroll=ScrollController(); final _separatorKey=GlobalKey();
+ /// Opening on the last message (lot 19), « ↑ N non lus », ⌄ button,
+ /// automatic « read ».
+ final _scroll=ScrollController();
+ /// The « N non lus » separator, seen or not (« ↑ N non lus »).
+ var _separator=SeparatorWatch();
+ GlobalKey get _separatorKey=>_separator.key;
  bool _atBottom=true; int _maxBuilt=-1; final _readSent=<String>{};
  /// Unread when the screen opened: shown in bold; everything shown counts as
  /// seen (the pastille of the map goes back to zero).
@@ -80,42 +85,41 @@ class _MessagesPageState extends State<MessagesPage>{
      if(follow)WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
    }));}
    _scroll.addListener((){
-     final atBottom=!_scroll.hasClients||_scroll.position.pixels>=_scroll.position.maxScrollExtent-120;
+     final atBottom=chatAtBottom(_scroll);
      if(atBottom!=_atBottom&&mounted)setState(()=>_atBottom=atBottom);
+     _watchSeparator();
    });
-   WidgetsBinding.instance.addPostFrameCallback((_)=>_openPosition(0));
+   // Always on the last message, even when everything is unread (lot 19).
+   WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
  }
 
- /// First unread message under its separator, else the most recent one.
- /// The list is built lazily: jump near the separator, then align on it.
- void _openPosition(int attempt){
-   if(!mounted||!_scroll.hasClients)return;
-   final shown=_messages; final first=firstUnreadIndex(shown,_unreadAtOpen);
-   if(first==null){_toBottom();return;}
-   final ctx=_separatorKey.currentContext;
-   if(ctx!=null){Scrollable.ensureVisible(ctx,alignment:0.05);return;}
-   if(attempt>=6)return;
-   final max=_scroll.position.maxScrollExtent;
-   _scroll.jumpTo((max*first/(shown.length<2?1:shown.length-1)).clamp(0,max));
-   WidgetsBinding.instance.addPostFrameCallback((_)=>_openPosition(attempt+1));
+ void _toBottom(){
+   chatJumpToBottom(_scroll,alive:()=>mounted);
+   // Short conversation, separator already on screen: no « ↑ N non lus ».
+   _watchSeparator();
  }
- void _toBottom([int attempt=0]){
-   if(!mounted||!_scroll.hasClients)return;
-   final max=_scroll.position.maxScrollExtent;
-   _scroll.jumpTo(max);
-   // Heights of items not yet built are estimated: repeat until it holds.
-   if(attempt<5)WidgetsBinding.instance.addPostFrameCallback((_){if(_scroll.hasClients&&_scroll.position.maxScrollExtent!=max)_toBottom(attempt+1);});
+ void _watchSeparator()=>_separator.check(alive:()=>mounted,changed:()=>setState((){}));
+
+ /// « ↑ N non lus »: up to the separator, the first unread message under it.
+ Future<void> _toUnread() async {
+   final shown=_messages; final first=firstUnreadIndex(shown,_unreadAtOpen);
+   // Leaving the bottom: the list no longer sticks to the last message.
+   setState((){_separator.seen=true;_atBottom=false;});
+   if(first==null)return;
+   await chatScrollToKey(_scroll,_separatorKey,first,shown.length,alive:()=>mounted);
  }
 
  /// A received message shown on screen goes to « read » by itself.
  @override void didUpdateWidget(MessagesPage old){
    super.didUpdateWidget(old);
-   // Back on the Messages tab: same opening as a new screen (first unread).
+   // Back on the Messages tab: same opening as a new screen (last message).
    if(widget.active&&!old.active){
      _refreshGroups();
      _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
        deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
+     _separator=SeparatorWatch();
      _markSeen();
+     WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
    }
  }
 
@@ -345,7 +349,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(!_chatOpen)setState(()=>_chatOpen=true);
    if(key==_conv)return;
    _drafts.keep(_conv,_text.text); _text.text=_drafts.take(key);
-   setState((){_conv=key;_maxBuilt=-1;});
+   setState((){_conv=key;_maxBuilt=-1;_separator=SeparatorWatch();_atBottom=true;});
    WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
  }
 
@@ -738,6 +742,7 @@ class _MessagesPageState extends State<MessagesPage>{
  Widget _chat(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
    final messages=_messages;
    final firstUnread=firstUnreadIndex(messages,_unreadAtOpen);
+   final unreadHere=firstUnread==null?0:messages.where((m)=>_unreadAtOpen.contains(m.id)).length;
    final below=[for(var i=_maxBuilt+1;i<messages.length;i++)if(messages[i].senderId!=widget.actorId)i].length;
    final group=_group;
    final showAuthor=peerOf(_conv)==null;
@@ -747,7 +752,7 @@ class _MessagesPageState extends State<MessagesPage>{
        style:Theme.of(context).textTheme.bodySmall))),
      Expanded(child:Container(color:_chatBg,child:Stack(children:[
        if(messages.isEmpty)Center(child:Text(S.t('messages.empty'),style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))),
-       ListView.builder(controller:_scroll,padding:const EdgeInsets.symmetric(vertical:8),itemCount:messages.length,itemBuilder:(c,i){
+       StickToBottom(controller:_scroll,stick:()=>_atBottom,child:ListView.builder(controller:_scroll,padding:const EdgeInsets.symmetric(vertical:8),itemCount:messages.length,itemBuilder:(c,i){
          final m=messages[i], ma=acks[m.id]??[];
          if(i>_maxBuilt)_maxBuilt=i;
          if(m.senderId!=widget.actorId)_autoRead(m,ma);
@@ -763,10 +768,13 @@ class _MessagesPageState extends State<MessagesPage>{
              child:Text(dayLabel(m.createdAt,DateTime.now(),today:S.t('messages.today'),yesterday:S.t('messages.yesterday')),
                style:TextStyle(fontSize:12,color:_night?const Color(0xFF8696A0):const Color(0xFF54656F)))))),
            if(i==firstUnread)Padding(key:_separatorKey,padding:const EdgeInsets.symmetric(vertical:6),child:Center(child:Chip(
-             label:Text(S.t('messages.unreadSeparator',{'n':_unreadAtOpen.length})),visualDensity:VisualDensity.compact))),
+             label:Text(S.t('messages.unreadSeparator',{'n':unreadHere})),visualDensity:VisualDensity.compact))),
            b,
          ]);
-       }),
+       })),
+       // Unread messages higher up: one touch goes up to them (lot 19).
+       if(unreadHere>0&&!_separator.seen)Positioned(top:10,left:0,right:0,child:Center(
+         child:UnreadUpButton(count:unreadHere,onPressed:()=>unawaited(_toUnread())))),
        if(!_atBottom)Positioned(right:12,bottom:12,child:Badge(
          isLabelVisible:below>0,label:Text('$below'),
          child:FloatingActionButton.small(heroTag:null,tooltip:S.t('messages.toBottom'),onPressed:()=>_toBottom(),child:const Icon(Icons.keyboard_arrow_down)))),
