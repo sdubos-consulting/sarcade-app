@@ -302,6 +302,8 @@ const Texts _fr={
   'car.you':'Vous','car.photo':'Photo','car.speak':'{prio}{who} : {text}.','car.seen':'vu il y a {age}','car.here':'Ici',
   'car.highPoint':'Point haut','car.relay':'Relais','car.away':'{d} {dir}',
   'car.dir.n':'au nord','car.dir.ne':'au nord-est','car.dir.e':'à l’est','car.dir.se':'au sud-est','car.dir.s':'au sud','car.dir.sw':'au sud-ouest','car.dir.w':'à l’ouest','car.dir.nw':'au nord-ouest',
+  // Android Auto, lot 20: short direction of the Points tab (« 3 km NO »).
+  'car.dirShort.n':'N','car.dirShort.ne':'NE','car.dirShort.e':'E','car.dirShort.se':'SE','car.dirShort.s':'S','car.dirShort.sw':'SO','car.dirShort.w':'O','car.dirShort.nw':'NO',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -780,6 +782,8 @@ const Texts _en={
   'car.you':'You','car.photo':'Photo','car.speak':'{prio}{who}: {text}.','car.seen':'seen {age} ago','car.here':'Here',
   'car.highPoint':'High point','car.relay':'Relay','car.away':'{d} {dir}',
   'car.dir.n':'north','car.dir.ne':'north-east','car.dir.e':'east','car.dir.se':'south-east','car.dir.s':'south','car.dir.sw':'south-west','car.dir.w':'west','car.dir.nw':'north-west',
+  // Android Auto, lot 20: short direction of the Points tab (« 3 km NW »).
+  'car.dirShort.n':'N','car.dirShort.ne':'NE','car.dirShort.e':'E','car.dirShort.se':'SE','car.dirShort.s':'S','car.dirShort.sw':'SW','car.dirShort.w':'W','car.dirShort.nw':'NW',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',

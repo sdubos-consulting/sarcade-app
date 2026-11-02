@@ -173,30 +173,39 @@ internal object CarUi {
         CarToast.makeText(context, text, CarToast.LENGTH_LONG).show()
     }
 
-    /** Red of the SOS badge (red 700): 5:1 on white. */
-    const val SOS_RED = 0xFFD32F2F.toInt()
+    /** Lot 20 (card « Android Auto, onglet Points : boutons ronds gris
+     *  vides, SOS en disque blanc… », choice 2): where the SOS is.
+     *  - false (choice of the owner, tried first): round button of the
+     *    lists, the SOS icon alone tinted red;
+     *  - true (fallback, if Android Auto still paints the icon): no round
+     *    button, the SOS in the action strip at the top, « SOS » written in
+     *    red; the car then shows one section at a time (button « Rubriques »
+     *    of the strip) instead of the tabs, the strip not existing in the
+     *    tabs of the Car App Library 1.7. */
+    const val SOS_IN_STRIP = false
 
-    /** Red SOS action (choice 3), always reachable; [floating]: the round
-     *  button of the lists (icon only, red background), otherwise the
-     *  action strip (« SOS » written).
+    /** Red SOS action (choice 3 of lot 17), always reachable; [floating]:
+     *  the round button of the lists (icon only: a round button cannot
+     *  carry a title), otherwise the action strip (« SOS » in red).
      *
-     *  Lot 18 (card « Android Auto : bouton SOS bleu au lieu de rouge »,
-     *  1 Nov 2026): Android Auto may paint the round button in its own
-     *  colour (blue in the car) whatever the background asked. Choice 2:
-     *  the word « SOS » in red on a white disc, drawn in the picture of the
-     *  button: neither a tint nor a background colour, so the host neither
-     *  checks nor replaces it; recognisable on red as on any colour. The
-     *  round button cannot carry a title (Car App Library: no title on a
-     *  floating button). */
+     *  History: lot 17 asked a red background, which Android Auto replaced
+     *  by its blue; lot 18 drew « SOS » in red on a white disc in the
+     *  picture, which Android Auto painted in one colour (white disc, photo
+     *  of 2 Nov 2026). Lot 20: the icon of the library, tinted CarColor.RED,
+     *  no background colour asked. */
     fun sosAction(context: CarContext, snap: Snapshot, floating: Boolean, onClick: () -> Unit): Action {
         val b = Action.Builder()
-            .setIcon(
-                if (floating) tile(context, R.drawable.sarcade_car_sos, Color.WHITE, SOS_RED, 96 / 8)
-                else icon(context, R.drawable.sarcade_car_sos, CarColor.RED)
-            )
+            .setIcon(icon(context, R.drawable.sarcade_car_sos, CarColor.RED))
             .setOnClickListener { onClick() }
-        if (floating) b.setBackgroundColor(CarColor.RED) else b.setTitle(snap.label("sos"))
+        if (!floating) b.setTitle(red(snap.label("sos")))
         return b.build()
+    }
+
+    /** [text] written in red (the host may keep its own colour for titles). */
+    fun red(text: String): CarText {
+        val s = SpannableString(text)
+        s.setSpan(ForegroundCarColorSpan.create(CarColor.RED), 0, text.length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+        return CarText.create(s)
     }
 
     fun post(context: CarContext, type: String, fill: JSONObject.() -> Unit = {}) {

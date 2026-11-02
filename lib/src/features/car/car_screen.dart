@@ -84,14 +84,16 @@ String carDistance(double m){
   return km==km.truncateToDouble()?'${km.toInt()} km':'${km.toStringAsFixed(1).replaceAll('.',',')} km';
 }
 
-/// « 4,5 km au nord-ouest », empty without position.
-String carAway(LatLng? from,LatLng to){
+/// « 4,5 km au nord-ouest », empty without position; [short]: « 4,5 km
+/// NO », for the Points tab (lot 20, card « Android Auto, onglet Points :
+/// boutons ronds gris vides… », choice 3: the line no longer cut).
+String carAway(LatLng? from,LatLng to,{bool short=false}){
   if(from==null)return '';
   final d=distanceM(from,to);
   if(d<20)return S.t('car.here');
   const dirs=['n','ne','e','se','s','sw','w','nw'];
   final dir=dirs[((bearingDeg(from,to)+22.5)%360~/45)%8];
-  return S.t('car.away',{'d':carDistance(d),'dir':S.t('car.dir.$dir')});
+  return S.t('car.away',{'d':carDistance(d),'dir':S.t(short?'car.dirShort.$dir':'car.dir.$dir')});
 }
 
 String _join(Iterable<String> parts)=>parts.where((p)=>p.trim().isNotEmpty).join(' · ');
@@ -188,7 +190,7 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
     for(final p in pois){
       'id':p.id,'kind':'poi','icon':p.icon??'pin','color':poiColor(p),
       'title':(p.label??'').trim().isEmpty?poiIconLabel(p.icon):p.label!.trim(),
-      'text':carAway(here,LatLng(p.lat,p.lon)),
+      'text':carAway(here,LatLng(p.lat,p.lon),short:true),
       'lat':p.lat,'lon':p.lon,
     },
   ];
@@ -199,7 +201,7 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
       out.add({
         'id':r.id,'kind':'high','icon':'high','color':_highPointColor,
         'title':r.name,
-        'text':_join([carAway(here,LatLng(r.lat,r.lon)),S.t('car.highPoint'),if(r.altM!=null)'${r.altM!.round()} m']),
+        'text':_join([carAway(here,LatLng(r.lat,r.lon),short:true),S.t('car.highPoint'),if(r.altM!=null)'${r.altM!.round()} m']),
         'lat':r.lat,'lon':r.lon,
       });
     }

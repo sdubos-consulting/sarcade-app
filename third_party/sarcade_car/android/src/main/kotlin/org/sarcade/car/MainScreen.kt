@@ -61,7 +61,9 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
                 .setHeaderAction(Action.APP_ICON)
                 .build()
         }
-        return if (level >= TABS_LEVEL) tabs(snap) else sections(snap)
+        // SOS in the action strip (fallback of lot 20, CarUi.SOS_IN_STRIP):
+        // one section at a time, as on the older hosts.
+        return if (level >= TABS_LEVEL && !CarUi.SOS_IN_STRIP) tabs(snap) else sections(snap)
     }
 
     // --- Tabs (car API 6+) ---------------------------------------------------
@@ -159,7 +161,13 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
             .setImage(CarUi.tile(carContext, CarUi.pointIcon(p.optString("icon")), p.optInt("color", DEFAULT_COLOR)))
             .setOnClickListener { go() }
         if (level >= TABS_LEVEL) {
-            b.addAction(Action.Builder().setTitle(CarUi.navigateTitle(carContext, snap)).setFlags(Action.FLAG_PRIMARY).setOnClickListener { go() }.build())
+            // Lot 20 (card « boutons ronds gris vides », choice 1): the car
+            // only shows the icon of a row button, so it must have one.
+            b.addAction(
+                Action.Builder().setTitle(CarUi.navigateTitle(carContext, snap))
+                    .setIcon(CarUi.icon(carContext, R.drawable.sarcade_car_directions))
+                    .setFlags(Action.FLAG_PRIMARY).setOnClickListener { go() }.build()
+            )
         }
         return b.build()
     }
@@ -197,8 +205,11 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
          *  sent; Je suis arrivé, Naviguer once accepted; nothing after. */
         fun orderActions(context: CarContext, snap: Snapshot, o: JSONObject): List<Action> {
             val id = o.optString("id")
-            fun answer(status: String, label: String, primary: Boolean): Action {
-                val b = Action.Builder().setTitle(snap.label(label)).setOnClickListener {
+            // Each button with its icon (lot 20): the rows of the car only
+            // show the icon of their buttons.
+            fun answer(status: String, label: String, icon: Int, primary: Boolean): Action {
+                val b = Action.Builder().setTitle(snap.label(label))
+                    .setIcon(CarUi.icon(context, icon)).setOnClickListener {
                     CarUi.post(context, "order") { put("id", id); put("status", status) }
                     CarUi.toast(context, snap.label("sent"))
                 }
@@ -206,10 +217,14 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
                 return b.build()
             }
             return when (o.optString("status")) {
-                "sent" -> listOf(answer("refused", "refuse", false), answer("accepted", "accept", true))
+                "sent" -> listOf(
+                    answer("refused", "refuse", R.drawable.sarcade_car_close, false),
+                    answer("accepted", "accept", R.drawable.sarcade_car_check, true),
+                )
                 "accepted" -> listOf(
-                    answer("arrived", "arrived", false),
+                    answer("arrived", "arrived", R.drawable.sarcade_car_flag, false),
                     Action.Builder().setTitle(CarUi.navigateTitle(context, snap)).setFlags(Action.FLAG_PRIMARY)
+                        .setIcon(CarUi.icon(context, R.drawable.sarcade_car_directions))
                         .setOnClickListener { CarUi.navigate(context, snap, o.optDouble("lat"), o.optDouble("lon"), o.optString("title")) }
                         .build(),
                 )
