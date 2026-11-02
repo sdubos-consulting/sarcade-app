@@ -44,7 +44,21 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
      *  neither flickers nor moves the list. */
     private var shown: String? = null
     private val refresh: () -> Unit = {
-        if (Snapshot(CarData.snapshot(carContext)).signature(tab) != shown) invalidate()
+        if (drawn(Snapshot(CarData.snapshot(carContext))) != shown) invalidate()
+    }
+
+    /** What the shown tab displays: its data, and the filter of Points. */
+    private fun drawn(snap: Snapshot): String =
+        if (tab == POINTS) snap.signature(tab) + "|" + CarData.pointsFilter(carContext) else snap.signature(tab)
+
+    /** Lot 23 (card « Android Auto, onglet Points : changer de filtre en
+     *  appuyant de nouveau sur l'onglet »): Points chosen again while
+     *  shown (tab touched again, or Points chosen again in « Rubriques »)
+     *  goes to the next filter. */
+    private fun select(id: String) {
+        if (id == tab && id == POINTS) CarData.nextPointsFilter(carContext)
+        tab = id
+        invalidate()
     }
 
     init {
@@ -63,7 +77,7 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
 
     override fun onGetTemplate(): Template {
         val snap = Snapshot(CarData.snapshot(carContext))
-        shown = snap.signature(tab)
+        shown = drawn(snap)
         if (!snap.ready) {
             return MessageTemplate.Builder(carContext.getString(R.string.sarcade_car_open_phone))
                 .setTitle("SARCADE")
@@ -81,8 +95,10 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
     private fun tabs(snap: Snapshot): Template {
         val b = TabTemplate.Builder(object : TabTemplate.TabCallback {
             override fun onTabSelected(tabContentId: String) {
-                tab = tabContentId
-                invalidate()
+                // Called again for the active tab only if Android Auto
+                // tells it, which its documentation does not promise (see
+                // the « Filtre » row of the Points tab).
+                select(tabContentId)
             }
         }).setHeaderAction(Action.APP_ICON)
         // Titles and icons never change: a new tab content is a refresh, not
@@ -105,7 +121,7 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
         val strip = ActionStrip.Builder()
             .addAction(
                 Action.Builder().setIcon(CarUi.icon(carContext, R.drawable.sarcade_car_menu))
-                    .setOnClickListener { screenManager.push(SectionsScreen(carContext, snap) { tab = it; invalidate() }) }
+                    .setOnClickListener { screenManager.push(SectionsScreen(carContext, snap) { select(it) }) }
                     .build()
             )
             .addAction(CarUi.sosAction(carContext, snap, floating = false) { openSos() })
@@ -127,7 +143,14 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
         when (id) {
             MESSAGES -> snap.items("messages").forEach { all.add(conversationRow(snap, it)) }
             ORDERS -> snap.items("orders").forEach { all.add(orderRow(snap, it)) }
-            POINTS -> snap.items("points").forEach { all.add(pointRow(snap, it)) }
+            POINTS -> {
+                // Filter first, always visible (lot 23).
+                val filter = CarData.pointsFilter(carContext)
+                all.add(filterRow(snap, filter))
+                val points = snap.items("points").filter { CarData.pointShown(it, filter) }
+                if (points.isEmpty()) all.add(Row.Builder().setTitle(snap.label("empty.points")).build())
+                points.forEach { all.add(pointRow(snap, it)) }
+            }
             else -> snap.items("team").forEach { all.add(teammateRow(snap, it)) }
         }
         all.take(limit).forEach { items.addItem(it) }
@@ -162,6 +185,20 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
         }
         return b.build()
     }
+
+    /** « Filtre : Tout », first row of the Points tab (lot 23, choices 1
+     *  and 2): shows the filter and, touched, goes to the next one. Fallback
+     *  of the decided « Filtre » button of the top strip: the strip of the
+     *  section takes 2 buttons at most (Car App Library), « Rubriques » and
+     *  « SOS » already; the tabs have none. */
+    private fun filterRow(snap: Snapshot, filter: String): Row = Row.Builder()
+        .setTitle(snap.label("filter").replace("{name}", snap.label("filter.$filter")))
+        .setImage(CarUi.icon(carContext, R.drawable.sarcade_car_filter_list))
+        .setOnClickListener {
+            CarData.nextPointsFilter(carContext)
+            invalidate()
+        }
+        .build()
 
     private fun pointRow(snap: Snapshot, p: JSONObject): Row {
         val go = { CarUi.navigate(carContext, snap, p.optDouble("lat"), p.optDouble("lon")) }

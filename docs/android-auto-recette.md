@@ -47,7 +47,7 @@ Ce que la CI vérifie déjà sans voiture : les données envoyées à la voiture
 | 3.8 | Second terminal du porteur (même indicatif) : le PCO lui envoie un ordre | L'ordre apparaît aussi dans l'onglet Ordres de la voiture ; Accepter depuis la voiture est accepté par le serveur (statut « accepté » chez le PCO) |
 | 3.9 | Accepter un ordre, puis dans l'onglet Ordres | Boutons drapeau (Je suis arrivé) et flèche d'itinéraire |
 
-## 4. Lot 23 : SOS en haut, Équipe, naviguer vers un opérateur
+## 4. Lot 23 : SOS en haut, Équipe, naviguer vers un opérateur, filtre des Points
 
 Depuis le lot 23, la voiture montre **une rubrique à la fois** : bouton « Rubriques » (trois traits) et « SOS » en haut à droite, plus d'onglets ni de bouton rond.
 
@@ -63,7 +63,12 @@ Depuis le lot 23, la voiture montre **une rubrique à la fois** : bouton « Rubr
 | 4.8 | L'opérateur se déplace (second terminal en marche) ; revenir à SARCADE, toucher de nouveau sa flèche | La destination est mise à jour vers sa nouvelle position |
 | 4.9 | Observer l'onglet Équipe 2 minutes pendant que l'opérateur bouge | Pas de clignotement ; l'âge par paliers (« vu il y a moins de 5 min », « 5 min », « 10 min », « 15 min ») |
 | 4.10 | Opérateur dont la position a plus de 15 minutes | La ligne indique « position de 20 h 05 » (heure de sa dernière position) |
-| 4.11 | Changer 6 fois de suite de rubrique (Rubriques › Messages, Ordres, Points, Équipe…) | Aucun message d'erreur d'Android Auto ; noter si un écran « trop d'étapes » apparaît |
+| 4.11 | Rubriques › Points | Première ligne « Filtre : Tout » (icône filtre), puis les points |
+| 4.12 | Toucher la ligne « Filtre » trois fois | « Points de l'événement » (sans les points hauts), puis « Points hauts » (seulement eux), puis « Tout » |
+| 4.13 | Rubriques › Points alors que Points est déjà affiché | Filtre suivant, comme 4.12 (c'est « l'appui répété sur l'onglet » dans la disposition actuelle) |
+| 4.14 | Laisser « Points hauts », débrancher le téléphone, le rebrancher | Le filtre « Points hauts » est gardé |
+| 4.15 | Seulement si l'on revient aux onglets (`SOS_IN_STRIP = false`) : toucher l'onglet Points déjà actif | Noter si le filtre change (Android Auto le signale) ou non (la ligne « Filtre » reste le moyen sûr) |
+| 4.16 | Changer 6 fois de suite de rubrique (Rubriques › Messages, Ordres, Points, Équipe…), puis 6 fois de filtre | Aucun message d'erreur d'Android Auto ; noter si un écran « trop d'étapes » apparaît |
 
 ## 5. Après la recette
 

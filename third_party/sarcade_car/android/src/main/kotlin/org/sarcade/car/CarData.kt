@@ -30,6 +30,12 @@ internal object CarData {
     private const val PREFS = "sarcade_car_screen"
     private const val KEY_SNAPSHOT = "snapshot"
     private const val KEY_ACTIONS = "actions"
+    private const val KEY_POINTS_FILTER = "points_filter"
+
+    /** Filters of the Points tab, in the order of the loop (lot 23, card
+     *  « Android Auto, onglet Points : changer de filtre… », choice 1):
+     *  all, designated points of the event, high points. */
+    val POINTS_FILTERS = listOf("all", "event", "high")
 
     private val main = Handler(Looper.getMainLooper())
     private var snapshot: JSONObject? = null
@@ -81,6 +87,27 @@ internal object CarData {
         val raw = p.getString(KEY_ACTIONS, null) ?: "[]"
         p.edit().remove(KEY_ACTIONS).apply()
         raw
+    }
+
+    /** Filter of the Points tab, kept in the preferences of the
+     *  application: the same at the next trip. */
+    fun pointsFilter(context: Context): String =
+        prefs(context).getString(KEY_POINTS_FILTER, null)?.takeIf { it in POINTS_FILTERS } ?: POINTS_FILTERS[0]
+
+    /** Next filter of the loop (Tout → Points de l'événement → Points hauts
+     *  → Tout), kept. */
+    fun nextPointsFilter(context: Context): String {
+        val next = POINTS_FILTERS[(POINTS_FILTERS.indexOf(pointsFilter(context)) + 1) % POINTS_FILTERS.size]
+        prefs(context).edit().putString(KEY_POINTS_FILTER, next).apply()
+        return next
+    }
+
+    /** True when the point (kind « poi » or « high », see carPoints of the
+     *  application) is shown with [filter]. */
+    fun pointShown(point: JSONObject, filter: String): Boolean = when (filter) {
+        "event" -> point.optString("kind") == "poi"
+        "high" -> point.optString("kind") == "high"
+        else -> true
     }
 
     fun attach(plugin: CarDataClient) { plugins.add(plugin) }

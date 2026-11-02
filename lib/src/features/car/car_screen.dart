@@ -263,7 +263,7 @@ Map<String,String> carLabels()=>{
   for(final t in const ['messages','orders','points','team'])'empty.$t':S.t('car.empty.$t'),
   for(final k in const ['sos','sosTitle','sosAsk','sosSend','sosSent','sosOn','sosEnd','sosEnded','cancel','navigate','navigateCar','navigateCarShort','navigateFailed',
     'accept','refuse','arrived','read','reply','replyTo','listening','dictationFailed','retry','send','sent','stale','sections',
-    'gone','note','order','go','view','orderAlert'])k:S.t('car.$k'),
+    'gone','note','order','go','view','orderAlert','filter','filter.all','filter.event','filter.high'])k:S.t('car.$k'),
 };
 
 /// Everything the car shows, as written to the plugin.

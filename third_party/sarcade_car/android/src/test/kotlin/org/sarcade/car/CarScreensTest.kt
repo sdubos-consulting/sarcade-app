@@ -13,6 +13,7 @@ import androidx.car.app.model.Row
 import androidx.car.app.model.TabTemplate
 import androidx.car.app.testing.TestAppManager
 import androidx.car.app.testing.TestCarContext
+import androidx.car.app.testing.TestScreenManager
 import androidx.test.core.app.ApplicationProvider
 import org.json.JSONArray
 import org.json.JSONObject
@@ -67,6 +68,8 @@ class CarScreensTest {
             "accept" to "Accepter", "refuse" to "Refuser", "arrived" to "Je suis arrivé", "sent" to "Envoyé",
             "go" to "Y aller", "view" to "Voir", "orderAlert" to "Ordre de déplacement", "order" to "Ordre",
             "note" to "Consigne", "gone" to "Plus disponible", "stale" to "Données de {time}",
+            "filter" to "Filtre : {name}", "filter.all" to "Tout", "filter.event" to "Points de l'événement",
+            "filter.high" to "Points hauts",
         ).forEach { (k, v) -> labels.put(k, v) }
         val points = JSONArray()
             .put(JSONObject().put("id", "poi1").put("kind", "poi").put("icon", "gathering").put("color", 0xFF1E88E5.toInt())
@@ -112,7 +115,7 @@ class CarScreensTest {
 
     @Test
     fun pointsTab_eachRowHasTheItineraryIcon_andAShortLine() {
-        val r = rows(tab(MainScreen.POINTS))
+        val r = rows(tab(MainScreen.POINTS)).drop(1)
         assertEquals(listOf("PC", "Butte"), r.map { it.title.toString() })
         assertEquals("3 km NO", r[0].texts[0].toString())
         for (row in r) {
@@ -180,12 +183,13 @@ class CarScreensTest {
 
     @Test
     fun pointRow_opensTheNavigationOfTheCar_towardsThePoint() {
-        click(rows(tab(MainScreen.POINTS))[0].actions.single())
+        // Row 0: the filter (lot 23).
+        click(rows(tab(MainScreen.POINTS))[1].actions.single())
         val intent = car.startCarAppIntents.last()
         assertEquals(CarContext.ACTION_NAVIGATE, intent.action)
         assertEquals("geo:48.819100,1.921000", intent.dataString)
         // Touching the row itself does the same.
-        rows(tab(MainScreen.POINTS))[1].onClickDelegate!!.sendClick(object : OnDoneCallback {})
+        rows(tab(MainScreen.POINTS))[2].onClickDelegate!!.sendClick(object : OnDoneCallback {})
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals("geo:48.819100,1.979000", car.startCarAppIntents.last().dataString)
     }
@@ -225,6 +229,92 @@ class CarScreensTest {
         // Position lost: the arrow goes, drawn again.
         val c = Snapshot(snapshot(at = t, team = JSONArray().put(mate("TEL-2", "3 km au nord", lat = null))))
         assertFalse(a.signature(MainScreen.TEAM) == c.signature(MainScreen.TEAM))
+    }
+
+    // --- Lot 23: filter of the Points tab (card « Android Auto, onglet
+    // Points : changer de filtre en appuyant de nouveau sur l'onglet »).
+
+    private fun pointTitles(list: ListTemplate): List<String> = rows(list).map { it.title.toString() }
+
+    @Test
+    fun pointsFilter_rowFallback_loopsAllEventHighAll_andIsKeptForTheNextTrip() {
+        // Case « appui répété non signalé »: the first row is the button.
+        assertEquals(listOf("Filtre : Tout", "PC", "Butte"), pointTitles(tab(MainScreen.POINTS)))
+        val screen = MainScreen(car, SarcadeSession())
+        screen.tab = MainScreen.POINTS
+        fun list() = screen.onGetTemplate() as ListTemplate
+        fun touchFilter() {
+            rows(list())[0].onClickDelegate!!.sendClick(object : OnDoneCallback {})
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        touchFilter()
+        assertEquals(listOf("Filtre : Points de l'événement", "PC"), pointTitles(list()))
+        touchFilter()
+        assertEquals(listOf("Filtre : Points hauts", "Butte"), pointTitles(list()))
+        // Next trip: a new car session, same filter.
+        assertEquals(listOf("Filtre : Points hauts", "Butte"), pointTitles(tab(MainScreen.POINTS)))
+        touchFilter()
+        assertEquals(listOf("Filtre : Tout", "PC", "Butte"), pointTitles(list()))
+    }
+
+    @Test
+    fun pointsFilter_nothingToShow_saysSo() {
+        val json = snapshot()
+        json.put("points", JSONArray().put(json.getJSONArray("points").getJSONObject(0)))
+        write(json)
+        CarData.nextPointsFilter(app)
+        CarData.nextPointsFilter(app)
+        assertEquals(listOf("Filtre : Points hauts", "Aucun point"), pointTitles(tab(MainScreen.POINTS)))
+    }
+
+    @Test
+    fun pointsFilter_tabTouchedAgain_whenAndroidAutoTellsIt() {
+        // Case « appui répété signalé », tabs of the lot 20 layout: Android
+        // Auto calls onTabSelected for the active tab again.
+        val screen = MainScreen(car, SarcadeSession())
+        screen.sosInStrip = false
+        screen.tab = MainScreen.MESSAGES
+        fun select(id: String) {
+            val t = screen.onGetTemplate() as TabTemplate
+            t.tabCallbackDelegate.sendTabSelected(id, object : OnDoneCallback {})
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        fun titles() = pointTitles((screen.onGetTemplate() as TabTemplate).tabContents.template as ListTemplate)
+        select(MainScreen.POINTS)
+        assertEquals("Filtre : Tout", titles()[0])
+        select(MainScreen.POINTS)
+        assertEquals(listOf("Filtre : Points de l'événement", "PC"), titles())
+        select(MainScreen.POINTS)
+        assertEquals("Filtre : Points hauts", titles()[0])
+        // Another tab and back: the filter stays.
+        select(MainScreen.TEAM)
+        select(MainScreen.POINTS)
+        assertEquals("Filtre : Points hauts", titles()[0])
+        select(MainScreen.POINTS)
+        assertEquals("Filtre : Tout", titles()[0])
+        // The tabs of the Car App Library keep their titles: no new step.
+        assertEquals("Points", (screen.onGetTemplate() as TabTemplate).tabs[2].title.toString())
+    }
+
+    @Test
+    fun pointsFilter_pointsChosenAgainInRubriques() {
+        // Layout in force (SOS in the strip): « Rubriques » › Points while
+        // Points is shown goes to the next filter.
+        val screen = MainScreen(car, SarcadeSession())
+        screen.tab = MainScreen.POINTS
+        fun pick(id: String) {
+            click((screen.onGetTemplate() as ListTemplate).actionStrip!!.actions[0])
+            val sections = car.getCarService(TestScreenManager::class.java).screensPushed.last() as SectionsScreen
+            val row = rows(sections.onGetTemplate() as ListTemplate)[MainScreen.TABS.indexOf(id)]
+            row.onClickDelegate!!.sendClick(object : OnDoneCallback {})
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        pick(MainScreen.POINTS)
+        assertEquals(listOf("Filtre : Points de l'événement", "PC"), pointTitles(screen.onGetTemplate() as ListTemplate))
+        pick(MainScreen.ORDERS)
+        assertEquals("Ordres", (screen.onGetTemplate() as ListTemplate).title.toString())
+        pick(MainScreen.POINTS)
+        assertEquals("Filtre : Points de l'événement", pointTitles(screen.onGetTemplate() as ListTemplate)[0])
     }
 
     @Test
