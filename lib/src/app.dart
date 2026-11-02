@@ -8,6 +8,7 @@ import 'config/saved_servers.dart';
 import 'ui/theme.dart';
 import 'features/map/operational_map_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/events/event_choice.dart';
 import 'services/sarcade_api.dart';
 import 'offline/local_store.dart';
 import 'offline/outbox_policy.dart' as outbox;
@@ -50,6 +51,37 @@ class _SarcadeAppState extends State<SarcadeApp> {
     // Day / night / automatic is chosen in « Fond et affichage » of the map
     // (lot 19): applied at once, kept on the device.
     themeMode.addListener(_keepTheme);
+    // Lot 19: the followed event checked at every start and on a 404.
+    OfflineSyncService.onEventUnknown=_onEventUnknown;
+    if(!_needsSetup)WidgetsBinding.instance.addPostFrameCallback((_)=>unawaited(_checkEvent()));
+  }
+
+  // --- Event chosen automatically (lot 19, event_choice.dart) ---
+  bool _checkingEvent=false;
+  BuildContext? _dialogContext()=>_navigator.currentState?.overlay?.context;
+
+  Future<void> _checkEvent({bool unknown=false}) async {
+    if(_checkingEvent||_needsSetup)return;
+    _checkingEvent=true;
+    final c=_config, api=SarcadeApi(baseUrl:c.serverUrl);
+    try{
+      await checkFollowedEvent(api:api,current:c.eventId,deviceId:c.deviceId,unknown:unknown,context:_dialogContext,
+        manual:widget.store.preference(manualEventPref)==c.eventId,follow:_followEvent);
+    }finally{api.close();_checkingEvent=false;}
+  }
+
+  void _onEventUnknown(String server,String eventId){
+    if(!mounted||outbox.normalServer(server)!=outbox.normalServer(_config.serverUrl)||eventId!=_config.eventId)return;
+    unawaited(_checkEvent(unknown:true));
+  }
+
+  /// The map restarts on [event]; a choice by hand is remembered as such.
+  Future<void> _followEvent(Map<String,dynamic> event,{required bool manual}) async {
+    final c=_config.copyWith(eventId:'${event['id']}');
+    await widget.store.saveConfig(c.toStored());
+    await widget.store.setPreference(manualEventPref,manual?c.eventId:null);
+    await _rememberServer(c.serverUrl,eventId:c.eventId,deviceId:c.deviceId);
+    if(mounted)setState(()=>_config=c);
   }
 
   void _keepTheme()=>unawaited(widget.store.setPreference('theme_mode',themeModeName(themeMode.value)));
@@ -78,6 +110,10 @@ class _SarcadeAppState extends State<SarcadeApp> {
     // Last event and terminal of this server, taken back when switching to it.
     await _rememberServer(c.serverUrl,eventId:c.eventId,deviceId:c.deviceId);
     final wasSetup=_needsSetup;
+    // An event chosen in Paramètres is a choice by hand (lot 19).
+    if(wasSetup||c.eventId!=_config.eventId||outbox.normalServer(c.serverUrl)!=outbox.normalServer(_config.serverUrl)){
+      await widget.store.setPreference(manualEventPref,c.eventId);
+    }
     // Same session: language or operator settings changed, the map stays.
     if(c.sessionKey==_config.sessionKey&&!wasSetup){setState((){_config=c;_applyLanguage();});_navigator.currentState?.maybePop();return;}
     setState((){_config=c;_needsSetup=false;_applyLanguage();});
