@@ -43,7 +43,21 @@ internal class Snapshot(private val json: JSONObject) {
      *  changes (lot 20, card « Android Auto : l'écran clignote… », choice
      *  4); the time of the write is not in it. */
     fun signature(key: String): String =
-        listOf(ready, lang, distress, staleText() ?: "", json.optJSONArray(key)?.toString() ?: "").joinToString("|")
+        listOf(ready, lang, distress, staleText() ?: "", shown(key)).joinToString("|")
+
+    /** Items of a tab as shown. Équipe (lot 23): the positions of the
+     *  operators are not shown, only whether there is one (arrow
+     *  « Naviguer »): an operator who moves does not redraw the screen. */
+    private fun shown(key: String): String {
+        if (key != "team") return json.optJSONArray(key)?.toString() ?: ""
+        return items(key).joinToString(",", "[", "]") { t ->
+            val copy = JSONObject(t.toString())
+            copy.remove("lat")
+            copy.remove("lon")
+            copy.put("nav", MainScreen.hasPosition(t))
+            copy.toString()
+        }
+    }
 
     /** « Données de 10:42 : ouvrez SARCADE sur le téléphone » when the
      *  application has not written for 2 minutes; null otherwise. */

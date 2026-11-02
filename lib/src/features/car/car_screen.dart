@@ -29,7 +29,6 @@ import '../../models/position.dart';
 import '../../ui/operator_color.dart';
 import '../map/drawing/geometry.dart' show bearingDeg, distanceM;
 import '../map/operator_icons.dart' show baseCallsign, chosenIcon;
-import '../map/stations.dart' show ageLabel;
 import '../messages/conversations.dart';
 import '../orders/move_orders.dart';
 import '../poi/poi_icons.dart' show poiIconLabel;
@@ -238,10 +237,24 @@ List<Map<String,Object?>> carTeam(CarScreenInput i){
     for(final p in others.take(carMaxItems)){
       'id':p.deviceId,'title':p.label,
       'icon':chosenIcon(i.devices,deviceId:p.deviceId),'color':operatorColor(p.deviceId),
-      'text':_join([carAway(here,LatLng(p.lat,p.lon)),S.t('car.seen',{'age':ageLabel(p.time.toUtc(),i.now.toUtc())})]),
-      'lat':p.lat,'lon':p.lon,
+      'text':_join([carAway(here,LatLng(p.lat,p.lon)),carSeen(p.time,i.now)]),
+      // No position, no « Naviguer » (lot 23, choice 4).
+      if(p.lat.isFinite&&p.lon.isFinite)...{'lat':p.lat,'lon':p.lon},
     },
   ];
+}
+
+/// Age of the position of an operator in the car (lot 23, card « Android
+/// Auto, onglet Équipe : naviguer vers un opérateur », choice 3): by 5 min
+/// up to 15 min, so that the text (and the screen) does not change at
+/// every write (lot 20); beyond, the time of the position, « position de
+/// 20 h 05 », which no longer changes.
+String carSeen(DateTime time,DateTime now){
+  final d=now.difference(time);
+  if(d<const Duration(minutes:5))return S.t('car.seenRecent');
+  if(d<=const Duration(minutes:15))return S.t('car.seen',{'age':'${d.inMinutes~/5*5}\u00A0min'});
+  final l=time.toLocal();
+  return S.t('car.positionAt',{'h':'${l.hour}','m':l.minute.toString().padLeft(2,'0')});
 }
 
 /// Texts of the car screen (`car.*`), sent with the data.

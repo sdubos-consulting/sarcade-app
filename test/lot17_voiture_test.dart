@@ -109,7 +109,8 @@ void main(){
     expect(t.map((x)=>x['id']),['TEL-2','TEL-3']);
     expect(t.first['icon'],'car'); expect(t.first['color'],operatorColor('TEL-2'));
     expect(t.first['text'],contains('au nord'));
-    expect(t.first['text'],contains('vu il y a 2'));
+    // Rounded since lot 23 (« Équipe : naviguer vers un opérateur »).
+    expect(t.first['text'],contains('vu il y a moins de 5 min'));
   });
 
   test('every text of the car exists in French and English',(){

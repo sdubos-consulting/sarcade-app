@@ -306,6 +306,8 @@ const Texts _fr={
   'car.dirShort.n':'N','car.dirShort.ne':'NE','car.dirShort.e':'E','car.dirShort.se':'SE','car.dirShort.s':'S','car.dirShort.sw':'SO','car.dirShort.w':'O','car.dirShort.nw':'NO',
   // Android Auto, lot 20: alert of a new move order (name of the point first).
   'car.go':'Y aller','car.view':'Voir','car.orderAlert':'Ordre de déplacement',
+  // Android Auto, lot 23: age of the position of an operator (Équipe tab).
+  'car.seenRecent':'vu il y a moins de 5 min','car.positionAt':'position de {h} h {m}',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -790,6 +792,8 @@ const Texts _en={
   'car.dirShort.n':'N','car.dirShort.ne':'NE','car.dirShort.e':'E','car.dirShort.se':'SE','car.dirShort.s':'S','car.dirShort.sw':'SW','car.dirShort.w':'W','car.dirShort.nw':'NW',
   // Android Auto, lot 20: alert of a new move order (name of the point first).
   'car.go':'Go there','car.view':'View','car.orderAlert':'Move order',
+  // Android Auto, lot 23: age of the position of an operator (Équipe tab).
+  'car.seenRecent':'seen less than 5 min ago','car.positionAt':'position at {h}:{m}',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',

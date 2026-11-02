@@ -47,7 +47,7 @@ Ce que la CI vérifie déjà sans voiture : les données envoyées à la voiture
 | 3.8 | Second terminal du porteur (même indicatif) : le PCO lui envoie un ordre | L'ordre apparaît aussi dans l'onglet Ordres de la voiture ; Accepter depuis la voiture est accepté par le serveur (statut « accepté » chez le PCO) |
 | 3.9 | Accepter un ordre, puis dans l'onglet Ordres | Boutons drapeau (Je suis arrivé) et flèche d'itinéraire |
 
-## 4. Lot 23 : SOS en haut, Équipe
+## 4. Lot 23 : SOS en haut, Équipe, naviguer vers un opérateur
 
 Depuis le lot 23, la voiture montre **une rubrique à la fois** : bouton « Rubriques » (trois traits) et « SOS » en haut à droite, plus d'onglets ni de bouton rond.
 
@@ -57,7 +57,13 @@ Depuis le lot 23, la voiture montre **une rubrique à la fois** : bouton « Rubr
 | 4.2 | Toucher « SOS », puis Annuler | L'écran de confirmation de détresse s'ouvre, Annuler revient sans rien envoyer |
 | 4.3 | « Rubriques » › Équipe | Seulement les opérateurs vus depuis moins de 24 h (plus de PC-demo « vu il y a 8 j » ni PCO « 2 j ») |
 | 4.4 | Aucun autre opérateur actif depuis 24 h | Message « Personne d'autre en ligne » |
-| 4.5 | Changer 6 fois de suite de rubrique (Rubriques › Messages, Ordres, Points, Équipe…) | Aucun message d'erreur d'Android Auto ; noter si un écran « trop d'étapes » apparaît |
+| 4.5 | Équipe, regarder à droite d'un opérateur | Une flèche d'itinéraire ; pas de flèche pour un opérateur sans position |
+| 4.6 | Toucher la flèche d'un opérateur | Google Maps ou Waze s'ouvre guidé vers sa dernière position connue |
+| 4.7 | Revenir, toucher la ligne (pas la flèche) | Même résultat |
+| 4.8 | L'opérateur se déplace (second terminal en marche) ; revenir à SARCADE, toucher de nouveau sa flèche | La destination est mise à jour vers sa nouvelle position |
+| 4.9 | Observer l'onglet Équipe 2 minutes pendant que l'opérateur bouge | Pas de clignotement ; l'âge par paliers (« vu il y a moins de 5 min », « 5 min », « 10 min », « 15 min ») |
+| 4.10 | Opérateur dont la position a plus de 15 minutes | La ligne indique « position de 20 h 05 » (heure de sa dernière position) |
+| 4.11 | Changer 6 fois de suite de rubrique (Rubriques › Messages, Ordres, Points, Équipe…) | Aucun message d'erreur d'Android Auto ; noter si un écran « trop d'étapes » apparaît |
 
 ## 5. Après la recette
 
