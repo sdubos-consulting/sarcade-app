@@ -222,12 +222,17 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
   return out.take(carMaxItems).toList();
 }
 
-/// Other operators of the event (SARCADE terminals, not the APRS stations),
-/// the nearest first.
+/// Operators seen longer ago are not in the Équipe tab (lot 23, card
+/// « Android Auto : SOS dans la barre du haut, opérateurs anciens
+/// masqués… », choice 2).
+const carTeamMaxAge=Duration(hours:24);
+
+/// Other operators of the event (SARCADE terminals, not the APRS stations)
+/// seen within 24 h, the nearest first.
 List<Map<String,Object?>> carTeam(CarScreenInput i){
   final here=i.here;
   double dist(SarcadePosition p)=>here==null?double.infinity:distanceM(here,LatLng(p.lat,p.lon));
-  final others=i.positions.where((p)=>!p.isAprs&&p.deviceId!=i.me&&p.eventId==i.eventId).toList()
+  final others=i.positions.where((p)=>!p.isAprs&&p.deviceId!=i.me&&p.eventId==i.eventId&&i.now.difference(p.time)<carTeamMaxAge).toList()
     ..sort((a,b){final c=dist(a).compareTo(dist(b));return c!=0?c:a.label.toLowerCase().compareTo(b.label.toLowerCase());});
   return [
     for(final p in others.take(carMaxItems)){

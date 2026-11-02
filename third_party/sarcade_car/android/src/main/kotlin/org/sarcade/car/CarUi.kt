@@ -195,8 +195,13 @@ internal object CarUi {
      *    button, the SOS in the action strip at the top (red icon and the
      *    word « SOS »); the car then shows one section at a time (button
      *    « Rubriques » of the strip) instead of the tabs, the strip not
-     *    existing in the tabs of the Car App Library 1.7. */
-    const val SOS_IN_STRIP = false
+     *    existing in the tabs of the Car App Library 1.7.
+     *
+     *  Lot 23 (card « Android Auto : SOS dans la barre du haut… », choice
+     *  1, owner's photo of 2 Nov 2026, 20 h 17: « SOS » white on the blue
+     *  of Android Auto): the fallback is in force. No round button is left
+     *  in the car screens. */
+    const val SOS_IN_STRIP = true
 
     /** Neutral background of the round SOS button: white by day, dark grey
      *  by night. The Car App Library refuses a round button without a

@@ -1,4 +1,4 @@
-# Fiche de recette Android Auto (lot 20)
+# Fiche de recette Android Auto (lots 20 et 23)
 
 À dérouler dans la voiture, téléphone Android branché (ou en sans-fil), avec un second terminal qui joue le PCO (iPhone, PC ou navigateur). Compter 20 minutes. Noter pour chaque étape : conforme, non conforme (photo de l'écran de la voiture), ou non testable.
 
@@ -28,7 +28,7 @@ Ce que la CI vérifie déjà sans voiture : les données envoyées à la voiture
 | 2.1 | Ouvrir l'onglet Points | D'abord les points de l'événement, puis au plus 10 points hauts (icône montagne) avec leur altitude ; aucun relais |
 | 2.2 | Regarder la ligne d'un point | Courte, non coupée : « 3 km NO », « 3 km NE · Point haut · 412 m » |
 | 2.3 | Regarder à droite de chaque point | Une flèche d'itinéraire (plus de rond gris vide) |
-| 2.4 | Regarder le bouton SOS rond | Icône « SOS » rouge. Noter la couleur du fond du bouton. Si l'icône n'est pas rouge et lisible : non conforme, appliquer le repli décrit dans la PR (SOS dans la barre du haut) |
+| 2.4 | ~~Bouton SOS rond~~ | Remplacé au lot 23 par le SOS de la barre du haut : voir 4.1 |
 | 2.5 | Toucher la flèche d'un point | Google Maps ou Waze s'ouvre **déjà guidé** vers le point |
 | 2.6 | Revenir à SARCADE, toucher la ligne d'un autre point (pas la flèche) | Même résultat qu'en 2.5 |
 | 2.7 | Si aucune application de navigation ne s'ouvre | Un message clair apparaît (« Navigation impossible : installez Google Maps ou Waze sur le téléphone ») ; noter lequel des deux cas |
@@ -47,7 +47,19 @@ Ce que la CI vérifie déjà sans voiture : les données envoyées à la voiture
 | 3.8 | Second terminal du porteur (même indicatif) : le PCO lui envoie un ordre | L'ordre apparaît aussi dans l'onglet Ordres de la voiture ; Accepter depuis la voiture est accepté par le serveur (statut « accepté » chez le PCO) |
 | 3.9 | Accepter un ordre, puis dans l'onglet Ordres | Boutons drapeau (Je suis arrivé) et flèche d'itinéraire |
 
-## 4. Après la recette
+## 4. Lot 23 : SOS en haut, Équipe
+
+Depuis le lot 23, la voiture montre **une rubrique à la fois** : bouton « Rubriques » (trois traits) et « SOS » en haut à droite, plus d'onglets ni de bouton rond.
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 4.1 | Ouvrir SARCADE dans la voiture, regarder en haut à droite | Bouton « Rubriques » (trois traits) et bouton « SOS » avec icône rouge ; plus aucun bouton rond en bas à droite, dans aucune rubrique |
+| 4.2 | Toucher « SOS », puis Annuler | L'écran de confirmation de détresse s'ouvre, Annuler revient sans rien envoyer |
+| 4.3 | « Rubriques » › Équipe | Seulement les opérateurs vus depuis moins de 24 h (plus de PC-demo « vu il y a 8 j » ni PCO « 2 j ») |
+| 4.4 | Aucun autre opérateur actif depuis 24 h | Message « Personne d'autre en ligne » |
+| 4.5 | Changer 6 fois de suite de rubrique (Rubriques › Messages, Ordres, Points, Équipe…) | Aucun message d'erreur d'Android Auto ; noter si un écran « trop d'étapes » apparaît |
+
+## 5. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.
-- Pour le SOS (2.4) : si non conforme, demander le passage au repli (une ligne, voir la PR).
+- Pour le SOS (4.1) : le repli du lot 20 est en place (`CarUi.SOS_IN_STRIP = true`) ; revenir aux onglets avec bouton rond = remettre `false` (une ligne).
