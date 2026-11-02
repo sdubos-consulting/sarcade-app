@@ -8,6 +8,7 @@ import '../../ui/theme.dart' show themeMode;
 import 'tv_code.dart';
 import 'tv_nearby.dart';
 import 'tv_qr_scan_page.dart';
+import 'tv_screen_buttons.dart';
 import 'tv_theme.dart';
 import 'tv_view.dart';
 import '../../ui/link_status.dart';
@@ -211,7 +212,10 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
   /// « Jour / Nuit / Automatique » of this screen.
   Future<void> _theme(Map<String,dynamic> d) async {
     final t=await chooseTvTheme(context,d);
-    if(t==null)return;
+    if(t!=null)await _setTheme(d,t);
+  }
+
+  Future<void> _setTheme(Map<String,dynamic> d,String t) async {
     try{
       await widget.api.setDisplayTheme(widget.eventId,'${d['id']}',t);
       _say('tv.themeSet');
@@ -220,6 +224,24 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
       _say(e.statusCode==401||e.statusCode==403?'tv.signIn':'event.offline');
     }catch(_){
       _say('event.offline');
+    }
+  }
+
+  /// Mode button of the line: one tap goes to the next mode (lot 19).
+  Future<void> _nextTheme(Map<String,dynamic> d)=>_setTheme(d,nextTvTheme(tvThemeOf(d)));
+
+  /// Actions of the menu ⋮ and of the buttons of the line: the same calls.
+  void _act(Map<String,dynamic> d,String a){
+    switch(a){
+      case 'view':_view(d,mine:true);
+      case 'auto':_view(d,mine:false);
+      case 'messages':_messages(d);
+      case 'revoke':_revoke(d);
+      case 'sos':_clearSos(d);
+      case 'rename':_rename(d);
+      case 'identify':_identify(d);
+      case 'theme':_theme(d);
+      case 'nextTheme':_nextTheme(d);
     }
   }
 
@@ -265,7 +287,7 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
 
   @override
   Widget build(BuildContext context){
-    final t=Theme.of(context); final all=_list;
+    final t=Theme.of(context); final all=_list; final wide=tvButtonsWide(context);
     final list=all==null?null:tvVisibleScreens(all,showOld:_showOld);
     final old=all==null?0:all.length-tvVisibleScreens(all,showOld:false).length;
     return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,mainAxisSize:MainAxisSize.min,children:[
@@ -280,7 +302,8 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
           trailing:OutlinedButton(onPressed:_load,child:Text(S.t('common.retry'))))
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))
         else if(list.isEmpty)ListTile(contentPadding:EdgeInsets.zero,title:Text(S.t('tv.none')))
-        else for(final d in list)ListTile(contentPadding:EdgeInsets.zero,
+        else for(final d in list)Column(key:ValueKey('tv-screen-${d['id']}'),crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          ListTile(contentPadding:EdgeInsets.zero,
           leading:Icon(d['active']==true?(d['alert']==true?Icons.sos:Icons.tv):Icons.tv_off,
             color:d['active']==true?(d['alert']==true?t.colorScheme.error:Colors.green):null),
           // Name as title, then last activity, the code in small, « vue de… ».
@@ -292,21 +315,27 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
               if(d['active']==true&&'${d['view_from']??''}'.isNotEmpty)S.t('tv.viewOf',{'who':d['view_from']})].join(' · '),
               style:t.textTheme.bodySmall),
           ]),
-          trailing:d['active']==true?PopupMenuButton<String>(
-            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='messages')_messages(d);if(a=='revoke')_revoke(d);if(a=='sos')_clearSos(d);if(a=='rename')_rename(d);if(a=='identify')_identify(d);if(a=='theme')_theme(d);},
+          // Lot 19: the rare actions stay in ⋮; on a phone, all but
+          // « Envoyer ma vue ».
+          trailing:d['active']==true?PopupMenuButton<String>(key:ValueKey('tv-menu-${d['id']}'),
+            onSelected:(a)=>_act(d,a),
             itemBuilder:(_)=>[
-              PopupMenuItem(value:'view',child:ListTile(leading:const Icon(Icons.cast),title:Text(S.t('tv.sendView')),subtitle:Text(S.t('tv.sendViewHelp2')))),
-              PopupMenuItem(value:'identify',child:ListTile(leading:const Icon(Icons.highlight_alt),title:Text(S.t('tv.identify')))),
+              if(!wide)PopupMenuItem(value:'identify',child:ListTile(leading:const Icon(Icons.highlight_alt),title:Text(S.t('tv.identify')))),
               PopupMenuItem(value:'rename',child:ListTile(leading:const Icon(Icons.edit_outlined),title:Text(S.t('tv.rename')))),
               PopupMenuItem(value:'auto',child:ListTile(leading:const Icon(Icons.fit_screen),title:Text(S.t('tv.auto')))),
-              PopupMenuItem(value:'theme',child:ListTile(leading:const Icon(Icons.brightness_6_outlined),title:Text(S.t('tv.theme')),
-                subtitle:Text(S.t('tv.theme.${tvThemeOf(d)}')))),
-              PopupMenuItem(value:'messages',child:ListTile(leading:Icon(d['messages']==false?Icons.chat_outlined:Icons.speaker_notes_off_outlined),
-                title:Text(S.t(d['messages']==false?'tv.messagesShow':'tv.messagesHide')))),
-              PopupMenuItem(value:'sos',enabled:d['can_clear_alert']!=false,
-                child:ListTile(leading:const Icon(Icons.sos),title:Text(S.t('tv.clearSos')))),
+              if(!wide)...[
+                PopupMenuItem(value:'theme',child:ListTile(leading:const Icon(Icons.brightness_6_outlined),title:Text(S.t('tv.theme')),
+                  subtitle:Text(S.t('tv.theme.${tvThemeOf(d)}')))),
+                PopupMenuItem(value:'messages',child:ListTile(leading:Icon(d['messages']==false?Icons.chat_outlined:Icons.speaker_notes_off_outlined),
+                  title:Text(S.t(d['messages']==false?'tv.messagesShow':'tv.messagesHide')))),
+                PopupMenuItem(value:'sos',enabled:d['can_clear_alert']!=false,
+                  child:ListTile(leading:const Icon(Icons.sos),title:Text(S.t('tv.clearSos')))),
+              ],
               PopupMenuItem(value:'revoke',child:ListTile(leading:const Icon(Icons.tv_off),title:Text(S.t('tv.revoke')))),
             ]):null),
+          if(d['active']==true)Padding(padding:const EdgeInsets.only(bottom:8),child:TvScreenButtons(screen:d,wide:wide,
+            onAction:(a)=>_act(d,a==TvAction.theme?'nextTheme':a))),
+        ]),
         if(old>0)Align(alignment:Alignment.centerLeft,child:OutlinedButton(key:const ValueKey('tv-show-old'),onPressed:()=>setState(()=>_showOld=!_showOld),
           child:Text(_showOld?S.t('tv.hideOld'):S.t('tv.showOld',{'n':old})))),
       ]));

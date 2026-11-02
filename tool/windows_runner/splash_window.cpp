@@ -44,6 +44,7 @@ constexpr ULONGLONG kBarPeriodMs = 1400;
 std::atomic<HWND> g_window{nullptr};
 std::atomic<bool> g_closed{false};
 std::atomic<bool> g_started{false};
+HANDLE g_thread = nullptr;
 HINSTANCE g_instance = nullptr;
 // Used by the thread of the start window only.
 bool g_light = false;
@@ -74,7 +75,7 @@ long long MsSinceProcessStart() {
 
 // Appends a line (UTF-8) to the startup log of the application:
 // %LOCALAPPDATA%\SARCADE\logs\demarrage.log (lib/src/platform).
-void Log(const char* text) {
+void AppendLog(const char* text) {
   wchar_t base[MAX_PATH];
   const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
   if (n == 0 || n >= MAX_PATH) {
@@ -314,7 +315,7 @@ DWORD WINAPI Run(LPVOID) {
              "natif : fen\xC3\xAA" "tre de d\xC3\xA9" "marrage affich\xC3\xA9"
              "e en %lld ms (splash_ms=%lld)",
              ms, ms);
-    Log(line);
+    AppendLog(line);
     // Flutter may have drawn its first image already.
     if (g_closed.load()) {
       DestroyWindow(hwnd);
@@ -342,11 +343,10 @@ void Start(HINSTANCE instance) {
     return;
   }
   g_instance = instance;
-  HANDLE thread = CreateThread(nullptr, 0, Run, nullptr, 0, nullptr);
-  if (thread != nullptr) {
-    CloseHandle(thread);
-  }
+  g_thread = CreateThread(nullptr, 0, Run, nullptr, 0, nullptr);
 }
+
+void Log(const char* text) { AppendLog(text); }
 
 void Close() {
   if (g_closed.exchange(true)) {
@@ -358,10 +358,23 @@ void Close() {
            "natif : premi\xC3\xA8" "re image de Flutter en %lld ms, fen\xC3\xAA"
            "tre de d\xC3\xA9" "marrage ferm\xC3\xA9" "e (first_frame_ms=%lld)",
            ms, ms);
-  Log(line);
+  AppendLog(line);
   HWND hwnd = g_window.load();
   if (hwnd != nullptr) {
     PostMessageW(hwnd, WM_CLOSE, 0, 0);
+  }
+}
+
+void Stop() {
+  g_closed.store(true);
+  HWND hwnd = g_window.load();
+  if (hwnd != nullptr) {
+    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+  }
+  if (g_thread != nullptr) {
+    WaitForSingleObject(g_thread, 2000);
+    CloseHandle(g_thread);
+    g_thread = nullptr;
   }
 }
 
