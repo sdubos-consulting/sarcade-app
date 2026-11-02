@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:sarcade_compass/sarcade_compass.dart';
 import '../features/compass/compass_reading.dart';
 
@@ -35,7 +37,24 @@ Future<bool> acquireSingleInstance() async {
 }
 
 /// Ends the process, used when a second Windows instance is refused.
-void quitApp()=>exit(0);
+void quitApp()=>exitProcess(0);
+
+/// Native runner of Windows (tool/windows_runner/runner_channel.h).
+const _runner=MethodChannel('sarcade/runner');
+
+/// Ends the process with [code]. On Windows the runner closes its start
+/// window first, then its window, and returns [code] (card « Windows :
+/// pastille de liaison grise… », lot 19, point 2: exit() while the start
+/// window and the engine ran crashed with 0xc0000409). Elsewhere, or with
+/// a runner without the channel, exit().
+void exitProcess(int code){unawaited(_quit(code));}
+
+Future<void> _quit(int code) async {
+  if(Platform.isWindows){
+    try{await _runner.invokeMethod<void>('quit',code);return;}catch(_){}
+  }
+  exit(code);
+}
 
 /// Windows keeps data under %LOCALAPPDATA%\SARCADE\data, outside OneDrive.
 Future<void> initHiveStorage() async {
@@ -146,4 +165,3 @@ void writeStartupLog(String line){
 /// File of the smoke report asked by the CI, or null in normal use.
 String? smokeReportPath()=>Platform.environment['SARCADE_SMOKE_FILE'];
 void writeSmokeReport(String text){final p=smokeReportPath();if(p==null)return;try{File(p).writeAsStringSync(text,flush:true);}catch(_){}}
-void exitProcess(int code)=>exit(code);
