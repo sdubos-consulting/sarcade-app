@@ -20,6 +20,7 @@ import '../../services/notification_service.dart';
 import '../../services/sarcade_api.dart';
 import 'photo_attachment.dart';
 import 'message_deletion.dart';
+import 'message_selection.dart';
 import 'messages_nav.dart';
 import 'chat_bottom.dart';
 import '../../services/notification_keys.dart';
@@ -74,6 +75,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(widget.initialText!=null)_text.text=widget.initialText!;
    _text.addListener(_onTextChanged);
    widget.navigator?.attach(_backFn);
+   _selection.addListener(_onSelection);
    _refreshGroups();
    _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
      deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
@@ -113,6 +115,8 @@ class _MessagesPageState extends State<MessagesPage>{
  /// A received message shown on screen goes to « read » by itself.
  @override void didUpdateWidget(MessagesPage old){
    super.didUpdateWidget(old);
+   // Tab left: no selection kept behind the map (Back would stay on it).
+   if(!widget.active&&old.active)_selection.clear(notify:false);
    // Back on the Messages tab: same opening as a new screen (last message).
    if(widget.active&&!old.active){
      _refreshGroups();
@@ -297,11 +301,12 @@ class _MessagesPageState extends State<MessagesPage>{
  /// stays in this conversation. List shown, or computer (list always
  /// visible): false, Messages closes.
  bool _backToList(){
+   if(_selection.clear())return true;
    if(_wide||!_chatOpen||!mounted)return false;
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -348,6 +353,7 @@ class _MessagesPageState extends State<MessagesPage>{
  void _open(String key){
    if(!_chatOpen)setState(()=>_chatOpen=true);
    if(key==_conv)return;
+   _selection.clear(notify:false);
    _drafts.keep(_conv,_text.text); _text.text=_drafts.take(key);
    setState((){_conv=key;_maxBuilt=-1;_separator=SeparatorWatch();_atBottom=true;});
    WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
@@ -490,6 +496,8 @@ class _MessagesPageState extends State<MessagesPage>{
      if(!m.deleted)ListTile(leading:const Icon(Icons.copy),title:Text(S.t('messages.copy')),onTap:()=>Navigator.pop(c,'copy')),
      ListTile(leading:const Icon(Icons.info_outline),title:Text(S.t('messages.info')),onTap:()=>Navigator.pop(c,'info')),
      if(!mine&&peerOf(_conv)==null)ListTile(leading:const Icon(Icons.chat_outlined),title:Text(S.t('messages.reply',{'who':m.senderId})),onTap:()=>Navigator.pop(c,'direct')),
+     // Several messages at once (lot 21): this one already checked.
+     ListTile(key:const ValueKey('msg-select'),leading:const Icon(Icons.check_circle_outline),title:Text(S.t('messages.select')),onTap:()=>Navigator.pop(c,'select')),
      ListTile(leading:const Icon(Icons.delete_outline),title:Text(S.t('messages.delete')),onTap:()=>Navigator.pop(c,'delete')),
    ])));
    if(choice==null||!mounted)return;
@@ -498,6 +506,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(choice=='info'){_showInfo(m,acks);return;}
    if(choice=='direct'){_open(directKey(m.senderId));return;}
    if(choice=='delete'){await _delete(m);return;}
+   if(choice=='select'){_selection.start(m.id);_selectFocus.requestFocus();return;}
    await _ack(m,choice);
  }
 
@@ -509,7 +518,11 @@ class _MessagesPageState extends State<MessagesPage>{
    final everyone=canDeleteForEveryone(m,widget.actorId,pco:pco,now:DateTime.now());
    final choice=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
      title:Text(S.t('messages.deleteTitle')),
-     content:Text(everyone?S.t(m.senderId==widget.actorId?'messages.deleteHelpMine':'messages.deleteHelpPco'):S.t('messages.deleteHelpMe')),
+     content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+       Text(everyone?S.t(m.senderId==widget.actorId?'messages.deleteHelpMine':'messages.deleteHelpPco'):S.t('messages.deleteHelpMe')),
+       // Distress and orders: never for everyone (lot 21).
+       if(keptForEveryone(m))Padding(padding:const EdgeInsets.only(top:8),child:Text(S.t('messages.selectProtected'))),
+     ]),
      actions:[
        TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
        TextButton(onPressed:()=>Navigator.pop(c,'me'),child:Text(S.t('messages.deleteForMe'))),
@@ -517,17 +530,55 @@ class _MessagesPageState extends State<MessagesPage>{
          onPressed:()=>Navigator.pop(c,'all'),child:Text(S.t('messages.deleteForAll'))),
      ]));
    if(choice==null)return;
-   if(choice=='me'){
-     await widget.store.setPreference(hiddenMessagesKey(widget.eventId),formatHidden({..._hidden,m.id}));
-     if(mounted)setState((){});
-     return;
-   }
-   final now=DateTime.now().toUtc();
+   if(choice=='me'){await _hideForMe([m.id]);return;}
+   await _deleteForEveryone(m,pco:pco,now:DateTime.now().toUtc());
+   if(mounted)setState((){});
+ }
+
+ /// « Supprimer pour moi »: hidden on this device only.
+ Future<void> _hideForMe(Iterable<String> ids) async {
+   await widget.store.setPreference(hiddenMessagesKey(widget.eventId),formatHidden({..._hidden,...ids}));
+   if(mounted)setState((){});
+ }
+
+ /// « Supprimer pour tous »: one deletion per message, through the Outbox
+ /// (no grouped route on the server).
+ Future<void> _deleteForEveryone(SarcadeMessage m,{required bool pco,required DateTime now}) async {
    final byPco=pco&&m.senderId!=widget.actorId;
    await widget.store.cacheMessage(deletedMessage(m.toJson(),by:widget.actorId,byPco:byPco,at:now));
    await widget.sync.queue(objectId:m.id,objectType:'message',action:'delete',payload:{'id':m.id,'event_id':widget.eventId,'deleted_by':widget.actorId});
-   if(mounted)setState((){});
  }
+
+ // --- Selection of several messages (lot 21, 2 Nov 2026) ---
+ final _selection=MessageSelection();
+ final _selectFocus=FocusNode(debugLabel:'messages-selection');
+ void _onSelection(){if(mounted)setState((){});}
+ void _toggleSelected(String id){_selection.toggle(id);if(_selection.active)_selectFocus.requestFocus();}
+ List<SarcadeMessage> get _selectedMessages=>selectedIn(_messages,_selection);
+
+ Future<void> _copySelection() async {
+   final list=_selectedMessages;
+   await Clipboard.setData(ClipboardData(text:selectionCopyText(list)));
+   _snack(S.t('messages.selectCopied',{'n':list.where((m)=>!m.deleted).length}));
+   _selection.clear();
+ }
+
+ Future<void> _deleteSelection() async {
+   final list=_selectedMessages;
+   if(list.isEmpty){_selection.clear();return;}
+   final pco=isPco(widget.actorId);
+   final now=DateTime.now();
+   final choice=await showSelectionDeleteDialog(context,count:list.length,
+     everyone:canDeleteAllForEveryone(list,widget.actorId,pco:pco,now:now),
+     mine:list.every((m)=>m.senderId==widget.actorId),kept:list.any(keptForEveryone));
+   if(choice==null||!mounted)return;
+   if(choice=='me'){await _hideForMe(list.map((m)=>m.id));}
+   else{for(final m in list){await _deleteForEveryone(m,pco:pco,now:now.toUtc());}}
+   _selection.clear();
+ }
+
+ MessageSelectionBar _selectionBar()=>MessageSelectionBar(count:_selectedMessages.length,onExit:()=>_selection.clear(),onDelete:_deleteSelection,
+   onCopy:_selectedMessages.any((m)=>!m.deleted)?_copySelection:null);
 
  Widget _bubble(SarcadeMessage m,List<SarcadeAck> ma,{required bool showAuthor,bool named=true}){
    final t=Theme.of(context); final s=t.colorScheme;
@@ -758,7 +809,8 @@ class _MessagesPageState extends State<MessagesPage>{
          if(m.senderId!=widget.actorId)_autoRead(m,ma);
          final newDay=i==0||dayKey(messages[i-1].createdAt)!=dayKey(m.createdAt);
          final sameAuthor=!newDay&&i>0&&messages[i-1].senderId==m.senderId;
-         final b=_bubble(m,ma,showAuthor:!sameAuthor,named:showAuthor);
+         final b=SelectableMessage(id:m.id,selecting:_selection.active,selected:_selection.contains(m.id),onToggle:()=>_toggleSelected(m.id),
+           child:_bubble(m,ma,showAuthor:!sameAuthor,named:showAuthor));
          if(i!=firstUnread&&!newDay)return b;
          return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
            if(newDay)Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Center(child:Container(
@@ -788,7 +840,7 @@ class _MessagesPageState extends State<MessagesPage>{
  @override Widget build(BuildContext context){
    final by=_byId, acks=_acks;
    final group=_group;
-   return LayoutBuilder(builder:(context,c){
+   return MessageSelectionScope(selection:_selection,focusNode:_selectFocus,child:LayoutBuilder(builder:(context,c){
      final wide=c.maxWidth>=900; _wide=wide;
      // Star in the header of the conversation, left of ⋮, one click (lot 10C).
      final isFav=_favConvs.contains(_conv);
@@ -822,11 +874,16 @@ class _MessagesPageState extends State<MessagesPage>{
              Expanded(child:_searchField()),newChat,newGroup,?adrasec]))),
            const VerticalDivider(width:1),
            const SizedBox(width:12),
-           _convIcon(_conv,by),const SizedBox(width:12),
-           Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
-           ?pending,
-           const Spacer(),
-           ?editGroup,favButton,?close,const LinkStatusPill(),const SizedBox(width:4),
+           // Selection (lot 21): « N sélectionnés », Copier, Supprimer in place of the conversation.
+           if(_selection.active)Expanded(child:_selectionBar())
+           else...[
+             _convIcon(_conv,by),const SizedBox(width:12),
+             Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
+             ?pending,
+             const Spacer(),
+             ?editGroup,favButton,?close,
+           ],
+           const LinkStatusPill(),const SizedBox(width:4),
          ])),
          const Divider(height:1),
          Expanded(child:Row(children:[
@@ -837,8 +894,9 @@ class _MessagesPageState extends State<MessagesPage>{
        ]));
      }
      final back=!wide&&widget.initialPeer==null&&widget.initialText==null;
+     final sel=_selection.active?_selectionBar():null;
      return Scaffold(
-       appBar:LinkedAppBar(
+       appBar:sel!=null?LinkedAppBar(automaticallyImplyLeading:false,leading:sel.exitButton,titleSpacing:0,title:sel.title,actions:sel.actions):LinkedAppBar(
          leading:back?BackButton(onPressed:()=>setState(()=>_chatOpen=false)):null,
          titleSpacing:back?0:null,
          title:Row(children:[
@@ -849,7 +907,7 @@ class _MessagesPageState extends State<MessagesPage>{
          actions:[?editGroup,favButton,?close]),
        body:_chat(by,acks),
      );
-   });
+   }));
  }
 }
 
