@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -108,11 +110,52 @@ double textMarkerHeight(double fontSize)=>(fontSize*2.6+10).clamp(48.0,220.0);
 /// 30 Oct 2026, 10 h 39, validated 10 h 40): vertex dot of 8 px, white with
 /// the colour of the object as border; move handle = arrowed cross of 12 px
 /// without a circle; every handle inside an invisible touch area of 44 px;
-/// discreet dots in the middle of the sides to add a vertex.
+/// discreet dots in the middle of the sides to add a vertex. These sizes
+/// stay for the mouse (card « Dessin au doigt : poignées trop petites »,
+/// lot 19, choice 2).
 const vertexHandlePx=8.0, moveHandlePx=12.0, handleTouchPx=44.0, midHandlePx=6.0;
 
-Widget _vertexDot(Color color)=>Center(child:Container(width:vertexHandlePx,height:vertexHandlePx,
-  decoration:BoxDecoration(color:Colors.white,shape:BoxShape.circle,border:Border.all(color:color,width:1.5),
+/// Touch screen (lot 19, choice 1): corners and vertices of 18 px, middle
+/// of the sides of 12 px, move cross of 28 px in a semi-transparent circle,
+/// touch area of 56 px.
+const fingerVertexHandlePx=18.0, fingerMoveHandlePx=28.0, fingerHandleTouchPx=56.0, fingerMidHandlePx=12.0;
+
+/// Sizes of the handles for the mouse or for the finger.
+typedef HandleSizes=({double vertex,double mid,double move,double touch});
+const mouseHandleSizes=(vertex:vertexHandlePx,mid:midHandlePx,move:moveHandlePx,touch:handleTouchPx);
+const fingerHandleSizes=(vertex:fingerVertexHandlePx,mid:fingerMidHandlePx,move:fingerMoveHandlePx,touch:fingerHandleTouchPx);
+
+/// True when the handles are drawn for the finger. Rule (lot 19): the kind
+/// of the last pointer pressed (or hovering, for a mouse) decides; before
+/// any, a phone or a tablet (Android, iOS, web included) means finger.
+final ValueNotifier<bool> fingerHandles=ValueNotifier<bool>(isTouchPlatform(defaultTargetPlatform));
+
+bool isTouchPlatform(TargetPlatform p)=>p==TargetPlatform.android||p==TargetPlatform.iOS;
+
+/// Finger for a touch or a stylus, mouse for a mouse or a trackpad, null
+/// for an unknown kind (no change).
+bool? isFingerPointer(PointerDeviceKind kind)=>switch(kind){
+  PointerDeviceKind.touch||PointerDeviceKind.stylus||PointerDeviceKind.invertedStylus=>true,
+  PointerDeviceKind.mouse||PointerDeviceKind.trackpad=>false,
+  _=>null,
+};
+
+bool _watchingPointers=false;
+void _watchPointers(){
+  if(_watchingPointers)return;
+  _watchingPointers=true;
+  GestureBinding.instance.pointerRouter.addGlobalRoute(notePointerForHandles);
+}
+
+/// Follows the last pointer used (global route of the pointer router).
+void notePointerForHandles(PointerEvent e){
+  if(e is! PointerDownEvent&&e is! PointerHoverEvent)return;
+  final finger=isFingerPointer(e.kind);
+  if(finger!=null&&fingerHandles.value!=finger)fingerHandles.value=finger;
+}
+
+Widget _vertexDot(Color color,[double size=vertexHandlePx])=>Center(child:Container(width:size,height:size,
+  decoration:BoxDecoration(color:Colors.white,shape:BoxShape.circle,border:Border.all(color:color,width:size>vertexHandlePx?2.5:1.5),
     boxShadow:const [BoxShadow(blurRadius:2,color:Colors.black38)])));
 
 /// Middle of each side of [f] where a vertex can be added: (index of the
@@ -129,36 +172,48 @@ List<(int,LatLng)> sideMiddles(MapFeature f){
 /// Draggable handles of the selection: vertex, corner, radius and side
 /// handles for one object, then the move handle (the centre of all the
 /// selected objects when several are selected). [toLatLng] converts a
-/// global pointer position to map coordinates.
+/// global pointer position to map coordinates. Sizes follow the last
+/// pointer used ([fingerHandles]).
 Widget buildHandleLayer(DrawingController c,LatLng Function(Offset global) toLatLng){
+  if(c.selection.isEmpty)return const SizedBox.shrink();
+  _watchPointers();
+  return ValueListenableBuilder<bool>(valueListenable:fingerHandles,
+    builder:(_,finger,_)=>_handleLayer(c,toLatLng,finger?fingerHandleSizes:mouseHandleSizes));
+}
+
+Widget _handleLayer(DrawingController c,LatLng Function(Offset global) toLatLng,HandleSizes size){
   final all=c.selection;
   if(all.isEmpty)return const SizedBox.shrink();
   final f=all.first;
   final markers=<Marker>[];
   Marker handle(LatLng p,Widget look,{required void Function(LatLng from,LatLng to) onDrag,VoidCallback? onStart,String? key,MouseCursor cursor=SystemMouseCursors.move})=>Marker(
-    point:p,width:handleTouchPx,height:handleTouchPx,
-    child:_Handle(key:key==null?null:ValueKey(key),look:look,cursor:cursor,toLatLng:toLatLng,onStart:onStart??c.beginEdit,onDrag:onDrag,onEnd:c.endEdit),
+    point:p,width:size.touch,height:size.touch,
+    child:_Handle(key:key==null?null:ValueKey(key),look:look,size:size.touch,cursor:cursor,toLatLng:toLatLng,onStart:onStart??c.beginEdit,onDrag:onDrag,onEnd:c.endEdit,onHold:c.holdHandle),
   );
   final anchor=f.anchor;
   final colour=_c(f.color);
+  final dot=_vertexDot(colour,size.vertex);
   if(all.length==1){
     switch(f.kind){
       case FeatureKind.circle:
         final center=f.points[0];
-        markers.add(handle(destination(center,f.radiusM??1,90),_vertexDot(colour),cursor:SystemMouseCursors.resizeLeftRight,onDrag:(_,to)=>c.setRadius(distanceM(center,to))));
+        markers.add(handle(destination(center,f.radiusM??1,90),dot,key:'radius-handle',cursor:SystemMouseCursors.resizeLeftRight,onDrag:(_,to)=>c.setRadius(distanceM(center,to))));
       case FeatureKind.rectangle:
-        for(var i=0;i<2;i++){markers.add(handle(f.points[i],_vertexDot(colour),cursor:cornerCursor(f.points[i],anchor),onDrag:(_,to)=>c.moveVertex(i,to)));}
+        // Four corners (lot 19, choice 3); the object keeps its 2 opposite
+        // corners, the 2 others move the matching sides.
+        final corners=rectangleCorners(f.points[0],f.points[1]);
+        for(var i=0;i<4;i++){markers.add(handle(corners[i],dot,key:'corner-$i',cursor:cornerCursor(corners[i],anchor),onDrag:(_,to)=>c.moveRectangleCorner(i,to)));}
       case FeatureKind.line:
       case FeatureKind.arrow:
       case FeatureKind.zone:
       case FeatureKind.measure:
         if(f.points.length<=60){
           for(final (i,m) in sideMiddles(f)){
-            markers.add(handle(m,Center(child:Container(width:midHandlePx,height:midHandlePx,
+            markers.add(handle(m,Center(child:Container(width:size.mid,height:size.mid,
                 decoration:BoxDecoration(color:Colors.white.withValues(alpha:0.85),shape:BoxShape.circle,border:Border.all(color:colour.withValues(alpha:0.7))))),
               cursor:addVertexCursor,onStart:(){c.beginEdit();c.insertVertex(i,m);},onDrag:(_,to)=>c.moveVertex(i,to)));
           }
-          for(var i=0;i<f.points.length;i++){markers.add(handle(f.points[i],_vertexDot(colour),cursor:cornerCursor(f.points[i],anchor),onDrag:(_,to)=>c.moveVertex(i,to)));}
+          for(var i=0;i<f.points.length;i++){markers.add(handle(f.points[i],dot,cursor:cornerCursor(f.points[i],anchor),onDrag:(_,to)=>c.moveVertex(i,to)));}
         }
       default:
         break;
@@ -167,7 +222,11 @@ Widget buildHandleLayer(DrawingController c,LatLng Function(Offset global) toLat
   // Move handle last so it stays on top of the others.
   final anchors=[for(final x in all)x.anchor];
   final centre=LatLng(anchors.map((a)=>a.latitude).reduce((a,b)=>a+b)/anchors.length,anchors.map((a)=>a.longitude).reduce((a,b)=>a+b)/anchors.length);
-  markers.add(handle(centre,Center(child:Icon(Icons.open_with,size:moveHandlePx,color:colour,shadows:const [Shadow(blurRadius:3,color:Colors.white),Shadow(blurRadius:2,color:Colors.black54)])),
+  final cross=Icon(Icons.open_with,size:size.move,color:colour,shadows:const [Shadow(blurRadius:3,color:Colors.white),Shadow(blurRadius:2,color:Colors.black54)]);
+  // Finger: the cross sits in a semi-transparent circle (lot 19, choice 1).
+  final finger=size.move>moveHandlePx;
+  markers.add(handle(centre,Center(child:finger?Container(width:size.move+12,height:size.move+12,alignment:Alignment.center,
+      decoration:BoxDecoration(color:Colors.white.withValues(alpha:0.6),shape:BoxShape.circle,border:Border.all(color:colour.withValues(alpha:0.6),width:1.5)),child:cross):cross),
     key:'move-handle',onDrag:(from,to)=>c.moveSelected(to.latitude-from.latitude,to.longitude-from.longitude)));
   return MarkerLayer(markers:markers);
 }
@@ -180,21 +239,48 @@ MouseCursor cornerCursor(LatLng corner,LatLng centre)=>
   (corner.latitude>=centre.latitude)==(corner.longitude>=centre.longitude)?SystemMouseCursors.resizeUpRightDownLeft:SystemMouseCursors.resizeUpLeftDownRight;
 
 class _Handle extends StatefulWidget {
-  final Widget look; final MouseCursor cursor;
+  final Widget look; final MouseCursor cursor; final double size;
   final LatLng Function(Offset) toLatLng;
   final VoidCallback onStart, onEnd;
   final void Function(LatLng from,LatLng to) onDrag;
-  const _Handle({super.key,required this.look,required this.cursor,required this.toLatLng,required this.onStart,required this.onDrag,required this.onEnd});
+  final void Function(bool held) onHold;
+  const _Handle({super.key,required this.look,required this.size,required this.cursor,required this.toLatLng,required this.onStart,required this.onDrag,required this.onEnd,required this.onHold});
   @override State<_Handle> createState()=>_HandleState();
 }
 
 class _HandleState extends State<_Handle> {
   LatLng? _last;
-  @override Widget build(BuildContext context)=>MouseRegion(cursor:widget.cursor,child:GestureDetector(
+  bool _held=false;
+
+  void _start(DragStartDetails d){_last=widget.toLatLng(d.globalPosition);_held=true;widget.onHold(true);widget.onStart();}
+  void _update(DragUpdateDetails d){final to=widget.toLatLng(d.globalPosition);final from=_last??to;_last=to;widget.onDrag(from,to);}
+  void _end(){_last=null;widget.onEnd();_release();}
+  void _release(){if(_held){_held=false;widget.onHold(false);}}
+
+  @override void dispose(){
+    // Handle removed while held (selection changed): free the map after
+    // this frame, not while the tree is being finalised.
+    if(_held){final hold=widget.onHold;WidgetsBinding.instance.addPostFrameCallback((_)=>hold(false));}
+    super.dispose();
+  }
+
+  @override Widget build(BuildContext context)=>MouseRegion(cursor:widget.cursor,child:RawGestureDetector(
     behavior:HitTestBehavior.opaque,
-    onPanStart:(d){_last=widget.toLatLng(d.globalPosition);widget.onStart();},
-    onPanUpdate:(d){final to=widget.toLatLng(d.globalPosition);final from=_last??to;_last=to;widget.onDrag(from,to);},
-    onPanEnd:(_){_last=null;widget.onEnd();},
-    child:SizedBox(width:handleTouchPx,height:handleTouchPx,child:widget.look),
+    gestures:{HandleDragRecognizer:GestureRecognizerFactoryWithHandlers<HandleDragRecognizer>(
+      ()=>HandleDragRecognizer(debugOwner:this),
+      (r){r..onStart=_start..onUpdate=_update..onEnd=((_)=>_end())..onCancel=_end;},
+    )},
+    child:SizedBox(width:widget.size,height:widget.size,child:widget.look),
   ));
+}
+
+/// Drag of a handle. With a finger or a stylus, the handle wins the gesture
+/// arena as soon as it is touched (lot 19, choice 4): the map neither pans
+/// nor zooms while a finger holds a handle. With a mouse, the usual drag.
+class HandleDragRecognizer extends PanGestureRecognizer {
+  HandleDragRecognizer({super.debugOwner});
+  @override void addAllowedPointer(PointerDownEvent event){
+    super.addAllowedPointer(event);
+    if(isFingerPointer(event.kind)==true)resolvePointer(event.pointer,GestureDisposition.accepted);
+  }
 }

@@ -31,6 +31,7 @@ import '../meshcore/meshcore_link.dart';
 import '../meshcore/meshcore_page.dart';
 import '../../ui/overlay_page.dart';
 import '../../models/comm_group.dart' show myRoles;
+import '../../offline/event_access.dart';
 import '../../offline/sync_service.dart';
 import '../../offline/unsent_page.dart';
 import '../../platform/platform_services.dart';
@@ -39,7 +40,9 @@ import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
 import '../../modules/adrasec/aprs/aprs_models.dart' show linkState;
 import '../../services/event_names.dart';
+import '../map/map_load_status.dart';
 import '../navigation/road_graph_service.dart';
+import 'link_diagnostics.dart';
 
 /// green / orange / red / off → colour of the dot.
 Color stateColor(String? s)=>switch(s){'green'||'ok'||'connected'=>Colors.green,'orange'||'degraded'||'waiting'=>Colors.orange,
@@ -66,7 +69,7 @@ bool diagnosticsAlert()=>(OfflineSyncService.active?.unsent??0)>0;
 
 /// Diagnostic over the map, one tap from the link dot or the red banner.
 Future<void> showDiagnosticsSheet(BuildContext context,{required SarcadeApi api,required String server,required String eventId,
-    String? actorId,bool failedAgain=false,VoidCallback? onSignIn})=>showModalBottomSheet<void>(context:context,
+    String? actorId,bool failedAgain=false,VoidCallback? onSignIn,VoidCallback? onChooseEvent})=>showModalBottomSheet<void>(context:context,
   isScrollControlled:true,showDragHandle:true,useSafeArea:true,constraints:const BoxConstraints(maxWidth:720),
   builder:(c)=>FractionallySizedBox(heightFactor:0.9,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     Padding(padding:const EdgeInsets.fromLTRB(20,0,8,0),child:Row(children:[
@@ -75,7 +78,8 @@ Future<void> showDiagnosticsSheet(BuildContext context,{required SarcadeApi api,
     ])),
     Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,0,16,24),children:[
       DiagnosticsPanel(api:api,server:server,eventId:eventId,actorId:actorId,failedAgain:failedAgain,
-        onSignIn:onSignIn==null?null:(){Navigator.pop(c);onSignIn();}),
+        onSignIn:onSignIn==null?null:(){Navigator.pop(c);onSignIn();},
+        onChooseEvent:onChooseEvent==null?null:(){Navigator.pop(c);onChooseEvent();}),
     ])),
   ])));
 
@@ -88,6 +92,19 @@ String diagnosticsReport(List<DiagLine> lines,{DateTime? at}){
     b..write('\n')..write(l.label)..write(' : ')..write(l.value)..write(l.state==null?'':' [${l.state}]');
   }
   return b.toString();
+}
+
+/// Lines of « Copier le rapport »: Serveur and Terminal, no longer shown at
+/// the top of Paramètres › Diagnostic (lot 19, 22 h 18, point 8), are added
+/// at the end of the « Cet appareil » block.
+List<DiagLine> reportLines(List<DiagLine> all,{required String server,String? device}){
+  final dev=S.t('diag.device');
+  final extra=<DiagLine>[
+    (block:dev,label:S.t('diagnostics.server'),value:server,state:null),
+    if(device!=null&&device.isNotEmpty)(block:dev,label:S.t('diagnostics.device'),value:device,state:null),
+  ];
+  final at=all.lastIndexWhere((l)=>l.block==dev);
+  return at<0?[...extra,...all]:[...all.take(at+1),...extra,...all.skip(at+1)];
 }
 
 /// Lines of the server block from `/diagnostics/server`.
@@ -129,7 +146,10 @@ class DiagnosticsPanel extends StatefulWidget {
   /// « Se reconnecter » when Cloudflare Access asks for a sign-in; without
   /// it (Paramètres › Diagnostic) the panel signs in itself.
   final VoidCallback? onSignIn;
-  const DiagnosticsPanel({super.key,required this.api,required this.server,required this.eventId,this.actorId,this.failedAgain=false,this.onSignIn});
+  /// « Choisir un événement » when the server refuses the event: opens
+  /// Paramètres › Général (lot 19).
+  final VoidCallback? onChooseEvent;
+  const DiagnosticsPanel({super.key,required this.api,required this.server,required this.eventId,this.actorId,this.failedAgain=false,this.onSignIn,this.onChooseEvent});
   @override State<DiagnosticsPanel> createState()=>_DiagnosticsPanelState();
 }
 
@@ -138,7 +158,36 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
 
   bool get _pco=>myRoles.contains('pco')||myRoles.contains('admin');
 
-  @override void initState(){super.initState();unawaited(_load());}
+  /// Event, map and real time are read live (lot 19): what « Réessayer »
+  /// changes shows at once.
+  Timer? _live; String _liveSeen=''; MapLoadStatus? _map;
+  @override void initState(){
+    super.initState();unawaited(_load());
+    _map=MapLoadStatus.active; _map?.addListener(_liveChanged);
+    _live=Timer.periodic(const Duration(seconds:2),(_)=>_liveChanged());
+  }
+  @override void dispose(){_live?.cancel();_map?.removeListener(_liveChanged);super.dispose();}
+  void _liveChanged(){
+    if(!mounted)return;
+    final seen=_liveLines().map((l)=>'${l.value}|${l.state}').join(';');
+    if(seen!=_liveSeen)setState(()=>_liveSeen=seen);
+  }
+  List<DiagLine> _liveLines(){
+    final sync=OfflineSyncService.active;
+    return liveLinkLines(S.t('diag.links'),access:sync?.eventAccess??EventAccess.ok,refusedStatus:sync?.eventRefusedStatus,
+      map:MapLoadStatus.active,realtime:RealtimeService.active?.connected);
+  }
+  /// « Réessayer » of the map and real-time lines.
+  void _retryLinks(){
+    final map=MapLoadStatus.active;
+    if(map!=null){map.retry();}else{RealtimeService.active?.reconnectNow();}
+    _liveChanged();
+  }
+  Widget? _linkAction(DiagLine l)=>switch(linkDiagAction(l)){
+    'retry'=>TextButton(key:ValueKey('diag-retry-${l.label}'),onPressed:_retryLinks,child:Text(S.t('common.retry'))),
+    'chooseEvent' when widget.onChooseEvent!=null=>TextButton(key:const ValueKey('diag-choose-event'),onPressed:widget.onChooseEvent,child:Text(S.t('diag.chooseEvent'))),
+    _=>null,
+  };
 
   Future<void> _load() async {
     setState(()=>_loading=true);
@@ -163,7 +212,6 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     bool? notif;
     try{notif=await NotificationService().permissionGranted();}catch(_){notif=null;}
     final sync=OfflineSyncService.active;
-    final rt=RealtimeService.active;
     final access=AccessManager.instance.sessionFor(widget.server);
     Map<String,dynamic>? aprs;
     try{aprs=await widget.api.aprsStatus().timeout(const Duration(seconds:5));}catch(_){aprs=null;}
@@ -190,7 +238,6 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     ];
     final links=<DiagLine>[
       (block:lk,label:S.t('diag.response'),value:reached?'${sw.elapsedMilliseconds} ms':S.t('diag.unreachable'),state:!reached?'red':sw.elapsedMilliseconds>1500?'orange':'green'),
-      (block:lk,label:S.t('diag.realtime'),value:S.t(rt?.connected==true?'diag.connected':'diag.disconnected'),state:rt==null?null:rt.connected?'green':'red'),
       accessDiagLine(lk,web:isWebPlatform,session:access,client:client,
         refused:AccessManager.instance.requiredFor(widget.server),online:!isWebPlatform||browserOnline),
       // Itinerary computation: server, device, or straight line (31 Oct 2026).
@@ -251,7 +298,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     final pending=S.t('diag.pending'), access=S.t('diag.access');
     Widget? action(DiagLine l)=>l.label==pending&&OfflineSyncService.active!=null
       ?TextButton(onPressed:_retryAll,child:Text(S.t('unsent.retryAll')))
-      :l.label==access?_reconnectButton():null;
+      :l.label==access?_reconnectButton():_linkAction(l);
     return Card(key:const ValueKey('diag-problems'),elevation:0,margin:const EdgeInsets.only(top:12),color:t.colorScheme.errorContainer.withValues(alpha:0.5),
       child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Padding(padding:const EdgeInsets.fromLTRB(14,6,14,4),child:Text(S.t('diag.problems',{'n':problems.length}),
@@ -286,14 +333,14 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
 
   @override Widget build(BuildContext context){
     final sync=OfflineSyncService.active;
-    final links=_links.isEmpty?_links:[_pendingLine(),..._links];
+    final links=_links.isEmpty?_links:[_pendingLine(),..._liveLines(),..._links];
     final all=[..._device,...links,..._server];
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
         // A discreet pill, as « Actualiser » (revue n° 65).
         OutlinedButton.icon(key:const ValueKey('diag-copy'),onPressed:all.isEmpty?null:() async {
           final messenger=ScaffoldMessenger.of(context);
-          await Clipboard.setData(ClipboardData(text:diagnosticsReport(all)));
+          await Clipboard.setData(ClipboardData(text:diagnosticsReport(reportLines(all,server:widget.server,device:widget.actorId))));
           messenger.showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
         },icon:const Icon(Icons.copy_all),label:Text(S.t('diag.copyReport'))),
         OutlinedButton.icon(onPressed:_loading?null:_load,icon:const Icon(Icons.refresh),label:Text(S.t('diag.refresh'))),
@@ -302,7 +349,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       if(!_loading||all.isNotEmpty)_summary(all),
       if(_device.isNotEmpty)_block(S.t('diag.device'),_device),
       if(links.isNotEmpty)_block(S.t('diag.links'),links,
-        action:(l)=>l.label==S.t('diag.access')&&showsAccessReconnect(l,web:isWebPlatform)?_reconnectButton():null,
+        action:(l)=>l.label==S.t('diag.access')&&showsAccessReconnect(l,web:isWebPlatform)?_reconnectButton():_linkAction(l),
         footer:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           if(MeshCoreLink.instance.supported)Align(alignment:Alignment.centerLeft,child:Padding(padding:const EdgeInsets.symmetric(horizontal:8),
             child:TextButton.icon(key:const ValueKey('diag-open-meshcore'),onPressed:()=>showOverlayPage<void>(context,(_)=>const MeshCorePage()),

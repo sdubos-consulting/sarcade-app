@@ -20,6 +20,14 @@ async function centreOf(page, id) {
     if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   }, id);
 }
+/** Box of the node of [id], or null when it is not on screen. */
+async function rectOf(page, id) {
+  return page.evaluate((id) => {
+    const e = [...document.querySelectorAll(`[flt-semantics-identifier="${id}"]`)].find((x) => x.getBoundingClientRect().width > 2);
+    if (!e) return null; const r = e.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, cy: r.top + r.height / 2 };
+  }, id);
+}
 async function tapId(page, id) {
   let at = null;
   await expect(async () => { at = await centreOf(page, id); expect(at, `${id} on screen`).not.toBeNull(); }).toPass({ timeout: 15_000 });
@@ -92,6 +100,39 @@ for (const size of SIZES) {
       await expectMapFree(page, size, 'start');
     });
     test.afterAll(async () => { await page?.close(); await api?.dispose(); });
+
+    test('bottom of the map: nothing under the tab bar, scale beside « Suivi de position » (lot 19)', async () => {
+      // Card « Téléphone : boutons du bas de la carte cachés par la barre de
+      // navigation »: ⓘ above the bar, scale on the line of « Suivi de
+      // position », bottom of the SOS disc (46 in a 56 box) on that line.
+      let info = null;
+      await expect(async () => { info = await rectOf(page, 'map.attribution'); expect(info, 'ⓘ on screen').not.toBeNull(); }).toPass({ timeout: 15_000 });
+      const layers = await rectOf(page, 'map.map-layers');
+      expect(layers, '« Fond et affichage » on screen').not.toBeNull();
+      expect(info.bottom, 'ⓘ inside the window').toBeLessThanOrEqual(size.height);
+      expect(info.right, 'ⓘ clear of the right column').toBeLessThan(layers.left);
+      if (!compact) {
+        const scale = await rectOf(page, 'map.scale');
+        expect(scale, 'no scale beside « Suivi de position » on a large screen').toBeNull();
+        return;
+      }
+      const tab = await rectOf(page, 'nav.map');
+      expect(tab, 'tab bar on screen').not.toBeNull();
+      const barTop = tab.top - 6; // tabs of 60 in a bar of 72
+      const track = await rectOf(page, 'map.tracking');
+      const scale = await rectOf(page, 'map.scale');
+      expect(track, '« Suivi de position » on screen').not.toBeNull();
+      expect(scale, 'scale on screen').not.toBeNull();
+      expect(info.bottom, 'ⓘ above the tab bar').toBeLessThanOrEqual(barTop + 1);
+      expect(info.bottom, 'ⓘ above « Suivi de position »').toBeLessThanOrEqual(track.top + 1);
+      expect(track.bottom, '« Suivi de position » above the tab bar').toBeLessThanOrEqual(barTop + 1);
+      expect(scale.left, 'scale on the right of « Suivi de position »').toBeGreaterThanOrEqual(track.right - 1);
+      expect(Math.abs(scale.cy - track.cy), 'scale on the line of « Suivi de position »').toBeLessThanOrEqual(2);
+      const sos = await rectOf(page, 'map.sos');
+      const last = sos || (await rectOf(page, 'map.map-me'));
+      expect(scale.right, 'scale clear of the right column').toBeLessThanOrEqual(last.left);
+      if (sos) expect(Math.abs(sos.bottom - 5 - track.bottom), 'bottom of SOS level with « Suivi de position »').toBeLessThanOrEqual(2);
+    });
 
     test('every section, then « Carte »', async () => {
       const ids = compact ? ['nav.messages', 'nav.teams', 'nav.tools'] : ['nav.messages', 'nav.teams', 'nav.files', 'nav.tools', 'nav.settings'];

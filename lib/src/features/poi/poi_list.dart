@@ -49,13 +49,15 @@ List<List<SarcadePoi>> clusterPois(List<SarcadePoi> pois,Offset Function(LatLng)
 /// every point alone. A bubble zooms in on its group.
 class PoiClusterLayer extends StatelessWidget {
   final List<SarcadePoi> pois; final void Function(SarcadePoi) onTap; final double clusterUntilZoom;
-  const PoiClusterLayer({super.key,required this.pois,required this.onTap,this.clusterUntilZoom=17});
+  /// Double click or double touch on a point alone (lot 19).
+  final void Function(SarcadePoi)? onDoubleTap;
+  const PoiClusterLayer({super.key,required this.pois,required this.onTap,this.onDoubleTap,this.clusterUntilZoom=17});
   @override Widget build(BuildContext context){
     final camera=MapCamera.of(context);
     final groups=camera.zoom>=clusterUntilZoom?[for(final p in pois)[p]]:clusterPois(pois,(l)=>camera.projectAtZoom(l));
     final s=Theme.of(context).colorScheme;
     return MarkerLayer(markers:[for(final g in groups)
-      if(g.length==1)poiMarker(g.first,()=>onTap(g.first))
+      if(g.length==1)poiMarker(g.first,()=>onTap(g.first),onDoubleTap:onDoubleTap==null?null:()=>onDoubleTap!(g.first))
       else _bubble(context,camera,g,s)]);
   }
   Marker _bubble(BuildContext context,MapCamera camera,List<SarcadePoi> g,ColorScheme s){

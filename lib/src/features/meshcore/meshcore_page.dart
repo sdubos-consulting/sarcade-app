@@ -16,6 +16,7 @@ import 'meshcore_chat_page.dart';
 import 'meshcore_link.dart';
 import 'meshcore_link_card.dart';
 import 'meshcore_map.dart';
+import 'meshcore_node_list.dart';
 import 'meshcore_protocol.dart';
 
 /// « Diagnostic » of Outils › MeshCore: the card of the module (search,
@@ -89,9 +90,8 @@ class _MeshCorePageState extends State<MeshCorePage> {
           // Lot 17: the nodes on the map, also under Fond et affichage.
           SwitchListTile(key:const ValueKey('mesh-show-map'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             title:Text(S.t('mesh.showOnMap')),value:link.showOnMap,onChanged:(v)=>unawaited(link.setShowOnMap(v))),
-          Padding(padding:const EdgeInsets.fromLTRB(4,16,4,6),child:Text(S.t('mesh.nodes',{'n':'${nodes.length}'}),style:t.textTheme.titleSmall)),
-          if(nodes.isEmpty)Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.noNodes'),style:t.textTheme.bodySmall)),
-          for(final n in nodes)ListTile(key:ValueKey('mesh-node-${n.shortKey}'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
+          // Lot 19: search field and filters above the nodes.
+          MeshCoreNodeList(nodes:nodes,tile:(n)=>ListTile(key:ValueKey('mesh-node-${n.shortKey}'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             leading:Icon(meshCoreKindIcon(n.kind)),
             title:Text(n.name.isEmpty?n.shortKey:n.name),
             subtitle:Text([S.t('mesh.kind.${n.kind}'),meshCoreHops(n.hops),meshCoreAge(n.lastAdvert,now),
@@ -101,7 +101,7 @@ class _MeshCorePageState extends State<MeshCorePage> {
                 onPressed:()=>unawaited(openMeshCoreChat(context,n.key,n.name)),child:Text(S.t('mesh.write'))),
               if(meshCoreHasPosition(n)&&widget.onShowOnMap!=null)TextButton(key:ValueKey('mesh-see-${n.shortKey}'),
                 onPressed:()=>widget.onShowOnMap!(n),child:Text(S.t('mesh.seeOnMap'))),
-            ])),
+            ]))),
           Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.local'),style:t.textTheme.bodySmall)),
         ],
       ]))),
