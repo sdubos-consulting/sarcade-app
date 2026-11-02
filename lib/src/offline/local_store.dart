@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import '../platform/platform_services.dart';
+import '../platform/startup_report.dart';
+import 'compaction_guard.dart';
 import '../features/messages/message_deletion.dart';
 
 class LocalStore {
@@ -11,21 +13,41 @@ class LocalStore {
   // Road graph of navigation on the device (tens of MB), read on demand.
   late LazyBox _graphBox;
 
+  /// Hive never compacts inside a write: see compaction_guard.dart.
+  late final _compaction=CompactionGuard(compact:_compactBox,log:StartupReport.note);
+  final _opened=<String,BoxBase>{};
+
+  Future<void> _compactBox(String name) async {
+    final box=_opened[name];
+    if(box!=null&&box.isOpen)await box.compact();
+  }
+
+  Future<Box> _open(String name) async {
+    final box=await Hive.openBox(name,compactionStrategy:_compaction.strategyFor(name));
+    _opened[name]=box;
+    return box;
+  }
+  Future<LazyBox> _openLazy(String name) async {
+    final box=await Hive.openLazyBox(name,compactionStrategy:_compaction.strategyFor(name));
+    _opened[name]=box;
+    return box;
+  }
+
   Future<void> init() async {
     await initHiveStorage();
-    _positionBox=await Hive.openBox(_positions);
-    _poiBox=await Hive.openBox(_pois);
-    _messageBox=await Hive.openBox(_messages);
-    _ackBox=await Hive.openBox(_acks);
-    _referenceBox=await Hive.openBox(_references);
-    _outboxBox=await Hive.openBox(_outbox);
-    _metaBox=await Hive.openBox(_meta);
-    _featureBox=await Hive.openBox(_features);
-    _uploadBox=await Hive.openBox(_uploads);
-    _groupBox=await Hive.openBox(_groups);
-    _routeBox=await Hive.openBox(_routeObjects);
-    _attachmentBox=await Hive.openLazyBox(_attachments);
-    _graphBox=await Hive.openLazyBox('road_graph');
+    _positionBox=await _open(_positions);
+    _poiBox=await _open(_pois);
+    _messageBox=await _open(_messages);
+    _ackBox=await _open(_acks);
+    _referenceBox=await _open(_references);
+    _outboxBox=await _open(_outbox);
+    _metaBox=await _open(_meta);
+    _featureBox=await _open(_features);
+    _uploadBox=await _open(_uploads);
+    _groupBox=await _open(_groups);
+    _routeBox=await _open(_routeObjects);
+    _attachmentBox=await _openLazy(_attachments);
+    _graphBox=await _openLazy('road_graph');
   }
 
   Future<void> cachePosition(Map<String,dynamic> v)=>_positionBox.put(v['id'],v);

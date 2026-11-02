@@ -21,6 +21,7 @@ import '../../l10n/strings.dart';
 import '../../models/comm_group.dart' show myActorId;
 import '../../services/sarcade_api.dart';
 import '../../ui/theme.dart' show themeMode;
+import 'tv_screen_buttons.dart';
 import 'tv_theme.dart';
 import 'tv_view.dart';
 
@@ -213,23 +214,32 @@ class TvScreensSheet extends StatelessWidget {
     },
     icon:Icon(on?Icons.stop_circle_outlined:Icons.sync),label:Text(S.t(on?'tvb.followStop':'tvb.follow')));
 
+  /// Same presentation as Outils › Afficher sur une TV (lot 19, choice 5):
+  /// the direct buttons under the name, the rest in ⋮.
   Widget _tile(BuildContext context,Map<String,dynamic> d,DateTime now){
     final id='${d['id']}'; final on=controller.following.contains(id); final connected=tvScreenConnected(d,now);
-    final scheme=Theme.of(context).colorScheme;
-    return ListTile(key:ValueKey('tvb-$id'),
+    final scheme=Theme.of(context).colorScheme; final wide=tvButtonsWide(context);
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      ListTile(key:ValueKey('tvb-$id'),
       leading:Icon(d['alert']==true?Icons.sos:Icons.tv,color:d['alert']==true?scheme.error:connected?Colors.green:scheme.outline),
       title:Text(tvScreenName(d)),
       subtitle:Text([S.t(connected?'tvb.connected':'tvb.notConnected'),if(on)S.t('tvb.following')].join(' · ')),
       onTap:()=>onSend([d]),
       trailing:Row(mainAxisSize:MainAxisSize.min,children:[
         _followButton(context,[id],on),
-        PopupMenuButton<String>(tooltip:S.t('tvb.settings'),onSelected:(a)=>_act(context,d,a),itemBuilder:(_)=>[
-          PopupMenuItem(value:'messages',child:Text(S.t(d['messages']==false?'tv.messagesShow':'tv.messagesHide'))),
-          PopupMenuItem(value:'theme',child:Text('${S.t('tv.theme')} : ${S.t('tv.theme.${tvThemeOf(d)}')}')),
-          if(d['alert']==true&&d['can_clear_alert']==true)PopupMenuItem(value:'sos',child:Text(S.t('tv.clearSos'))),
+        PopupMenuButton<String>(key:ValueKey('tvb-menu-$id'),tooltip:S.t('tvb.settings'),onSelected:(a)=>_act(context,d,a),itemBuilder:(_)=>[
+          if(!wide)...[
+            PopupMenuItem(value:'identify',child:Text(S.t('tv.identify'))),
+            PopupMenuItem(value:'messages',child:Text(S.t(d['messages']==false?'tv.messagesShow':'tv.messagesHide'))),
+            PopupMenuItem(value:'theme',child:Text('${S.t('tv.theme')} : ${S.t('tv.theme.${tvThemeOf(d)}')}')),
+            if(tvShowsSosButton(d))PopupMenuItem(value:'sos',child:Text(S.t('tv.clearSos'))),
+          ],
           PopupMenuItem(value:'revoke',child:Text(S.t('tvb.disconnect'))),
         ]),
-      ]));
+      ])),
+      Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:TvScreenButtons(screen:d,wide:wide,
+        onAction:(a)=>a==TvAction.view?onSend([d]):_act(context,d,a==TvAction.theme?'nextTheme':a))),
+    ]);
   }
 
   Future<void> _act(BuildContext context,Map<String,dynamic> d,String action) async {
@@ -237,6 +247,10 @@ class TvScreensSheet extends StatelessWidget {
     String key;
     try{
       switch(action){
+        case 'identify':
+          await api.identifyDisplay(ev,id);key='tv.identifySent';
+        case 'nextTheme':
+          await api.setDisplayTheme(ev,id,nextTvTheme(tvThemeOf(d)));key='tv.themeSet';
         case 'messages':
           final show=d['messages']==false;
           await api.setDisplayMessages(ev,id,show);key=show?'tv.messagesShown':'tv.messagesHidden';

@@ -38,8 +38,11 @@ import '../measure/wmm.dart' show magneticDeclination;
 import 'drawing/export_formats.dart';
 import 'cinematique_escape.dart';
 import '../../ui/theme.dart';
+import 'aprs_gateway.dart';
 import 'stations.dart';
 import 'cinematique_touch.dart';
+import 'layer_opacity.dart';
+import 'map_bottom_line.dart';
 import 'sos_placement.dart';
 import '../../modules/adrasec/bearings/bearing_aim.dart';
 import '../../ui/escape_stack.dart';
@@ -55,6 +58,7 @@ import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
 import '../../modules/adrasec/reference/reference_cluster_layer.dart';
 import 'drawing/drawing_layers.dart';
+import 'drawing/double_tap_rename.dart';
 import 'drawing/drawing_toolbar.dart';
 import 'drawing/geometry.dart';
 import 'drawing/hit_test.dart';
@@ -89,6 +93,7 @@ import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart';
 import '../weather/weather_page.dart';
 import '../weather/weather_models.dart';
+import '../weather/map_weather.dart';
 import '../measure/coordinates.dart';
 import '../measure/external_maps.dart';
 import '../measure/measure_controller.dart';
@@ -108,7 +113,11 @@ import '../../modules/adrasec/fixed_stations.dart';
 import '../orders/move_orders.dart';
 import '../../modules/adrasec/bearings/signals.dart';
 import '../settings/diagnostics_panel.dart' show diagnosticsAlert, showDiagnosticsSheet;
+import '../settings/settings_page.dart' show settingsRequestedTab;
+import 'map_load_status.dart';
 import '../tools/tools_page.dart';
+import '../settings/settings_tools.dart';
+import '../../modules/adrasec/bearings/signal_defaults_tool.dart';
 import 'sos_button.dart';
 import '../tools/coordinate_converter_page.dart';
 import '../places/readable_place.dart';
@@ -303,8 +312,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
   }
   void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId&&!p.deleted)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
+  /// Initial load followed by the Diagnostic and the dot (lot 19, map_load_status.dart).
+  late final _mapLoad=MapLoadStatus()..onRetry=_retryLinks;
+  void _retryLinks(){if(!mounted)return;if(!_started){unawaited(_start());}else if(!_realtime.connected){_realtime.reconnectNow();}}
   Future<void> _start() async {
-    if(_starting)return; _starting=true;
+    if(_starting)return; _starting=true; MapLoadStatus.active=_mapLoad; _mapLoad.begin();
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
       _mergePositions(data[0] as List<SarcadePosition>);
@@ -323,7 +335,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       registerWakeupHook=_wakeupNoted;
       unawaited(_wakeupNoted());
       if(mounted){setState(()=>_started=true);if(_savedView==null)WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
-    } catch(e){if(mounted)setState((){});} finally {_starting=false;}
+      _mapLoad.succeeded();
+    } catch(e){_mapLoad.failed(e);if(mounted)setState((){});} finally {_starting=false;}
   }
   Timer? _positionsTimer;
   /// Keeps the newest position of each device (a late answer never moves a
@@ -381,8 +394,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // time down, reconnect.
     if(_sync.lastSyncOk&&!_sync.eventUnknown){if(!_started){unawaited(_start());}else if(!_realtime.connected){_realtime.reconnectNow();}}
     showDiagnosticsSheet(context,api:widget.api,server:widget.api.baseUrl,eventId:widget.eventId,
-    actorId:widget.deviceId,failedAgain:failedAgain,onSignIn:_signIn).then((_){if(mounted)setState((){});});
+    actorId:widget.deviceId,failedAgain:failedAgain,onSignIn:_signIn,onChooseEvent:_chooseEvent).then((_){if(mounted)setState((){});});
   }
+  /// « Choisir un événement » of the Diagnostic: Paramètres › Général.
+  void _chooseEvent(){settingsRequestedTab='general';final b=widget.settingsBuilder;if(!_isCompact&&b!=null){_openDesk('settings',b);}else{widget.onSettings?.call();}}
   /// « Envoyer » of the banner = « Tout réessayer »; failing again opens the
   /// list with Supprimer and Exporter (unsent_summary.dart).
   Future<void> _retryAllUnsent() async {final left=await _sync.retryAll();if(!mounted)return;setState((){});if(left.isNotEmpty)_openDiagnostics(failedAgain:true);}
@@ -893,6 +908,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
       onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
+    // Main courante and the bearing frequencies, out of Paramètres (lot 19).
+    logbookToolItem(api:widget.api,eventId:widget.eventId,open:_openDesk),
+    if(_adrasec)?signalDefaultsToolItem(api:widget.api,store:widget.store,open:_openDesk),
   ];
   /// Convertisseur étoffé (lot 5): actions handed back to the map.
   void _openConverter({LatLng? initial})=>_openDesk('converter',()=>CoordinateConverterPage(key:ValueKey('desk-converter-$initial'),initial:initial,
@@ -1580,7 +1598,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// drawing, bearing and choice of a point included (card « Détresse
   /// encore dans le menu Plus », 30 Oct 2026): no more entry in « Plus ».
   bool get _sosVisible=>true;
-  Widget _sosButton()=>SosButton(inDistress:_inDistress,onTriggered:_sendDistress,onEnd:_distress);
+  Widget _sosButton()=>withId('map.sos',SosButton(inDistress:_inDistress,onTriggered:_sendDistress,onEnd:_distress));
 
   /// Floating button of 48 × 48 px (the small ones were 40 px).
   Widget _fab(String tag,String tooltip,Widget icon,VoidCallback onPressed,{Color? background,Color? foreground})=>
@@ -1700,8 +1718,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     await widget.store.setPreference('opacity:$k',v>=0.99?null:v.toStringAsFixed(2));
     if(mounted)setState((){});
   }
-  Widget _faded(String k,Widget layer){final o=_layerOpacity(k);return o>=1?layer:Opacity(opacity:o,child:layer);}
-  List<Widget> _fadedAll(String k,List<Widget> layers)=>[for(final l in layers)_faded(k,l)];
+  // Labels follow the opacity of their layer (layer_opacity.dart, lot 19).
+  Widget _faded(String k,Widget layer)=>fadedLayer(_layerOpacity(k),layer);
+  List<Widget> _fadedAll(String k,List<Widget> layers)=>fadedLayers(_layerOpacity(k),layers);
 
   List<Widget> _layerSections(BuildContext c,StateSetter refresh){
     Widget row(String label,bool on,Future<void> Function(bool) set,{String? op,Widget? trailing})=>LayerRow(label:label,on:on,trailing:trailing,
@@ -1808,18 +1827,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.teams'))),body:tabs);
   }
 
+  /// Weather of the pill loaded by the map itself (lot 19, map_weather.dart).
+  late final MapWeather _mapWeather=MapWeather(load:()=>widget.api.eventWeather(widget.eventId,compact:_ops.settings.lowBandwidth),
+    read:()=>widget.store.cachedJson(weatherCacheKey(widget.eventId)),save:(j)=>widget.store.cacheJson(weatherCacheKey(widget.eventId),j),
+    online:()=>_sync.lastSyncOk,alive:()=>mounted,onChanged:(){if(mounted)setState((){});})..start();
   /// Phone « Plus »: a normal screen, a list of large buttons.
   /// Weather pill with the link dot (link_weather_pill.dart, decision of
   /// 30 Oct 2026, 1 h 30): the hour to come from the last forecast of the
   /// event, red when a vigilance is orange or red; the « Connecté » pill is
   /// gone, its dot is here; the word only when slowed or cut.
   Widget _linkWeatherPill(){
-    final state=_started?serverLink(syncOk:_sync.lastSyncOk,realtime:_realtime.connected):null;
-    final scheme=Theme.of(context).colorScheme;
-    final colour=switch(state){ServerLink.direct=>const Color(0xFF2E9D4B),ServerLink.slowed=>Colors.orange,ServerLink.cut=>scheme.error,null=>scheme.outline};
-    final label=state==null?S.t('links.starting'):S.t('links.${state.name}');
-    final j=widget.store.cachedJson('weather:${widget.eventId}');
-    final r=j==null?null:WeatherReport.fromJson(j);
+    final dot=mapLinkDot(started:_started,map:_mapLoad.phase,access:_sync.eventAccess,syncOk:_sync.lastSyncOk,realtime:_realtime.connected,scheme:Theme.of(context).colorScheme);
+    final colour=dot.colour, label=dot.label;
+    final r=_mapWeather.report;
     final next=r?.upcoming(DateTime.now(),n:1)??const [];
     final h=next.isEmpty?null:next.first;
     final alert=(r?.vigilance?.colorId??1)>=3;
@@ -1828,10 +1848,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       linkTooltip:[ '${S.t('links.serverLink')} : $label',
         if(mesh.remembered)S.t('mesh.pill',{'s':meshCoreStateText(mesh.state)})].join('\n'),
       mesh:mesh.remembered?meshCorePillTone(mesh.state):null,
-      linkWord:state==ServerLink.slowed||state==ServerLink.cut?label:null,
+      linkWord:dot.word,
       weatherIcon:h==null?null:weatherIcon(weatherKey(h.weatherCode)),
-      weatherText:h==null?null:pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
-        wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'),
+      weatherText:h==null?null:_mapWeather.pillText(pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
+        wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h')),
       compact:_isCompact,
       alert:alert?vigilanceColor(r!.vigilance!.colorId):null,
       onLinks:_openDiagnostics,onWeather:()=>_openWeather()));
@@ -1848,8 +1868,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ),
         child:Row(mainAxisSize:MainAxisSize.min,children:[
           Icon(on?Icons.my_location:Icons.location_disabled_outlined,size:16,color:on?scheme.primary:scheme.onSurfaceVariant),const SizedBox(width:6),
-          Text(on?S.t('tracking.on',{'interval':intervalLabel(_tracking.intervalS,S.t)}):S.t('tracking.start'),
-            style:TextStyle(fontSize:12,color:on?scheme.onPrimaryContainer:scheme.onSurface)),
+          Flexible(child:Text(on?S.t('tracking.on',{'interval':intervalLabel(_tracking.intervalS,S.t)}):S.t('tracking.start'),
+            maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:12,color:on?scheme.onPrimaryContainer:scheme.onSurface))),
         ]))));
   }
 
@@ -1927,8 +1947,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final id='${d['device_id']??''}';if(id.isEmpty)return;final m=_forced;final k='${d['kind']??''}';
     if(k=='fixed'){m[id]='f';}else if(k=='mobile'){m[id]='m';}else{m.remove(id);}await _saveForced(m);
   }
-  Marker _fixedMarker(SarcadePosition p)=>Marker(point:LatLng(p.lat,p.lon),width:22,height:22,child:Tooltip(message:p.label,child:GestureDetector(onTap:()=>_tapStation(p),
-    child:Opacity(opacity:0.7,child:_stationIcon(p,size:20)))));
+  // Gateways a little larger: readable and easy to touch (lot 19).
+  Marker _fixedMarker(SarcadePosition p)=>Marker(point:LatLng(p.lat,p.lon),width:stationIconSize(p.aprsSymbol,22),height:stationIconSize(p.aprsSymbol,22),child:Tooltip(message:p.label,child:GestureDetector(onTap:()=>_tapStation(p),
+    child:Opacity(opacity:0.7,child:_stationIcon(p,size:stationIconSize(p.aprsSymbol,20))))));
   Future<void> _setTraceHours(int h) async {
     setState((){_traceHours=h;_scrub=null;_trace=traceWithin(_history,DateTime.now().toUtc(),h);});
   }
@@ -1947,6 +1968,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Icon chosen in SARCADE first (Paramètres › Profil), then the APRS
     // symbol of the station (1 Nov 2026).
     final mine=operatorIcon(chosenIcon(_devices,deviceId:p.isAprs?null:p.deviceId,callsign:p.isAprs?p.callsign:null));
+    // Gateways (« L& », « I& »…): diamond (aprs_gateway.dart, lot 19).
+    final gate=gatewayStationIcon(symbol:p.aprsSymbol,isAprs:p.isAprs,hasChosenIcon:mine!=null,size:size);
+    if(gate!=null)return gate;
     final sym=mine!=null?(icon:mine,overlay:null,kind:'operator'):p.isAprs?aprsSymbol(p.aprsSymbol):null;
     // Same letters as the avatars of the lists and Messages (revue n° 8).
     final initials=avatarInitials(p.label.trim().isEmpty?p.deviceId:p.label);
@@ -2532,7 +2556,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
+  @override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).
@@ -2630,8 +2654,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Web: a server restarting (update of the NAS) is not an expired
           // session; « Recharger » only after 2 minutes without an answer
           // (1 Nov 2026), « nouvel essai… » before.
-          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline&&webOutageLong(_sync.lastServerContact!,DateTime.now())?reloadApp:null,
-          serverRetrying:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline&&!webOutageLong(_sync.lastServerContact!,DateTime.now()),
+          onReload:isWebPlatform&&_sync.serverDown&&_sync.lastServerContact!=null&&browserOnline&&webOutageLong(_sync.lastServerContact!,DateTime.now())?reloadApp:null,
+          serverRetrying:isWebPlatform&&_sync.serverDown&&_sync.lastServerContact!=null&&browserOnline&&!webOutageLong(_sync.lastServerContact!,DateTime.now()),
           onEnableNotifications:_notificationsBanner?_enableNotifications:null,
           onDismissNotifications:()=>setState(()=>_notificationsDismissed=true),
           webUpdateChange:versionChange(appVersionFull,_servedVersion),webUpdateBuilds:'$appBuild → ${_servedBuild??'?'}',
@@ -2700,7 +2724,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onMapReady:(){if(mounted){_onCameraChanged(_map.camera);_watchMapMoves();setState((){});}},
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
-          interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
+          // A finger on a handle: the map does not move at all (lot 19).
+          interactionOptions:InteractionOptions(flags:_drawing.handleHeld?InteractiveFlag.none:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
         ),children:[
           // Night: street maps darkened; aerial photos stay as they are.
           TileLayer(key:ValueKey('$_tileUrl|${_darkTiles(context)}'),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble(),
@@ -2712,6 +2737,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showHighPoints)touchableMarkers(ignoring:_placingOnMap,child:_faded('high',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isHighPoint).toList(),onSelect:_selectReference))),
           if(_showRelays)touchableMarkers(ignoring:_placingOnMap,child:_faded('relay',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isRelay).toList(),onSelect:_selectReference))),
           if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
+          // Double click on a drawn object: its name, no zoom (lot 19).
+          if(_showDrawings)DrawingDoubleTapLayer(controller:_drawing,enabled:!_placingOnMap&&!_drawing.selectMode,radiusPx:_circleRadiusPx,onDoubleTap:(f)=>unawaited(renameDrawing(context,_drawing,f))),
           if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id&&b.id!=_aim?.editing?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
             zoneModes:_zoneModes,onTapBearing:_showBearingSheet,onTapZone:(t)=>unawaited(showZoneWindow(context,t,mode:zoneModeOf(_zoneModes,t.search),onMode:(m)=>_setZoneMode(t.search,m))))),
           if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
@@ -2724,7 +2751,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
-          if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p))))),
+          if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)),
+            onDoubleTap:(p)=>unawaited(doubleTapPoi(context,p,actor:widget.deviceId,openSheet:()=>unawaited(_openPoi(p)),
+              rename:(n) async {await renamePoi(_pois,widget.store,_sync,p,n,widget.deviceId);if(mounted)setState((){});}))))),
           // Card L1 (lot 17): while drawing, measuring or taking a bearing, a
           // touch on a marker places the point instead of opening the marker.
           IgnorePointer(ignoring:_placingOnMap,child:_faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())]))),
@@ -2741,11 +2770,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           buildHandleLayer(_drawing,_globalToLatLng),
           // SOS halos above everything, whatever the filters (lot 17).
           sosHaloLayer(_sosTargets(),DateTime.now().toUtc()),
-          // ⓘ with the licence notice of the base map: on the left, under the
-          // scale, never under SOS (revue d'ergonomie n° 3).
-          SafeArea(child:Padding(padding:EdgeInsets.only(bottom:compact?mapAttributionLift:0),
-            child:RichAttributionWidget(alignment:AttributionAlignment.bottomLeft,
-              attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]))),
+          // ⓘ with the licence notice of the base map: on the left, never
+          // under SOS (revue n° 3) nor under the tab bar (lot 19).
+          mapAttribution(compact:compact,fullBleed:fullBleed,text:_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution),
         ]))),
         if(_drawing.tool==FeatureKind.freehand)Positioned.fill(child:GestureDetector(
           behavior:HitTestBehavior.opaque,
@@ -2761,7 +2788,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         Positioned.fill(child:SafeArea(left:false,right:false,child:Stack(children:[
         // Scale first: behind every panel, never over a button (decision of
         // 30 Oct 2026, 16 h 25; revue n° 14, 18, 31); above the ⓘ.
-        Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
+        // Phone: on the line of « Suivi de position » (map_bottom_line.dart).
+        if(!compact||_bearings.taking||selected!=null)Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
         MeshCoreNodeOverlay(map:_map,me:_me,compact:compact),
         if(_inDistress)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:Material(color:Theme.of(context).colorScheme.error,
           borderRadius:BorderRadius.circular(16),child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_distress,child:Padding(padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
@@ -2830,11 +2858,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(routeEntry!=null)Positioned(left:12,right:12,bottom:12,child:RouteEntryBar(controller:_routes,route:routeEntry,
           onDone:()=>setState(()=>_drawingRouteId=null))),
         // Right column with SOS at its bottom (30 Oct 2026, 3 h 05).
-        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:compact?60:24,
+        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:mapColumnBottom(compact:compact),
           panel:_measure.target!=null||_nav.state!=NavState.idle||_nav.notice!=null,
           rightSheet:!compact&&_bearings.taking&&_aim!=null?bearingSheetWidth:0,child:_mapButtons()),
-        // Phone: « Suivi actif » just above the tab bar.
-        if(compact&&!_bearings.taking&&selected==null)Positioned(left:12,bottom:12,child:_trackingBadge()),
+        // Phone: « Suivi actif » just above the tab bar, the scale on its right.
+        if(compact&&!_bearings.taking&&selected==null)phoneBottomLine(badge:_trackingBadge(),scale:IgnorePointer(child:_scaleBar())),
         if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:bearingSheetWidth,child:_bearingTakeSheet())
         else if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,

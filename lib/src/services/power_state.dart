@@ -44,7 +44,7 @@ class PowerState extends ChangeNotifier {
 
   /// SARCADE is on screen (resumed or briefly inactive).
   bool foreground=true;
-  /// « Mode économie » of Paramètres › Affichage.
+  /// « Mode économie » of Paramètres › Général (lot 19).
   bool saver=false;
   /// Beacon as reported by the tracking service, for the Diagnostic.
   int? trackingS; bool trackingMoving=true; bool gpsReduced=false;
