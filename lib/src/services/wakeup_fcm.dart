@@ -6,10 +6,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../features/car/car_android.dart';
-import '../features/car/car_background.dart' show fetchWokenMessage;
-import '../features/car/car_messaging.dart' show carConversation;
+import '../features/car/car_background.dart' show fetchWokenMessage, tellApplicationWoken;
+import '../features/car/car_messaging.dart' show carConversation, carThread;
 import '../l10n/strings.dart';
+import '../models/message.dart' show SarcadeMessage;
 import 'notification_actions.dart' show NotificationPayload, notificationIdFor;
+import 'notification_keys.dart' show messageNotificationKey;
 
 /// Wake-up of Android when SARCADE is closed (note « Réveil des appareils »).
 /// The Firebase project is given at build time by the CI (secret
@@ -74,8 +76,17 @@ Future<void> showWakeNotification(Map<String,dynamic> data) async {
   await plugin.initialize(const InitializationSettings(android:AndroidInitializationSettings('@mipmap/ic_launcher')));
   // Real text read from the server of the application, so that the car
   // reads the message itself (lot 1a); otherwise the generic text.
+  // The application, if it runs, synchronises at once (lot 20): the Ordres
+  // tab of the car gets the move order with its message.
+  if(data['kind']!='test')tellApplicationWoken();
   final woken=data['kind']=='test'?null:await fetchWokenMessage(data);
   final m=woken?.message;
+  // Lot 20: the earlier messages of the same sender in this notification,
+  // theirs removed (one notification per sender in the car).
+  final earlier=m==null?const <SarcadeMessage>[]:carThread(m,woken!.recent,me:woken.deviceId);
+  for(final x in earlier){
+    try{await plugin.cancel(notificationIdFor(messageNotificationKey(x)));}catch(_){/* already gone */}
+  }
   final payload=m==null?null:NotificationPayload(eventId:m.eventId,messageId:m.id,deviceId:woken!.deviceId,
     priority:m.priority,tag:'${data['tag']}',senderId:m.senderId);
   // Same title as the notification shown by the application.
@@ -85,7 +96,7 @@ Future<void> showWakeNotification(Map<String,dynamic> data) async {
       importance:urgent?Importance.max:Importance.defaultImportance,priority:urgent?Priority.max:Priority.defaultPriority,
       category:AndroidNotificationCategory.message,
       // Conversation format, Répondre and Lu for Android Auto (lot 1b).
-      styleInformation:payload==null?null:carStyle(carConversation(m!,me:woken!.deviceId)),
+      styleInformation:payload==null?null:carStyle(carConversation(m!,me:woken!.deviceId,earlier:earlier)),
       actions:payload==null?null:carActions(m!.priority))),
     payload:payload?.encode());
 }

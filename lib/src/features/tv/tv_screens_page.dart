@@ -12,6 +12,7 @@ import 'tv_screen_buttons.dart';
 import 'tv_theme.dart';
 import 'tv_view.dart';
 import '../../ui/link_status.dart';
+import '../../ui/text_fields_dialog.dart';
 
 /// « Afficher sur une TV » (any operator, decision of the porteur of
 /// 29 October 2026): pair the screen opened on tv.sarcade.org by scanning
@@ -96,23 +97,19 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
   /// Name of a screen (after the scan, « Renommer »); null when cancelled.
   Future<String?> _askName(String title,String initial) async {
     if(!mounted)return null;
-    final ctrl=TextEditingController(text:initial);
-    final v=await showDialog<String>(context:context,builder:(c)=>AlertDialog(title:Text(title),
-      content:TextField(key:const ValueKey('tv-name'),controller:ctrl,autofocus:true,inputFormatters:[LengthLimitingTextInputFormatter(60)],
+    return showTextFieldsDialog<String>(context,initial:[initial],builder:(c,f,_)=>AlertDialog(title:Text(title),
+      content:TextField(key:const ValueKey('tv-name'),controller:f[0],autofocus:true,inputFormatters:[LengthLimitingTextInputFormatter(60)],
         decoration:InputDecoration(labelText:S.t('tv.name'),helperText:S.t('tv.nameHelp'))),
       actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text.trim()),child:Text(S.t('common.ok')))]));
-    ctrl.dispose();
-    return v;
+        FilledButton(onPressed:()=>Navigator.pop(c,f[0].text.trim()),child:Text(S.t('common.ok')))]));
   }
 
   Future<void> _type()=>TvNearbyGate.during(_typeCode);
   Future<void> _typeCode() async {
-    final ctrl=TextEditingController(), name=TextEditingController();
     var edited=false, closed=false; var asked='';
-    final raw=await showDialog<String>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('tv.type')),
+    final typed=await showTextFieldsDialog<(String,String)>(context,initial:const ['',''],builder:(c,f,set)=>AlertDialog(title:Text(S.t('tv.type')),
       content:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextField(controller:ctrl,autofocus:true,textCapitalization:TextCapitalization.characters,
+        TextField(controller:f[0],autofocus:true,textCapitalization:TextCapitalization.characters,
           decoration:InputDecoration(labelText:S.t('tv.code'),helperText:S.t('tv.codeHelp')),
           onChanged:(t) async {
             // Default name of the TV, proposed once the code is complete.
@@ -120,21 +117,19 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
             if(code==null||code.length!=6||code==asked||edited)return;
             asked=code;
             final n=await widget.api.tvCodeName(code);
-            if(n!=null&&!edited&&!closed&&asked==code)set(()=>name.text=n);
+            if(n!=null&&!edited&&!closed&&asked==code)set(()=>f[1].text=n);
           }),
         const SizedBox(height:8),
-        TextField(key:const ValueKey('tv-name'),controller:name,inputFormatters:[LengthLimitingTextInputFormatter(60)],onChanged:(_)=>edited=true,
+        TextField(key:const ValueKey('tv-name'),controller:f[1],inputFormatters:[LengthLimitingTextInputFormatter(60)],onChanged:(_)=>edited=true,
           decoration:InputDecoration(labelText:S.t('tv.name'),helperText:S.t('tv.nameHelp'))),
       ]),
       actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text),child:Text(S.t('tv.show')))])));
+        FilledButton(onPressed:()=>Navigator.pop(c,(f[0].text,f[1].text.trim())),child:Text(S.t('tv.show')))]));
     closed=true;
-    final chosen=name.text.trim();
-    ctrl.dispose();name.dispose();
-    if(raw==null||!mounted)return;
-    final code=tvCodeFrom(raw);
+    if(typed==null||!mounted)return;
+    final code=tvCodeFrom(typed.$1);
     if(code==null){_say('tv.unknownCode');return;}
-    await _approve(code,name:chosen);
+    await _approve(code,name:typed.$2);
   }
 
   /// « Renommer » (menu ⋮ of a screen).

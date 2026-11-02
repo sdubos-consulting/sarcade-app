@@ -293,7 +293,7 @@ const Texts _fr={
   'car.empty.messages':'Aucun message','car.empty.orders':'Aucun ordre','car.empty.points':'Aucun point','car.empty.team':'Personne d’autre sur la carte',
   'car.sos':'SOS','car.sosTitle':'Détresse','car.sosAsk':'Envoyer à tous une détresse avec votre position ?','car.sosSend':'Envoyer SOS',
   'car.sosSent':'Détresse envoyée','car.sosOn':'Détresse en cours. Y mettre fin ?','car.sosEnd':'Fin de détresse','car.sosEnded':'Fin de détresse envoyée',
-  'car.cancel':'Annuler','car.navigate':'Naviguer','car.navigateFailed':'Navigation impossible','car.accept':'Accepter','car.refuse':'Refuser',
+  'car.cancel':'Annuler','car.navigate':'Naviguer','car.navigateFailed':'Navigation impossible : installez Google Maps ou Waze sur le téléphone','car.accept':'Accepter','car.refuse':'Refuser',
   'car.arrived':'Je suis arrivé','car.read':'Lire','car.reply':'Répondre','car.replyTo':'Réponse à {who}','car.listening':'Parlez, je vous écoute',
   'car.dictationFailed':'Réponse non comprise','car.retry':'Réessayer','car.send':'Envoyer','car.sent':'Envoyé',
   'car.stale':'Données de {time} : ouvrez SARCADE sur le téléphone','car.sections':'Rubriques','car.gone':'N’existe plus','car.note':'Consigne','car.order':'Ordre',
@@ -302,6 +302,10 @@ const Texts _fr={
   'car.you':'Vous','car.photo':'Photo','car.speak':'{prio}{who} : {text}.','car.seen':'vu il y a {age}','car.here':'Ici',
   'car.highPoint':'Point haut','car.relay':'Relais','car.away':'{d} {dir}',
   'car.dir.n':'au nord','car.dir.ne':'au nord-est','car.dir.e':'à l’est','car.dir.se':'au sud-est','car.dir.s':'au sud','car.dir.sw':'au sud-ouest','car.dir.w':'à l’ouest','car.dir.nw':'au nord-ouest',
+  // Android Auto, lot 20: short direction of the Points tab (« 3 km NO »).
+  'car.dirShort.n':'N','car.dirShort.ne':'NE','car.dirShort.e':'E','car.dirShort.se':'SE','car.dirShort.s':'S','car.dirShort.sw':'SO','car.dirShort.w':'O','car.dirShort.nw':'NO',
+  // Android Auto, lot 20: alert of a new move order (name of the point first).
+  'car.go':'Y aller','car.view':'Voir','car.orderAlert':'Ordre de déplacement',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -771,7 +775,7 @@ const Texts _en={
   'car.empty.messages':'No message','car.empty.orders':'No order','car.empty.points':'No point','car.empty.team':'Nobody else on the map',
   'car.sos':'SOS','car.sosTitle':'Distress','car.sosAsk':'Send everyone a distress with your position?','car.sosSend':'Send SOS',
   'car.sosSent':'Distress sent','car.sosOn':'Distress in progress. End it?','car.sosEnd':'End of distress','car.sosEnded':'End of distress sent',
-  'car.cancel':'Cancel','car.navigate':'Navigate','car.navigateFailed':'Navigation not possible','car.accept':'Accept','car.refuse':'Refuse',
+  'car.cancel':'Cancel','car.navigate':'Navigate','car.navigateFailed':'Navigation not possible: install Google Maps or Waze on the phone','car.accept':'Accept','car.refuse':'Refuse',
   'car.arrived':'I have arrived','car.read':'Read','car.reply':'Reply','car.replyTo':'Answer to {who}','car.listening':'Speak, I am listening',
   'car.dictationFailed':'Answer not understood','car.retry':'Try again','car.send':'Send','car.sent':'Sent',
   'car.stale':'Data of {time}: open SARCADE on the phone','car.sections':'Sections','car.gone':'No longer exists','car.note':'Instruction','car.order':'Order',
@@ -780,6 +784,10 @@ const Texts _en={
   'car.you':'You','car.photo':'Photo','car.speak':'{prio}{who}: {text}.','car.seen':'seen {age} ago','car.here':'Here',
   'car.highPoint':'High point','car.relay':'Relay','car.away':'{d} {dir}',
   'car.dir.n':'north','car.dir.ne':'north-east','car.dir.e':'east','car.dir.se':'south-east','car.dir.s':'south','car.dir.sw':'south-west','car.dir.w':'west','car.dir.nw':'north-west',
+  // Android Auto, lot 20: short direction of the Points tab (« 3 km NW »).
+  'car.dirShort.n':'N','car.dirShort.ne':'NE','car.dirShort.e':'E','car.dirShort.se':'SE','car.dirShort.s':'S','car.dirShort.sw':'SW','car.dirShort.w':'W','car.dirShort.nw':'NW',
+  // Android Auto, lot 20: alert of a new move order (name of the point first).
+  'car.go':'Go there','car.view':'View','car.orderAlert':'Move order',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',

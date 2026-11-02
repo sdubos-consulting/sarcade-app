@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../l10n/strings.dart';
+import '../../ui/text_fields_dialog.dart';
 
 /// Keys stored on the server, in the order of the panel; `pin` = default.
 const poiIcons=['pin','gathering','command_post','danger','parking','water','helipad','vehicle','viewpoint','medical','radio','shelter','flag'];
@@ -46,20 +47,19 @@ class PoiIconPanel extends StatelessWidget {
 /// Small window of creation: name (default « Point HH:MM ») and icon.
 /// Returns null when cancelled.
 Future<({String name,String icon})?> showCreatePoiDialog(BuildContext context,{required Color color,String? name}){
-  final ctl=TextEditingController(text:name??defaultPoiName());
   var icon='pin';
-  return showDialog<({String name,String icon})>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set){
-    void ok(){final n=ctl.text.trim();Navigator.pop(c,(name:n.isEmpty?defaultPoiName():n,icon:icon));}
+  return showTextFieldsDialog<({String name,String icon})>(context,initial:[name??defaultPoiName()],builder:(c,f,set){
+    void ok(){final n=f[0].text.trim();Navigator.pop(c,(name:n.isEmpty?defaultPoiName():n,icon:icon));}
     return AlertDialog(title:Text(S.t('poi.createHere')),
       content:SizedBox(width:400,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        TextField(key:const ValueKey('poi-create-name'),controller:ctl,autofocus:true,maxLength:160,
+        TextField(key:const ValueKey('poi-create-name'),controller:f[0],autofocus:true,maxLength:160,
           decoration:InputDecoration(labelText:S.t('poi.name')),onSubmitted:(_)=>ok()),
         Padding(padding:const EdgeInsets.only(top:4,bottom:6),child:Text(S.t('poi.iconTitle'),style:Theme.of(c).textTheme.titleSmall)),
         PoiIconPanel(selected:icon,color:color,onPick:(k)=>set(()=>icon=k)),
       ]))),
       actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
         FilledButton(key:const ValueKey('poi-create-ok'),onPressed:ok,child:Text(S.t('poi.create')))]);
-  })).whenComplete(ctl.dispose);
+  });
 }
 
 /// Change of the icon from the sheet; null when cancelled.

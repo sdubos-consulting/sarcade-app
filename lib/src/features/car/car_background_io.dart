@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui' show IsolateNameServer;
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -77,8 +79,10 @@ Future<bool> sendAnswerNow(PendingAnswer a) async {
 }
 
 /// The message announced by a wake-up, fetched from the server of the
-/// application; null when it cannot be read now (no network, no session).
-Future<({SarcadeMessage message,String deviceId})?> fetchWokenMessage(Map<String,dynamic> data) async {
+/// application, with the last messages of the event ([recent], to group
+/// those of the same sender, lot 20); null when it cannot be read now (no
+/// network, no session).
+Future<({SarcadeMessage message,String deviceId,List<SarcadeMessage> recent})?> fetchWokenMessage(Map<String,dynamic> data) async {
   final c=await loadCarContext();
   if(c==null||'${data['event_id']??''}'!=c.eventId)return null;
   AccessHttpClient? client;
@@ -91,7 +95,7 @@ Future<({SarcadeMessage message,String deviceId})?> fetchWokenMessage(Map<String
     if(list is! List)return null;
     final messages=[for(final j in list) if(j is Map) SarcadeMessage.fromJson(Map<String,dynamic>.from(j))];
     final m=wokenMessage(data,messages,deviceId:c.deviceId);
-    return m==null?null:(message:m,deviceId:c.deviceId);
+    return m==null?null:(message:m,deviceId:c.deviceId,recent:messages);
   }catch(e){
     debugPrint('SARCADE woken message not read: $e');
     return null;
@@ -159,4 +163,31 @@ Future<List<SarcadeMessage>> takePendingReplies() async {
     debugPrint('SARCADE car replies not read: $e');
   }
   return out;
+}
+
+/// Name of the port of the application (lot 20, card « Android Auto :
+/// ordres de déplacement peu utilisables… », choice 2).
+const _wakePortName='sarcade.car.wake';
+
+/// Diagnosis of lot 20: in the car, the phone asleep, a message arrives by
+/// a Firebase wake-up, handled in a separate isolate that showed it
+/// without telling the application; the move order itself only came with
+/// the realtime channel (cut while the phone sleeps) or the next
+/// synchronisation, so the Ordres tab of the car stayed empty. The wake-up
+/// now tells the application, when it runs, to synchronise at once.
+void tellApplicationWoken(){
+  try{IsolateNameServer.lookupPortByName(_wakePortName)?.send(true);}catch(_){/* application not running */}
+}
+
+/// The application listens to the wake-ups; the function returned stops.
+void Function() listenWakeups(void Function() onWake){
+  final port=ReceivePort();
+  IsolateNameServer.removePortNameMapping(_wakePortName);
+  IsolateNameServer.registerPortWithName(port.sendPort,_wakePortName);
+  final sub=port.listen((_)=>onWake());
+  return (){
+    sub.cancel();
+    port.close();
+    IsolateNameServer.removePortNameMapping(_wakePortName);
+  };
 }

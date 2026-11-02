@@ -332,6 +332,13 @@ class NotificationService {
       // Same key (a new distress, its « Fin de détresse »): the reminders
       // of the previous notification stop, the new one takes its place.
       if(payload!=null)await _stop(payload.key);
+      // Lot 20: the earlier messages of the same sender are in this
+      // notification of conversation; theirs go away (one per sender).
+      for(final key in car?.replaces??const <String>[]){
+        if(payload!=null&&key==payload.key)continue;
+        await _stop(key);
+        try{await _plugin.cancel(notificationIdFor(key));}catch(_){/* already gone */}
+      }
       await _plugin.show(id,title,body,await _details(priority,payload,sos:isSosBody(body),timeoutAfter:reminded&&_schedules?_replacedAfter:null,car:car),payload:payload?.encode());
       if(reminded)await _scheduleReminders(title,body,payload,car:car);
     }catch(e){
