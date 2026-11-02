@@ -93,15 +93,14 @@ void main(){
     expect(o.first['note'],'Prendre la radio'); expect(o.first['lat'],48.83);
   });
 
-  test('Points: designated points, then the nearest high points and relays',(){
-    final s=carSnapshot(input(references:[ref('r1','RELAY',48.82),ref('h1','HIGH_POINT',48.85),ref('far','RELAY',50.0)]));
+  test('Points: designated points, then the nearest high points (no relay since lot 20)',(){
+    final s=carSnapshot(input(references:[ref('r1','RELAY',48.82),ref('h1','HIGH_POINT',48.85),ref('far','HIGH_POINT',50.0)]));
     final p=(s['points'] as List).cast<Map<String,Object?>>();
-    expect(p.map((x)=>x['id']),['poi1','r1','h1']);
+    expect(p.map((x)=>x['id']),['poi1','h1']);
     expect(p[0]['title'],'Point de regroupement'); expect(p[0]['icon'],'gathering');
-    expect(p[1]['icon'],'relay'); expect(p[1]['text'],contains('Relais · 145,6125 MHz'));
-    expect(p[2]['icon'],'high'); expect(p[2]['text'],contains('Point haut · 180 m'));
+    expect(p[1]['icon'],'high'); expect(p[1]['text'],contains('Point haut · 180 m'));
     // Without position: no « nearest » reference.
-    final away=carSnapshot(input(references:[ref('r1','RELAY',48.82)],at:null));
+    final away=carSnapshot(input(references:[ref('h1','HIGH_POINT',48.85)],at:null));
     expect((away['points'] as List).map((x)=>(x as Map)['id']),['poi1']);
   });
 

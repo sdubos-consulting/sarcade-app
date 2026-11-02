@@ -42,14 +42,17 @@ const carConversationMessages=5;
 const carSpokenMessages=3;
 /// Conversations, points, operators sent to the car (the car shows fewer).
 const carMaxItems=30;
-/// High points and relays: the nearest ones, within this distance.
+/// High points: the nearest ones, within this distance (lot 20, card
+/// « Android Auto, onglet Points : retirer les relais radio… »: no relay,
+/// up to 10 high points within 50 km).
 const carReferenceRadiusM=50000.0;
-const carReferencesPerKind=5;
+const carHighPointsMax=10;
 
-const _highPointColor=0xFF6D4C41, _relayColor=0xFF8E24AA, _allColor=0xFF1E88E5;
+const _highPointColor=0xFF6D4C41, _allColor=0xFF1E88E5;
 
 /// High point or relay of the radio reference (ADRASEC module), given by
-/// the map page: the Core does not import the module.
+/// the map page: the Core does not import the module. The car only shows
+/// the high points (lot 20).
 typedef CarSite=({String id,String name,bool relay,double lat,double lon,double? mhz,double? altM});
 
 /// What the application knows when the car asks (see the map page).
@@ -173,8 +176,10 @@ Map<String,Object?> _order(MoveOrder o,CarScreenInput i)=>{
   'color':moveOrderColor(o.status).toARGB32(),
 };
 
-/// Designated points (all, the nearest first), then the high points and
-/// relays near the phone (the ADRASEC module gives them, else none).
+/// Designated points of the event (all, the nearest first), then the
+/// nearest high points with their altitude, up to 10 within 50 km (the
+/// ADRASEC module gives them, else none). Never a relay: not a place to
+/// drive to (lot 20).
 List<Map<String,Object?>> carPoints(CarScreenInput i){
   final here=i.here;
   double dist(double lat,double lon)=>here==null?double.infinity:distanceM(here,LatLng(lat,lon));
@@ -188,17 +193,13 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
     },
   ];
   if(here!=null){
-    final near=[...i.references.where((r)=>dist(r.lat,r.lon)<=carReferenceRadiusM)]
+    final high=[...i.references.where((r)=>!r.relay&&dist(r.lat,r.lon)<=carReferenceRadiusM)]
       ..sort((a,b)=>dist(a.lat,a.lon).compareTo(dist(b.lat,b.lon)));
-    final refs=[...near.where((r)=>!r.relay).take(carReferencesPerKind),...near.where((r)=>r.relay).take(carReferencesPerKind)]
-      ..sort((a,b)=>dist(a.lat,a.lon).compareTo(dist(b.lat,b.lon)));
-    for(final r in refs){
+    for(final r in high.take(carHighPointsMax)){
       out.add({
-        'id':r.id,'kind':r.relay?'relay':'high','icon':r.relay?'relay':'high','color':r.relay?_relayColor:_highPointColor,
+        'id':r.id,'kind':'high','icon':'high','color':_highPointColor,
         'title':r.name,
-        'text':_join([carAway(here,LatLng(r.lat,r.lon)),r.relay?S.t('car.relay'):S.t('car.highPoint'),
-          if(r.relay&&r.mhz!=null)'${r.mhz!.toStringAsFixed(4).replaceAll('.',',')} MHz',
-          if(!r.relay&&r.altM!=null)'${r.altM!.round()} m']),
+        'text':_join([carAway(here,LatLng(r.lat,r.lon)),S.t('car.highPoint'),if(r.altM!=null)'${r.altM!.round()} m']),
         'lat':r.lat,'lon':r.lon,
       });
     }
