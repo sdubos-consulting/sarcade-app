@@ -176,36 +176,36 @@ internal object CarUi {
     /** Lot 20 (card « Android Auto, onglet Points : boutons ronds gris
      *  vides, SOS en disque blanc… », choice 2): where the SOS is.
      *  - false (choice of the owner, tried first): round button of the
-     *    lists, the SOS icon alone tinted red;
+     *    lists, the SOS icon alone tinted red, on a neutral background;
      *  - true (fallback, if Android Auto still paints the icon): no round
-     *    button, the SOS in the action strip at the top, « SOS » written in
-     *    red; the car then shows one section at a time (button « Rubriques »
-     *    of the strip) instead of the tabs, the strip not existing in the
-     *    tabs of the Car App Library 1.7. */
+     *    button, the SOS in the action strip at the top (red icon and the
+     *    word « SOS »); the car then shows one section at a time (button
+     *    « Rubriques » of the strip) instead of the tabs, the strip not
+     *    existing in the tabs of the Car App Library 1.7. */
     const val SOS_IN_STRIP = false
+
+    /** Neutral background of the round SOS button: white by day, dark grey
+     *  by night. The Car App Library refuses a round button without a
+     *  background colour (IllegalArgumentException, found by the tests of
+     *  the car screens); a red background would hide the red icon. */
+    val SOS_BACKGROUND: CarColor = CarColor.createCustom(Color.WHITE, 0xFF303030.toInt())
 
     /** Red SOS action (choice 3 of lot 17), always reachable; [floating]:
      *  the round button of the lists (icon only: a round button cannot
-     *  carry a title), otherwise the action strip (« SOS » in red).
+     *  carry a title), otherwise the action strip (« SOS » written; the
+     *  strip accepts no colour in its titles, the icon stays red).
      *
      *  History: lot 17 asked a red background, which Android Auto replaced
      *  by its blue; lot 18 drew « SOS » in red on a white disc in the
      *  picture, which Android Auto painted in one colour (white disc, photo
      *  of 2 Nov 2026). Lot 20: the icon of the library, tinted CarColor.RED,
-     *  no background colour asked. */
+     *  on a neutral background. */
     fun sosAction(context: CarContext, snap: Snapshot, floating: Boolean, onClick: () -> Unit): Action {
         val b = Action.Builder()
             .setIcon(icon(context, R.drawable.sarcade_car_sos, CarColor.RED))
             .setOnClickListener { onClick() }
-        if (!floating) b.setTitle(red(snap.label("sos")))
+        if (floating) b.setBackgroundColor(SOS_BACKGROUND) else b.setTitle(snap.label("sos"))
         return b.build()
-    }
-
-    /** [text] written in red (the host may keep its own colour for titles). */
-    fun red(text: String): CarText {
-        val s = SpannableString(text)
-        s.setSpan(ForegroundCarColorSpan.create(CarColor.RED), 0, text.length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-        return CarText.create(s)
     }
 
     fun post(context: CarContext, type: String, fill: JSONObject.() -> Unit = {}) {
