@@ -8,27 +8,36 @@ import 'package:latlong2/latlong.dart';
 
 import 'drawing_controller.dart';
 import 'geometry.dart';
+import 'label_declutter.dart';
 import 'map_feature.dart';
 
 Color _c(int argb)=>Color(argb);
 
+/// Position and name of an operator on the map, for the placement of the
+/// labels of the drawn objects (label_declutter.dart).
+typedef LabelOperator=({LatLng point,String label});
+
 /// Map layers for the drawn objects and the shape in progress.
-/// Placed above the tiles and traces, below the operator markers.
-List<Widget> buildDrawingLayers(DrawingController c){
+/// Placed above the tiles and traces, below the operator markers. A label
+/// that overlaps an [operators] marker or another label is hidden until the
+/// map is zoomed in, unless its object is selected (lot 20).
+List<Widget> buildDrawingLayers(DrawingController c,{List<LabelOperator> operators=const []}){
   final features=c.features;
   final closed=features.where((f)=>f.kind==FeatureKind.zone||f.kind==FeatureKind.rectangle).toList();
   final circles=features.where((f)=>f.kind==FeatureKind.circle).toList();
   final lines=features.where((f)=>f.kind.isLinear).toList();
 
-  final labels=<Marker>[];
+  final labels=<_LabelSpec>[];
+  final texts=<_TextSpec>[];
   final symbols=<Marker>[];
   for(final f in features){
     final selected=c.isSelected(f.id);
     switch(f.kind){
       case FeatureKind.point:
         symbols.add(Marker(point:f.points[0],width:40,height:40,alignment:Alignment.topCenter,child:Icon(Icons.place,size:38,color:_c(f.color).withValues(alpha:f.opacity),shadows:selected?const [Shadow(color:Colors.white,blurRadius:6)]:null)));
-        if(f.label.isNotEmpty)labels.add(_label(f.points[0],f.label,f.color,below:true,opacity:f.opacity));
+        if(f.label.isNotEmpty)labels.add(_LabelSpec(f.points[0],f.label,f.color,selected:selected,below:true,opacity:f.opacity));
       case FeatureKind.text:
+        texts.add(_TextSpec(f.points[0],f.label.isEmpty?'Texte':f.label,f.fontSize));
         symbols.add(Marker(point:f.points[0],width:textMarkerWidth(f.fontSize),height:textMarkerHeight(f.fontSize),child:Center(child:_faded(f.opacity,_TextChip(text:f.label.isEmpty?'Texte':f.label,color:f.color,selected:selected,fontSize:f.fontSize)))));
       case FeatureKind.arrow:
         if(f.points.length>=2){
@@ -37,12 +46,19 @@ List<Widget> buildDrawingLayers(DrawingController c){
           final size=18+f.strokeWidth*3;
           symbols.add(Marker(point:b,width:size,height:size,child:Transform.rotate(angle:angle,child:Icon(Icons.navigation,size:size,color:_c(f.color).withValues(alpha:f.opacity)))));
         }
-        if(f.label.isNotEmpty)labels.add(_label(f.anchor,f.label,f.color,opacity:f.opacity));
+        if(f.label.isNotEmpty)labels.add(_LabelSpec(f.anchor,f.label,f.color,selected:selected,opacity:f.opacity));
       case FeatureKind.measure:
-        labels.add(_label(f.points.last,formatDistance(f.lengthM),f.color,opacity:f.opacity));
-        if(f.label.isNotEmpty)labels.add(_label(f.anchor,f.label,f.color,opacity:f.opacity));
+        // Name and length on the same point (2 points): one label, so that
+        // they do not hide each other (lot 20).
+        final distance=formatDistance(f.lengthM);
+        if(f.label.isNotEmpty&&f.anchor==f.points.last){
+          labels.add(_LabelSpec(f.anchor,'${f.label} · $distance',f.color,selected:selected,opacity:f.opacity));
+        }else{
+          labels.add(_LabelSpec(f.points.last,distance,f.color,selected:selected,opacity:f.opacity));
+          if(f.label.isNotEmpty)labels.add(_LabelSpec(f.anchor,f.label,f.color,selected:selected,opacity:f.opacity));
+        }
       default:
-        if(f.label.isNotEmpty)labels.add(_label(f.anchor,f.label,f.color,opacity:f.opacity));
+        if(f.label.isNotEmpty)labels.add(_LabelSpec(f.anchor,f.label,f.color,selected:selected,opacity:f.opacity));
     }
   }
 
@@ -62,7 +78,9 @@ List<Widget> buildDrawingLayers(DrawingController c){
       strokeCap:StrokeCap.round,strokeJoin:StrokeJoin.round,
     )).toList()),
     ..._draftLayers(c),
-    if(symbols.isNotEmpty||labels.isNotEmpty)MarkerLayer(markers:[...symbols,...labels]),
+    if(symbols.isNotEmpty)MarkerLayer(markers:symbols),
+    // Most recently changed object first: it is drawn on top.
+    if(labels.isNotEmpty)_DrawingLabelLayer(labels:labels.reversed.toList(),texts:texts,operators:operators),
   ];
 }
 
@@ -82,6 +100,36 @@ List<Widget> _draftLayers(DrawingController c){
 
 /// Child drawn with the transparency of its object (no extra layer at 100 %).
 Widget _faded(double opacity,Widget child)=>opacity>=1?child:Opacity(opacity:opacity,child:child);
+
+/// Label of a drawn object, before placement.
+class _LabelSpec {
+  final LatLng point; final String text; final int color; final bool selected, below; final double opacity;
+  const _LabelSpec(this.point,this.text,this.color,{required this.selected,this.below=false,this.opacity=1});
+}
+
+/// Texte object of the map: always shown, its labels are avoided.
+class _TextSpec {
+  final LatLng point; final String text; final double fontSize;
+  const _TextSpec(this.point,this.text,this.fontSize);
+}
+
+/// Labels of the drawn objects that do not overlap the operators, the Texte
+/// objects or a label placed before (label_declutter.dart). Built again at
+/// each move of the map (camera of the map).
+class _DrawingLabelLayer extends StatelessWidget {
+  final List<_LabelSpec> labels; final List<_TextSpec> texts; final List<LabelOperator> operators;
+  const _DrawingLabelLayer({required this.labels,required this.texts,required this.operators});
+
+  @override Widget build(BuildContext context){
+    final camera=MapCamera.of(context);
+    Offset px(LatLng p)=>camera.projectAtZoom(p);
+    final shown=visibleLabels([for(final l in labels)LabelCandidate(labelBox(px(l.point),l.text,below:l.below),forced:l.selected)],blockers:[
+      for(final o in operators)operatorBox(px(o.point),o.label),
+      for(final t in texts)textObjectBox(px(t.point),t.text,t.fontSize,markerWidth:textMarkerWidth(t.fontSize),markerHeight:textMarkerHeight(t.fontSize)),
+    ]);
+    return MarkerLayer(markers:[for(var i=labels.length-1;i>=0;i--)if(shown.contains(i))_label(labels[i].point,labels[i].text,labels[i].color,below:labels[i].below,opacity:labels[i].opacity)]);
+  }
+}
 
 Marker _label(LatLng p,String text,int color,{bool below=false,double opacity=1})=>Marker(
   point:p,width:180,height:30,alignment:below?Alignment.bottomCenter:Alignment.center,

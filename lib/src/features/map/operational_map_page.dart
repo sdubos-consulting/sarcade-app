@@ -2746,7 +2746,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Reference sites below the drawn objects, grouped when zoomed out.
           if(_showHighPoints)touchableMarkers(ignoring:_placingOnMap,child:_faded('high',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isHighPoint).toList(),onSelect:_selectReference))),
           if(_showRelays)touchableMarkers(ignoring:_placingOnMap,child:_faded('relay',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isRelay).toList(),onSelect:_selectReference))),
-          if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
+          // Labels of the drawings: hidden under the operators (lot 20).
+          if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing,operators:[for(final p in onMap)if(!p.isAprs)(point:LatLng(p.lat,p.lon),label:p.label)])),
           // Double click on a drawn object: its name, no zoom (lot 19).
           if(_showDrawings)DrawingDoubleTapLayer(controller:_drawing,enabled:!_placingOnMap&&!_drawing.selectMode,radiusPx:_circleRadiusPx,onDoubleTap:(f)=>unawaited(renameDrawing(context,_drawing,f))),
           if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id&&b.id!=_aim?.editing?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
