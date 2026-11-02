@@ -16,6 +16,8 @@
 /// Pure code, testable without Flutter widgets.
 library;
 
+import 'dart:convert';
+
 import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
@@ -25,7 +27,7 @@ import '../../models/message.dart';
 import '../../models/poi.dart';
 import '../../models/position.dart';
 import '../../ui/operator_color.dart';
-import '../map/drawing/geometry.dart' show bearingDeg, distanceM, formatDistance;
+import '../map/drawing/geometry.dart' show bearingDeg, distanceM;
 import '../map/operator_icons.dart' show chosenIcon;
 import '../map/stations.dart' show ageLabel;
 import '../messages/conversations.dart';
@@ -70,14 +72,23 @@ class CarScreenInput {
     this.here,this.inDistress=false,required this.now});
 }
 
-/// « 4,2 km au nord-ouest », empty without position.
+/// Distance shown in the car (lot 20, card « Android Auto : l'écran
+/// clignote… », choice 1): by 50 m under 1 km, by 0,5 km beyond, so that a
+/// small move of the GPS does not change the text (nor redraw the screen).
+String carDistance(double m){
+  if(m<975)return '${((m/50).round()*50).clamp(50,950)} m';
+  final km=(m/500).round()/2;
+  return km==km.truncateToDouble()?'${km.toInt()} km':'${km.toStringAsFixed(1).replaceAll('.',',')} km';
+}
+
+/// « 4,5 km au nord-ouest », empty without position.
 String carAway(LatLng? from,LatLng to){
   if(from==null)return '';
   final d=distanceM(from,to);
   if(d<20)return S.t('car.here');
   const dirs=['n','ne','e','se','s','sw','w','nw'];
   final dir=dirs[((bearingDeg(from,to)+22.5)%360~/45)%8];
-  return S.t('car.away',{'d':formatDistance(d),'dir':S.t('car.dir.$dir')});
+  return S.t('car.away',{'d':carDistance(d),'dir':S.t('car.dir.$dir')});
 }
 
 String _join(Iterable<String> parts)=>parts.where((p)=>p.trim().isNotEmpty).join(' · ');
@@ -235,6 +246,19 @@ Map<String,Object?> carSnapshot(CarScreenInput i){
     'points':carPoints(i),
     'team':carTeam(i),
   };
+}
+
+/// What must reach the car at once (lot 20, card « Android Auto : l'écran
+/// clignote… », choice 3): a new message, a new or answered order, a
+/// distress, the language. Distances and ages are not in it: they wait
+/// for the next write (at most every 15 s, see car_screen_channel.dart).
+String carUrgentKey(Map<String,Object?> snapshot){
+  List<Object?> list(String k)=>snapshot[k] is List?snapshot[k] as List:const [];
+  return jsonEncode({
+    'distress':snapshot['distress'],'lang':snapshot['lang'],'labels':snapshot['labels'],
+    'messages':[for(final m in list('messages'))if(m is Map)[m['id'],m['body'],m['unread'],m['prio']]],
+    'orders':[for(final o in list('orders'))if(o is Map)[o['id'],o['status'],o['title'],o['note']]],
+  });
 }
 
 // --- Actions of the driver ----------------------------------------------------
