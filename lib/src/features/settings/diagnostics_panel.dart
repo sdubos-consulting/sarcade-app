@@ -392,7 +392,7 @@ DiagLine? adsbDiagLine(String block,Map<String,dynamic>? st,DateTime now){
 /// out of reach, or no module chosen.
 DiagLine meshCoreDiagLine(String block,MeshCoreLink link)=>(block:block,label:S.t('mesh.tool'),
   value:link.remembered?'${link.deviceName??link.deviceId} · ${S.t('mesh.state.${link.state.name}')}':S.t('mesh.state.none'),
-  state:!link.remembered?null:switch(meshCorePillTone(link.state)){'ok'=>'green','wait'=>'orange',_=>'red'});
+  state:!link.remembered?null:switch(meshCorePillTone(link.state)){'ok'=>'green','wait'=>'orange','off'=>'off',_=>'red'});
 
 /// Where itineraries are computed: 'server', 'device' or 'none'.
 String routingWhere({required bool server,required bool device})=>server?'server':device?'device':'none';

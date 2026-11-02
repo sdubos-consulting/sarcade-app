@@ -22,17 +22,23 @@ import 'meshcore_chat.dart';
 import 'meshcore_protocol.dart';
 
 /// [waitingClick]: web app (lot 17), the browser lets join the module only
-/// after a click in this tab (« Reconnecter le module »).
-enum MeshCoreState { none, connecting, connected, reconnecting, failed, waitingClick }
+/// after a click in this tab (« Reconnecter le module »). [disconnected]
+/// (lot 19): « Déconnecter » was pressed, the module stays remembered but is
+/// not joined again until « Se connecter ».
+enum MeshCoreState { none, connecting, connected, reconnecting, failed, waitingClick, disconnected }
 
 /// Preference keys of the remembered module.
 const meshCoreDeviceKey='meshcore_device', meshCoreNameKey='meshcore_name';
 /// « Afficher les nœuds sur la carte » (lot 17), off by default.
 const meshCoreMapKey='meshcore_map';
+/// « Déconnecter » (lot 19): '1' while the module is left disconnected on
+/// purpose, start of the application included.
+const meshCoreOffKey='meshcore_off';
 
-/// Colour family of the pill: 'off' (no module), 'ok', 'wait', 'bad'.
+/// Colour family of the pill: 'off' (no module, or disconnected on purpose:
+/// grey, lot 19), 'ok', 'wait', 'bad'.
 String meshCorePillTone(MeshCoreState s)=>switch(s){
-  MeshCoreState.none=>'off', MeshCoreState.connected=>'ok',
+  MeshCoreState.none||MeshCoreState.disconnected=>'off', MeshCoreState.connected=>'ok',
   MeshCoreState.connecting||MeshCoreState.reconnecting||MeshCoreState.waitingClick=>'wait', MeshCoreState.failed=>'bad'};
 
 /// Delay before the next attempt to join the module again: 5 s, 15 s,
@@ -43,7 +49,7 @@ Duration meshCoreRetryDelay(int attempt)=>Duration(seconds:const [5,15,30,60][at
 /// d'erreur lisible », validated 1 Nov 2026, 8 h 15): the technical error
 /// stays in the journal only.
 String? meshCoreProblem({required MeshCoreState state,required bool trying,String? error,Duration? retryIn}){
-  if(error==null||trying||state==MeshCoreState.connected||state==MeshCoreState.none)return null;
+  if(error==null||trying||state==MeshCoreState.connected||state==MeshCoreState.none||state==MeshCoreState.disconnected)return null;
   final wait=retryIn==null?'':' ${S.t('mesh.retryIn',{'s':retryIn.inSeconds})}';
   return '${S.t('mesh.unreachable')}$wait';
 }
@@ -74,6 +80,19 @@ class MeshCoreLink extends ChangeNotifier {
   Duration? retryIn;
   /// « Nœuds MeshCore » layer of the map (lot 17), off by default.
   bool showOnMap=false;
+  /// « Déconnecter » (lot 19): no automatic join until « Se connecter ».
+  bool userOff=false;
+
+  /// Tests: no Bluetooth, preferences in [testPrefs], [testJoins] counts
+  /// the attempts to join the module.
+  @visibleForTesting bool testMode=false;
+  @visibleForTesting int testJoins=0;
+  @visibleForTesting final Map<String,String?> testPrefs={};
+  String? _pref(String key)=>testMode?testPrefs[key]:_store?.preference(key);
+  Future<void> _setPref(String key,String? value) async {
+    if(testMode){testPrefs[key]=value;return;}
+    await _store?.setPreference(key,value);
+  }
 
   StreamSubscription<Uint8List>? _valueSub;
   StreamSubscription<bool>? _connSub;
@@ -103,9 +122,55 @@ class MeshCoreLink extends ChangeNotifier {
   Future<void> restore(LocalStore store) async {
     _store=store;
     _wire(store);
+    _restore();
+  }
+
+  void _restore(){
     if(!supported||state!=MeshCoreState.none)return;
-    deviceId=store.preference(meshCoreDeviceKey); deviceName=store.preference(meshCoreNameKey);
-    if(deviceId!=null){notifyListeners();unawaited(_join());}
+    deviceId=_pref(meshCoreDeviceKey); deviceName=_pref(meshCoreNameKey);
+    if(deviceId==null)return;
+    // Disconnected on purpose (lot 19): stays so at the next start.
+    userOff=_pref(meshCoreOffKey)=='1';
+    if(userOff){log('module déconnecté à la demande : pas de connexion au démarrage');_set(MeshCoreState.disconnected);return;}
+    notifyListeners(); unawaited(_join());
+  }
+
+  /// Tests: [restore] without a store (see [testPrefs]).
+  @visibleForTesting
+  void restoreForTest()=>_restore();
+
+  /// Tests: back to the state of a fresh start.
+  @visibleForTesting
+  void resetForTest(){
+    _retry?.cancel(); _poll?.cancel();
+    state=MeshCoreState.none; deviceId=null; deviceName=null; error=null; userOff=false; trying=false; retryIn=null;
+    _attempt=0; testJoins=0; testPrefs.clear();
+  }
+
+  /// « Déconnecter » (lot 19): the Bluetooth link is cut, the module stays
+  /// remembered, and it is not joined again by itself, even at the next
+  /// start, until « Se connecter ».
+  Future<void> disconnect() async {
+    if(deviceId==null)return;
+    userOff=true;
+    await _setPref(meshCoreOffKey,'1');
+    await _drop();
+    trying=false; retryIn=null; _attempt=0;
+    log('déconnecté à la demande');
+    _set(MeshCoreState.disconnected);
+  }
+
+  /// « Se connecter » (lot 19): back to the automatic link. Web: the
+  /// browser may ask to choose the module again (a click).
+  Future<void> connect() async {
+    if(deviceId==null)return;
+    // Web: the browser's window first, while the click still counts; the
+    // choice clears the « déconnecté » mark (see [choose]).
+    if(kIsWeb&&!_webChosen.contains(deviceId)){await chooseInBrowser();return;}
+    userOff=false;
+    await _setPref(meshCoreOffKey,null);
+    _attempt=0;
+    await _join();
   }
 
   /// Chosen in Paramètres › Liaisons: remembered, then joined.
@@ -114,8 +179,10 @@ class MeshCoreLink extends ChangeNotifier {
     final st=_store; if(st!=null)_wire(st);
     await _drop();
     deviceId=d.deviceId; deviceName=d.name;
-    await _store?.setPreference(meshCoreDeviceKey,deviceId);
-    await _store?.setPreference(meshCoreNameKey,deviceName);
+    await _setPref(meshCoreDeviceKey,deviceId);
+    await _setPref(meshCoreNameKey,deviceName);
+    // Choosing a module is asking for the link (lot 19).
+    userOff=false; await _setPref(meshCoreOffKey,null);
     _attempt=0;
     await _join();
   }
@@ -124,14 +191,16 @@ class MeshCoreLink extends ChangeNotifier {
   Future<void> forget() async {
     await _drop();
     deviceId=null; deviceName=null; info=MeshCoreInfo(); _contacts.clear(); linkRssi=null;
-    await _store?.setPreference(meshCoreDeviceKey,null);
-    await _store?.setPreference(meshCoreNameKey,null);
+    await _setPref(meshCoreDeviceKey,null);
+    await _setPref(meshCoreNameKey,null);
+    userOff=false; await _setPref(meshCoreOffKey,null);
     log('module oublié');
     _set(MeshCoreState.none);
   }
 
   Future<void> _join() async {
-    final id=deviceId; if(id==null)return;
+    final id=deviceId; if(id==null||userOff)return;
+    if(testMode){testJoins++;_attempt=0;_set(MeshCoreState.connected);return;}
     // Web: only a module chosen in this tab can be joined (the browser asks
     // for a click); after a drop, it is joined again by itself.
     if(kIsWeb&&!_webChosen.contains(id)){_retry?.cancel();trying=false;_set(MeshCoreState.waitingClick);return;}
@@ -141,6 +210,8 @@ class MeshCoreLink extends ChangeNotifier {
     try{
       log('connexion à ${deviceName??id}');
       await UniversalBle.connect(id,timeout:const Duration(seconds:20));
+      // « Déconnecter » pressed meanwhile (lot 19).
+      if(userOff){try{await UniversalBle.disconnect(id);}catch(_){}trying=false;return;}
       final services=await UniversalBle.discoverServices(id);
       if(!services.any((s)=>s.uuid.toLowerCase()==meshCoreService))throw StateError('not a companion module');
       try{await UniversalBle.requestMtu(id,512);}catch(_){/* default MTU kept */}
@@ -166,14 +237,14 @@ class MeshCoreLink extends ChangeNotifier {
   }
 
   void _lost(){
-    if(_stopping||state!=MeshCoreState.connected)return;
+    if(_stopping||userOff||state!=MeshCoreState.connected)return;
     log('liaison perdue');
     _poll?.cancel();
     _schedule(null);
   }
 
   void _schedule(String? err){
-    if(deviceId==null)return;
+    if(deviceId==null||userOff)return;
     final wait=meshCoreRetryDelay(_attempt++);
     retryIn=wait;
     _set(_attempt>3?MeshCoreState.failed:MeshCoreState.reconnecting,err:err);
@@ -265,7 +336,7 @@ class MeshCoreLink extends ChangeNotifier {
     await _valueSub?.cancel(); _valueSub=null;
     await _connSub?.cancel(); _connSub=null;
     final id=deviceId;
-    if(id!=null){try{await UniversalBle.disconnect(id);}catch(_){}}
+    if(id!=null&&!testMode){try{await UniversalBle.disconnect(id);}catch(_){}}
     connectedSince=null;
     _stopping=false;
   }

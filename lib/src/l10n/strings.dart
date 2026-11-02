@@ -480,6 +480,7 @@ const Texts _fr={
   'diag.perm.whileInUse':'autorisé en cours d’utilisation',
   // MeshCore from the web app, lot 17 (Web Bluetooth).
   'mesh.web.connect':'Connecter un module MeshCore','mesh.web.help':'Chrome ou Edge : choisissez le module dans la fenêtre du navigateur. La liaison s’arrête à la fermeture de l’onglet','mesh.web.unsupported':'Utilisez Chrome ou Edge, ou l’application','mesh.web.reconnect':'Reconnecter le module','mesh.web.reconnectHelp':'Module MeshCore : le navigateur demande un clic pour le reconnecter','mesh.state.waitingClick':'à reconnecter (un clic)',
+  'mesh.state.disconnected':'déconnecté','mesh.off.help':'Déconnecté à votre demande : pas de reconnexion automatique, même au démarrage',
   'diag.perm.always':'toujours autorisé',
   'diag.perm.unableToDetermine':'autorisation inconnue',
   'diag.notifications':'Notifications',
@@ -949,6 +950,7 @@ const Texts _en={
   'diag.perm.whileInUse':'allowed while in use',
   // MeshCore from the web app, lot 17 (Web Bluetooth).
   'mesh.web.connect':'Connect a MeshCore module','mesh.web.help':'Chrome or Edge: choose the module in the browser window. The link stops when the tab is closed','mesh.web.unsupported':'Use Chrome or Edge, or the app','mesh.web.reconnect':'Reconnect the module','mesh.web.reconnectHelp':'MeshCore module: the browser needs a click to reconnect it','mesh.state.waitingClick':'to reconnect (one click)',
+  'mesh.state.disconnected':'disconnected','mesh.off.help':'Disconnected at your request: no automatic reconnection, even at start',
   'diag.perm.always':'always allowed',
   'diag.perm.unableToDetermine':'permission unknown',
   'diag.notifications':'Notifications',
