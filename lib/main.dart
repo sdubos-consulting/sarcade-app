@@ -30,8 +30,9 @@ Future<void> _start() async {
   PlatformDispatcher.instance.onError=(e,s){StartupReport.error('platform',e,s);return true;};
   if(kReleaseMode)ErrorWidget.builder=readableErrorWidget;
   if (!await acquireSingleInstance()) {
-    // Windows V0.1: refuse a second process before Hive is opened.
-    // Native foreground activation will be added in the packaged Windows runner.
+    // Safety net: the native runner refuses a second process first (lot 19,
+    // tool/windows_runner/single_instance.h). Before Hive is opened; the
+    // runner closes its start window, then ends the process without exit().
     StartupReport.note('deuxième instance refusée');
     quitApp();
     return;

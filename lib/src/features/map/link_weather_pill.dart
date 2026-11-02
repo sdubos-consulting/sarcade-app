@@ -29,13 +29,14 @@ class LinkWeatherPill extends StatelessWidget {
   final VoidCallback onLinks; final VoidCallback onWeather;
   /// Phone: no weather icon (the temperature alone, see [pillWeatherText]).
   final bool compact;
-  /// MeshCore module (lot D, 1 Nov 2026): 'ok', 'wait' or 'bad'; null
+  /// MeshCore module (lot D, 1 Nov 2026): 'ok', 'wait', 'bad' or 'off'; null
   /// when no module is remembered (nothing drawn).
   final String? mesh;
   const LinkWeatherPill({super.key,required this.dot,required this.linkTooltip,required this.onLinks,required this.onWeather,
     this.linkWord,this.weatherIcon,this.weatherText,this.alert,this.compact=false,this.mesh});
 
-  static Color meshColor(String tone,ColorScheme s)=>switch(tone){'ok'=>Colors.green.shade600,'wait'=>Colors.orange.shade700,_=>s.error};
+  /// 'off' (lot 19): disconnected on purpose, grey and not red.
+  static Color meshColor(String tone,ColorScheme s)=>switch(tone){'ok'=>Colors.green.shade600,'wait'=>Colors.orange.shade700,'off'=>Colors.grey.shade600,_=>s.error};
 
   @override Widget build(BuildContext context){
     final s=Theme.of(context).colorScheme;

@@ -172,9 +172,34 @@ class AdsbController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Aircraft of the last broadcast of the event received while the layer
+  /// is off (lot 19, search of the map): not drawn, found by the search.
+  List<Aircraft> heardOff=const [];
+  DateTime? heardOffAt;
+
+  /// Aircraft received now (search, lot 19): those of the layer, else those
+  /// of the last broadcast of the event (2 min at most) while it is off.
+  List<Aircraft> received(DateTime now){
+    if(_on)return aircraft;
+    final at=heardOffAt;
+    return at!=null&&now.difference(at)<const Duration(minutes:2)?heardOff:const [];
+  }
+
+  /// An aircraft chosen in the search (lot 19): its floating sheet opens and
+  /// the layer is switched on when it was off.
+  Future<void> showFound(Aircraft a) async {
+    if(!_on&&!aircraft.any((x)=>x.icao24==a.icao24))aircraft=[...heardOff.where((x)=>x.icao24!=a.icao24),a];
+    selectedId=a.icao24;
+    notifyListeners();
+    if(!_on)await setOn(true);
+  }
+
   /// Realtime events of the event.
   void onRealtime(String type,Object? data){
-    if(!_on)return;
+    if(!_on){
+      if(type=='adsb.updated'){heardOff=aircraftList(data);heardOffAt=DateTime.now();}
+      return;
+    }
     if(type=='adsb.updated'){_take(data);notifyListeners();for(final id in followed.toList()){unawaited(_readRoute(id));}}
   }
 
