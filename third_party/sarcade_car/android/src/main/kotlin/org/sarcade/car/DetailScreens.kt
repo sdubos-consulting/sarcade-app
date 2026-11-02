@@ -14,7 +14,11 @@ import androidx.lifecycle.LifecycleOwner
 
 /** Screen that follows the data of the application while it is shown. */
 internal abstract class LiveScreen(carContext: CarContext) : Screen(carContext) {
-    private val refresh: () -> Unit = { invalidate() }
+    /** Drawn again only when what it shows changed (lot 20, choice 4). */
+    private var shown: String? = null
+    private val refresh: () -> Unit = {
+        if (watched(snap) != shown) invalidate()
+    }
 
     init {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
@@ -30,6 +34,14 @@ internal abstract class LiveScreen(carContext: CarContext) : Screen(carContext) 
     }
 
     protected val snap: Snapshot get() = Snapshot(CarData.snapshot(carContext))
+
+    /** Data this screen shows, as text (see [Snapshot.signature]). */
+    protected abstract fun watched(s: Snapshot): String
+
+    /** Called by [onGetTemplate] of each screen: remembers what is drawn. */
+    protected fun drawn(s: Snapshot) {
+        shown = watched(s)
+    }
 
     protected open fun onClosed() {}
 
@@ -57,8 +69,11 @@ internal class ConversationScreen(
         session.stopSpeaking()
     }
 
+    override fun watched(s: Snapshot): String = "${s.lang}|${s.item("messages", key)}"
+
     override fun onGetTemplate(): Template {
         val s = snap
+        drawn(s)
         val c = s.item("messages", key) ?: return gone()
         val b = MessageTemplate.Builder(c.optString("body").ifEmpty { c.optString("text") })
             .setTitle(c.optString("title"))
@@ -126,8 +141,12 @@ internal class ReplyScreen(
         dictation = null
     }
 
+    /** Only the language: the dictation redraws this screen itself. */
+    override fun watched(s: Snapshot): String = s.lang
+
     override fun onGetTemplate(): Template {
         val s = snap
+        drawn(s)
         val title = s.label("replyTo").replace("{who}", to)
         return when (state) {
             State.LISTENING -> MessageTemplate.Builder(s.label("listening"))
@@ -163,8 +182,11 @@ internal class ReplyScreen(
 
 /** An order (Ordres tab): who, where, how far, and its buttons. */
 internal class OrderScreen(carContext: CarContext, private val id: String) : LiveScreen(carContext) {
+    override fun watched(s: Snapshot): String = "${s.lang}|${s.item("orders", id)}"
+
     override fun onGetTemplate(): Template {
         val s = snap
+        drawn(s)
         val o = s.item("orders", id) ?: return gone()
         val pane = Pane.Builder()
             .addRow(Row.Builder().setTitle(o.optString("title")).addText(o.optString("text")).build())
@@ -175,7 +197,7 @@ internal class OrderScreen(carContext: CarContext, private val id: String) : Liv
         if (actions.isEmpty()) {
             pane.addAction(
                 Action.Builder().setTitle(CarUi.navigateTitle(carContext, s))
-                    .setOnClickListener { CarUi.navigate(carContext, s, o.optDouble("lat"), o.optDouble("lon"), o.optString("title")) }
+                    .setOnClickListener { CarUi.navigate(carContext, s, o.optDouble("lat"), o.optDouble("lon")) }
                     .build()
             )
         }
@@ -192,8 +214,11 @@ internal class OrderScreen(carContext: CarContext, private val id: String) : Liv
  * distress, « Fin de détresse » instead, as on the phone.
  */
 internal class SosScreen(carContext: CarContext) : LiveScreen(carContext) {
+    override fun watched(s: Snapshot): String = "${s.lang}|${s.distress}"
+
     override fun onGetTemplate(): Template {
         val s = snap
+        drawn(s)
         val end = s.distress
         val confirm = Action.Builder()
             .setTitle(s.label(if (end) "sosEnd" else "sosSend"))

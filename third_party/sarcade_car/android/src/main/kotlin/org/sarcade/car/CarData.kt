@@ -19,6 +19,13 @@ import java.util.UUID
  *   preferences until the application takes them: none is lost when the
  *   application is not running at that moment.
  */
+/** What CarData tells the application (the Flutter plugin); an interface so
+ *  that the car screens are tested without Flutter (lot 20). */
+interface CarDataClient {
+    fun notifyActions()
+    fun notifyActive(active: Boolean)
+}
+
 internal object CarData {
     private const val PREFS = "sarcade_car_screen"
     private const val KEY_SNAPSHOT = "snapshot"
@@ -27,7 +34,7 @@ internal object CarData {
     private val main = Handler(Looper.getMainLooper())
     private var snapshot: JSONObject? = null
     private val listeners = LinkedHashSet<() -> Unit>()
-    private val plugins = LinkedHashSet<SarcadeCarPlugin>()
+    private val plugins = LinkedHashSet<CarDataClient>()
     private var sessions = 0
 
     /** A car session is open (Android Auto shows SARCADE). */
@@ -76,8 +83,8 @@ internal object CarData {
         raw
     }
 
-    fun attach(plugin: SarcadeCarPlugin) { plugins.add(plugin) }
-    fun detach(plugin: SarcadeCarPlugin) { plugins.remove(plugin) }
+    fun attach(plugin: CarDataClient) { plugins.add(plugin) }
+    fun detach(plugin: CarDataClient) { plugins.remove(plugin) }
 
     /** A car session opens (+1) or closes (-1): the application only sends
      *  its data while the car shows SARCADE. */

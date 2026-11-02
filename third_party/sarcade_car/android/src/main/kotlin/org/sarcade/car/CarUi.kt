@@ -39,6 +39,12 @@ internal class Snapshot(private val json: JSONObject) {
 
     fun item(key: String, id: String): JSONObject? = items(key).firstOrNull { it.optString("id") == id }
 
+    /** What a tab shows, as text: the screen is drawn again only when it
+     *  changes (lot 20, card « Android Auto : l'écran clignote… », choice
+     *  4); the time of the write is not in it. */
+    fun signature(key: String): String =
+        listOf(ready, lang, distress, staleText() ?: "", json.optJSONArray(key)?.toString() ?: "").joinToString("|")
+
     /** « Données de 10:42 : ouvrez SARCADE sur le téléphone » when the
      *  application has not written for 2 minutes; null otherwise. */
     fun staleText(now: Long = System.currentTimeMillis()): String? {
@@ -151,15 +157,29 @@ internal object CarUi {
         return b.build()
     }
 
-    /** « Naviguer » : the navigation application of the car (Google Maps,
-     *  Waze…), towards the point. */
-    fun navigate(context: CarContext, snap: Snapshot, lat: Double, lon: Double, label: String) {
-        val q = Uri.encode("$lat,$lon($label)")
-        val intent = Intent(CarContext.ACTION_NAVIGATE, Uri.parse("geo:$lat,$lon?q=$q"))
+    /** Intent of the navigation application of the car towards a point
+     *  (lot 20, card « Android Auto : ordres de déplacement peu
+     *  utilisables… », choice 3). Car App Library (CarContext.startCarApp)
+     *  and Android Auto navigation intents: action ACTION_NAVIGATE, data
+     *  « geo:latitude,longitude ». Until lot 19 a query « ?q=lat,lon(name) »
+     *  was added: Google Maps and Waze then search that text as an address
+     *  and may start nothing, without error. Coordinates with a dot. */
+    fun navigateIntent(lat: Double, lon: Double): Intent =
+        Intent(CarContext.ACTION_NAVIGATE, Uri.parse("geo:${coord(lat)},${coord(lon)}"))
+
+    private fun coord(v: Double): String = String.format(Locale.US, "%.6f", v)
+
+    /** « Naviguer », « Y aller » : Google Maps or Waze of the car, guided
+     *  towards the point; a clear message when no application takes it. */
+    fun navigate(context: CarContext, snap: Snapshot, lat: Double, lon: Double) {
+        if (lat.isNaN() || lon.isNaN()) {
+            toast(context, snap.label("navigateFailed"))
+            return
+        }
         try {
-            context.startCarApp(intent)
+            context.startCarApp(navigateIntent(lat, lon))
         } catch (e: Exception) {
-            CarToast.makeText(context, snap.label("navigateFailed"), CarToast.LENGTH_LONG).show()
+            toast(context, snap.label("navigateFailed"))
         }
     }
 
@@ -167,29 +187,38 @@ internal object CarUi {
         CarToast.makeText(context, text, CarToast.LENGTH_LONG).show()
     }
 
-    /** Red of the SOS badge (red 700): 5:1 on white. */
-    const val SOS_RED = 0xFFD32F2F.toInt()
+    /** Lot 20 (card « Android Auto, onglet Points : boutons ronds gris
+     *  vides, SOS en disque blanc… », choice 2): where the SOS is.
+     *  - false (choice of the owner, tried first): round button of the
+     *    lists, the SOS icon alone tinted red, on a neutral background;
+     *  - true (fallback, if Android Auto still paints the icon): no round
+     *    button, the SOS in the action strip at the top (red icon and the
+     *    word « SOS »); the car then shows one section at a time (button
+     *    « Rubriques » of the strip) instead of the tabs, the strip not
+     *    existing in the tabs of the Car App Library 1.7. */
+    const val SOS_IN_STRIP = false
 
-    /** Red SOS action (choice 3), always reachable; [floating]: the round
-     *  button of the lists (icon only, red background), otherwise the
-     *  action strip (« SOS » written).
+    /** Neutral background of the round SOS button: white by day, dark grey
+     *  by night. The Car App Library refuses a round button without a
+     *  background colour (IllegalArgumentException, found by the tests of
+     *  the car screens); a red background would hide the red icon. */
+    val SOS_BACKGROUND: CarColor = CarColor.createCustom(Color.WHITE, 0xFF303030.toInt())
+
+    /** Red SOS action (choice 3 of lot 17), always reachable; [floating]:
+     *  the round button of the lists (icon only: a round button cannot
+     *  carry a title), otherwise the action strip (« SOS » written; the
+     *  strip accepts no colour in its titles, the icon stays red).
      *
-     *  Lot 18 (card « Android Auto : bouton SOS bleu au lieu de rouge »,
-     *  1 Nov 2026): Android Auto may paint the round button in its own
-     *  colour (blue in the car) whatever the background asked. Choice 2:
-     *  the word « SOS » in red on a white disc, drawn in the picture of the
-     *  button: neither a tint nor a background colour, so the host neither
-     *  checks nor replaces it; recognisable on red as on any colour. The
-     *  round button cannot carry a title (Car App Library: no title on a
-     *  floating button). */
+     *  History: lot 17 asked a red background, which Android Auto replaced
+     *  by its blue; lot 18 drew « SOS » in red on a white disc in the
+     *  picture, which Android Auto painted in one colour (white disc, photo
+     *  of 2 Nov 2026). Lot 20: the icon of the library, tinted CarColor.RED,
+     *  on a neutral background. */
     fun sosAction(context: CarContext, snap: Snapshot, floating: Boolean, onClick: () -> Unit): Action {
         val b = Action.Builder()
-            .setIcon(
-                if (floating) tile(context, R.drawable.sarcade_car_sos, Color.WHITE, SOS_RED, 96 / 8)
-                else icon(context, R.drawable.sarcade_car_sos, CarColor.RED)
-            )
+            .setIcon(icon(context, R.drawable.sarcade_car_sos, CarColor.RED))
             .setOnClickListener { onClick() }
-        if (floating) b.setBackgroundColor(CarColor.RED) else b.setTitle(snap.label("sos"))
+        if (floating) b.setBackgroundColor(SOS_BACKGROUND) else b.setTitle(snap.label("sos"))
         return b.build()
     }
 

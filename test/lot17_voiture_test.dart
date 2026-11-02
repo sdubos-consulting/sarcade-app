@@ -53,7 +53,7 @@ void main(){
   setUp(()=>S.setLanguage('fr'));
 
   test('distance and direction from the phone, nothing without position',(){
-    expect(carAway(here,const LatLng(48.83,1.95)),'3,34 km au nord');
+    expect(carAway(here,const LatLng(48.83,1.95)),'3,5 km au nord');
     expect(carAway(here,const LatLng(48.77,1.91)),contains('au sud-ouest'));
     expect(carAway(null,const LatLng(48.83,1.95)),'');
     expect(carAway(here,here),'Ici');
@@ -89,19 +89,18 @@ void main(){
     final o=(s['orders'] as List).cast<Map<String,Object?>>();
     expect(o.map((x)=>x['id']),['o2','o1']);
     expect(o.first['title'],'P2'); expect(o.first['status'],'sent');
-    expect(o.first['text'],'PCO · ${S.t('order.status.sent')} · 3,34 km au nord');
+    expect(o.first['text'],'PCO · ${S.t('order.status.sent')} · 3,5 km au nord');
     expect(o.first['note'],'Prendre la radio'); expect(o.first['lat'],48.83);
   });
 
-  test('Points: designated points, then the nearest high points and relays',(){
-    final s=carSnapshot(input(references:[ref('r1','RELAY',48.82),ref('h1','HIGH_POINT',48.85),ref('far','RELAY',50.0)]));
+  test('Points: designated points, then the nearest high points (no relay since lot 20)',(){
+    final s=carSnapshot(input(references:[ref('r1','RELAY',48.82),ref('h1','HIGH_POINT',48.85),ref('far','HIGH_POINT',50.0)]));
     final p=(s['points'] as List).cast<Map<String,Object?>>();
-    expect(p.map((x)=>x['id']),['poi1','r1','h1']);
+    expect(p.map((x)=>x['id']),['poi1','h1']);
     expect(p[0]['title'],'Point de regroupement'); expect(p[0]['icon'],'gathering');
-    expect(p[1]['icon'],'relay'); expect(p[1]['text'],contains('Relais · 145,6125 MHz'));
-    expect(p[2]['icon'],'high'); expect(p[2]['text'],contains('Point haut · 180 m'));
+    expect(p[1]['icon'],'high'); expect(p[1]['text'],contains('Point haut · 180 m'));
     // Without position: no « nearest » reference.
-    final away=carSnapshot(input(references:[ref('r1','RELAY',48.82)],at:null));
+    final away=carSnapshot(input(references:[ref('h1','HIGH_POINT',48.85)],at:null));
     expect((away['points'] as List).map((x)=>(x as Map)['id']),['poi1']);
   });
 
@@ -118,10 +117,10 @@ void main(){
       S.setLanguage(lang);
       final labels=carLabels();
       for(final e in labels.entries){expect(e.value,isNot('car.${e.key}'),reason:'$lang ${e.key}');}
-      expect(labels.length,37,reason:'lot 18: navigateCar, navigateCarShort');
+      expect(labels.length,40,reason:'lot 18: navigateCar, navigateCarShort; lot 20: go, view, orderAlert');
     }
     S.setLanguage('en');
-    expect(carAway(here,const LatLng(48.83,1.95)),'3,34 km north');
+    expect(carAway(here,const LatLng(48.83,1.95)),'3,5 km north');
   });
 
   group('actions of the driver',(){

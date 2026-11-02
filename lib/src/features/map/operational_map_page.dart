@@ -66,8 +66,8 @@ import 'drawing/hit_test.dart';
 import 'drawing/import_formats.dart';
 import 'drawing/map_feature.dart';
 import '../../services/wakeup_fcm.dart';
-import '../car/car_background.dart' show CarContext, saveCarContext, takePendingReplies;
-import '../car/car_messaging.dart' show carConversation;
+import '../car/car_background.dart' show CarContext, listenWakeups, saveCarContext, takePendingReplies;
+import '../car/car_messaging.dart' show carConversation, carThread;
 import '../car/car_screen.dart' show CarScreenActions, CarScreenInput;
 import '../car/car_screen_channel.dart';
 import '../../services/wakeup_state.dart';
@@ -261,7 +261,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initAdsb();_initTvDiscovery();_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_carScreen.start();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initAdsb();_initTvDiscovery();_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_carScreen.start();_stopWakeups=listenWakeups(_onWakeup);_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));}
 
   /// « Découverte automatique des écrans », remembered on this device.
   void _initTvDiscovery(){
@@ -463,6 +463,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
   Future<void> _handleMessage(SarcadeMessage m,Map<String,dynamic> data) async {
     await widget.store.cacheMessage(data);
+    // Message of a move order not known yet (lot 20): the order at once, for the car.
+    if(data['move_order_id'] is String&&!_routes.moveOrders.any((o)=>o['id']==data['move_order_id']))unawaited(_routes.refresh());
     if(m.deleted){if(mounted)setState((){});return;}
     final groups={for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)};
     final addressed=addressedTo(m.recipientIds,widget.deviceId,groups);
@@ -481,7 +483,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         final g=gid==null?null:groups[gid];
         await _notifications.message(title:'SARCADE · ${S.t(priorityKey(m.priority))} · ${m.senderId}',body:m.body,priority:m.priority,
           payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m),senderId:m.senderId),
-          car:carConversation(m,me:widget.deviceId,channelName:g==null?null:(g.kind=='all'?S.t('car.allChannel'):g.name)));
+          car:carConversation(m,me:widget.deviceId,channelName:g==null?null:(g.kind=='all'?S.t('car.allChannel'):g.name),
+            earlier:carThread(m,widget.store.messages().map(SarcadeMessage.fromJson),me:widget.deviceId)));
       }
     }
     if(mounted)setState((){});
@@ -768,7 +771,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ack:(a,m) async {await widget.store.cacheAck(a.toJson());await _sync.queue(objectId:a.id,objectType:'ack',payload:a.toJson());
         await _notifications.answered(m.id,'read',key:messageNotificationKey(m));if(mounted)setState((){});},
       send:(m) async {await widget.store.cacheMessage(m.toJson());await _sync.queue(objectId:m.id,objectType:'message',payload:m.toJson());if(mounted)setState((){});},
-      sos:_sendDistress,sosEnd:_endDistress));
+      sos:_sendDistress,sosEnd:_endDistress),
+    onActive:()=>unawaited(_routes.refresh()));
+  // Firebase wake-up seen by the application (lot 20): synchronised at once.
+  void Function()? _stopWakeups;
+  void _onWakeup(){unawaited(_sync.syncNow());unawaited(_routes.refresh());}
 
   Future<void> _distress() async {
     if(_inDistress){
@@ -2559,7 +2566,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
+  @override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_stopWakeups?.call();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).

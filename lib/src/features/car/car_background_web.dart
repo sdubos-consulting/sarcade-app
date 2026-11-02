@@ -6,7 +6,9 @@ import 'car_context.dart';
 Future<void> saveCarContext(CarContext c) async {}
 Future<CarContext?> loadCarContext() async=>null;
 Future<bool> sendAnswerNow(PendingAnswer a) async=>false;
-Future<({SarcadeMessage message,String deviceId})?> fetchWokenMessage(Map<String,dynamic> data) async=>null;
+Future<({SarcadeMessage message,String deviceId,List<SarcadeMessage> recent})?> fetchWokenMessage(Map<String,dynamic> data) async=>null;
 Future<bool> sendReplyNow(SarcadeMessage reply) async=>false;
 Future<void> appendPendingReply(SarcadeMessage reply) async {}
 Future<List<SarcadeMessage>> takePendingReplies() async=>const [];
+void tellApplicationWoken(){}
+void Function() listenWakeups(void Function() onWake)=>(){};

@@ -16,6 +16,8 @@
 /// Pure code, testable without Flutter widgets.
 library;
 
+import 'dart:convert';
+
 import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
@@ -25,8 +27,8 @@ import '../../models/message.dart';
 import '../../models/poi.dart';
 import '../../models/position.dart';
 import '../../ui/operator_color.dart';
-import '../map/drawing/geometry.dart' show bearingDeg, distanceM, formatDistance;
-import '../map/operator_icons.dart' show chosenIcon;
+import '../map/drawing/geometry.dart' show bearingDeg, distanceM;
+import '../map/operator_icons.dart' show baseCallsign, chosenIcon;
 import '../map/stations.dart' show ageLabel;
 import '../messages/conversations.dart';
 import '../orders/move_orders.dart';
@@ -40,14 +42,17 @@ const carConversationMessages=5;
 const carSpokenMessages=3;
 /// Conversations, points, operators sent to the car (the car shows fewer).
 const carMaxItems=30;
-/// High points and relays: the nearest ones, within this distance.
+/// High points: the nearest ones, within this distance (lot 20, card
+/// « Android Auto, onglet Points : retirer les relais radio… »: no relay,
+/// up to 10 high points within 50 km).
 const carReferenceRadiusM=50000.0;
-const carReferencesPerKind=5;
+const carHighPointsMax=10;
 
-const _highPointColor=0xFF6D4C41, _relayColor=0xFF8E24AA, _allColor=0xFF1E88E5;
+const _highPointColor=0xFF6D4C41, _allColor=0xFF1E88E5;
 
 /// High point or relay of the radio reference (ADRASEC module), given by
-/// the map page: the Core does not import the module.
+/// the map page: the Core does not import the module. The car only shows
+/// the high points (lot 20).
 typedef CarSite=({String id,String name,bool relay,double lat,double lon,double? mhz,double? altM});
 
 /// What the application knows when the car asks (see the map page).
@@ -70,14 +75,25 @@ class CarScreenInput {
     this.here,this.inDistress=false,required this.now});
 }
 
-/// « 4,2 km au nord-ouest », empty without position.
-String carAway(LatLng? from,LatLng to){
+/// Distance shown in the car (lot 20, card « Android Auto : l'écran
+/// clignote… », choice 1): by 50 m under 1 km, by 0,5 km beyond, so that a
+/// small move of the GPS does not change the text (nor redraw the screen).
+String carDistance(double m){
+  if(m<975)return '${((m/50).round()*50).clamp(50,950)} m';
+  final km=(m/500).round()/2;
+  return km==km.truncateToDouble()?'${km.toInt()} km':'${km.toStringAsFixed(1).replaceAll('.',',')} km';
+}
+
+/// « 4,5 km au nord-ouest », empty without position; [short]: « 4,5 km
+/// NO », for the Points tab (lot 20, card « Android Auto, onglet Points :
+/// boutons ronds gris vides… », choice 3: the line no longer cut).
+String carAway(LatLng? from,LatLng to,{bool short=false}){
   if(from==null)return '';
   final d=distanceM(from,to);
   if(d<20)return S.t('car.here');
   const dirs=['n','ne','e','se','s','sw','w','nw'];
   final dir=dirs[((bearingDeg(from,to)+22.5)%360~/45)%8];
-  return S.t('car.away',{'d':formatDistance(d),'dir':S.t('car.dir.$dir')});
+  return S.t('car.away',{'d':carDistance(d),'dir':S.t(short?'car.dirShort.$dir':'car.dir.$dir')});
 }
 
 String _join(Iterable<String> parts)=>parts.where((p)=>p.trim().isNotEmpty).join(' · ');
@@ -143,10 +159,21 @@ Map<String,Object?> _conversation(String key,List<SarcadeMessage> c,CarScreenInp
   };
 }
 
-/// Orders addressed to this terminal: in progress first, then the recent
-/// answers (same 30 min as the map); never the cancelled ones.
+/// True when [target] is this terminal, or another terminal of the same
+/// person: same callsign (without its SSID) in Paramètres › Profil (lot 20,
+/// card « Android Auto : ordres de déplacement peu utilisables… », choice
+/// 2: the order on every terminal of the person, phone and car).
+bool carSamePerson(String target,String me,Map<String,Map<String,dynamic>> devices){
+  if(target==me)return true;
+  final mine=baseCallsign('${devices[me]?['callsign']??''}');
+  return mine.isNotEmpty&&baseCallsign('${devices[target]?['callsign']??''}')==mine;
+}
+
+/// Orders addressed to this terminal or to another terminal of the same
+/// person: in progress first, then the recent answers (same 30 min as the
+/// map); never the cancelled ones.
 List<MoveOrder> carOrders(CarScreenInput i){
-  final mine=i.orders.where((o)=>o.targetId==i.me&&o.status!='cancelled'&&(o.open||moveOrderOnMap(o,i.now))).toList()
+  final mine=i.orders.where((o)=>carSamePerson(o.targetId,i.me,i.devices)&&o.status!='cancelled'&&(o.open||moveOrderOnMap(o,i.now))).toList()
     ..sort((a,b){
       if(a.open!=b.open)return a.open?-1:1;
       return '${b.json['updated_at']}'.compareTo('${a.json['updated_at']}');
@@ -156,14 +183,18 @@ List<MoveOrder> carOrders(CarScreenInput i){
 
 Map<String,Object?> _order(MoveOrder o,CarScreenInput i)=>{
   'id':o.id,'title':o.label,'status':o.status,
+  // Alert of a new order (lot 20): « P2 », then « Ordre de déplacement · PCO · 3 km NO ».
+  'from':o.createdBy,'away':carAway(i.here,o.destination,short:true),
   'text':_join([o.createdBy,S.t('order.status.${o.status}'),carAway(i.here,o.destination)]),
   'note':o.note,
   'lat':o.destination.latitude,'lon':o.destination.longitude,
   'color':moveOrderColor(o.status).toARGB32(),
 };
 
-/// Designated points (all, the nearest first), then the high points and
-/// relays near the phone (the ADRASEC module gives them, else none).
+/// Designated points of the event (all, the nearest first), then the
+/// nearest high points with their altitude, up to 10 within 50 km (the
+/// ADRASEC module gives them, else none). Never a relay: not a place to
+/// drive to (lot 20).
 List<Map<String,Object?>> carPoints(CarScreenInput i){
   final here=i.here;
   double dist(double lat,double lon)=>here==null?double.infinity:distanceM(here,LatLng(lat,lon));
@@ -172,22 +203,18 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
     for(final p in pois){
       'id':p.id,'kind':'poi','icon':p.icon??'pin','color':poiColor(p),
       'title':(p.label??'').trim().isEmpty?poiIconLabel(p.icon):p.label!.trim(),
-      'text':carAway(here,LatLng(p.lat,p.lon)),
+      'text':carAway(here,LatLng(p.lat,p.lon),short:true),
       'lat':p.lat,'lon':p.lon,
     },
   ];
   if(here!=null){
-    final near=[...i.references.where((r)=>dist(r.lat,r.lon)<=carReferenceRadiusM)]
+    final high=[...i.references.where((r)=>!r.relay&&dist(r.lat,r.lon)<=carReferenceRadiusM)]
       ..sort((a,b)=>dist(a.lat,a.lon).compareTo(dist(b.lat,b.lon)));
-    final refs=[...near.where((r)=>!r.relay).take(carReferencesPerKind),...near.where((r)=>r.relay).take(carReferencesPerKind)]
-      ..sort((a,b)=>dist(a.lat,a.lon).compareTo(dist(b.lat,b.lon)));
-    for(final r in refs){
+    for(final r in high.take(carHighPointsMax)){
       out.add({
-        'id':r.id,'kind':r.relay?'relay':'high','icon':r.relay?'relay':'high','color':r.relay?_relayColor:_highPointColor,
+        'id':r.id,'kind':'high','icon':'high','color':_highPointColor,
         'title':r.name,
-        'text':_join([carAway(here,LatLng(r.lat,r.lon)),r.relay?S.t('car.relay'):S.t('car.highPoint'),
-          if(r.relay&&r.mhz!=null)'${r.mhz!.toStringAsFixed(4).replaceAll('.',',')} MHz',
-          if(!r.relay&&r.altM!=null)'${r.altM!.round()} m']),
+        'text':_join([carAway(here,LatLng(r.lat,r.lon),short:true),S.t('car.highPoint'),if(r.altM!=null)'${r.altM!.round()} m']),
         'lat':r.lat,'lon':r.lon,
       });
     }
@@ -218,7 +245,7 @@ Map<String,String> carLabels()=>{
   for(final t in const ['messages','orders','points','team'])'empty.$t':S.t('car.empty.$t'),
   for(final k in const ['sos','sosTitle','sosAsk','sosSend','sosSent','sosOn','sosEnd','sosEnded','cancel','navigate','navigateCar','navigateCarShort','navigateFailed',
     'accept','refuse','arrived','read','reply','replyTo','listening','dictationFailed','retry','send','sent','stale','sections',
-    'gone','note','order'])k:S.t('car.$k'),
+    'gone','note','order','go','view','orderAlert'])k:S.t('car.$k'),
 };
 
 /// Everything the car shows, as written to the plugin.
@@ -235,6 +262,19 @@ Map<String,Object?> carSnapshot(CarScreenInput i){
     'points':carPoints(i),
     'team':carTeam(i),
   };
+}
+
+/// What must reach the car at once (lot 20, card « Android Auto : l'écran
+/// clignote… », choice 3): a new message, a new or answered order, a
+/// distress, the language. Distances and ages are not in it: they wait
+/// for the next write (at most every 15 s, see car_screen_channel.dart).
+String carUrgentKey(Map<String,Object?> snapshot){
+  List<Object?> list(String k)=>snapshot[k] is List?snapshot[k] as List:const [];
+  return jsonEncode({
+    'distress':snapshot['distress'],'lang':snapshot['lang'],'labels':snapshot['labels'],
+    'messages':[for(final m in list('messages'))if(m is Map)[m['id'],m['body'],m['unread'],m['prio']]],
+    'orders':[for(final o in list('orders'))if(o is Map)[o['id'],o['status'],o['title'],o['note']]],
+  });
 }
 
 // --- Actions of the driver ----------------------------------------------------
@@ -288,7 +328,7 @@ bool carOrderAnswerAllowed(String from,String to)=>switch(to){
 Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{Uuid uuid=const Uuid()}) async {
   switch(a.type){
     case 'order':
-      final o=i.orders.where((x)=>x.id==a.id&&x.targetId==i.me).firstOrNull;
+      final o=carOrders(i).where((x)=>x.id==a.id).firstOrNull;
       if(o!=null&&carOrderAnswerAllowed(o.status,a.status))await act.order(o,a.status);
     case 'read':
       final c=carConversations(i)[a.conversation];
