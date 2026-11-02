@@ -23,7 +23,7 @@ Map<String,dynamic> Function()? currentMapExtras;
 /// Window of the TV: the server knows 15 min to 24 h; « all » = 24 h.
 int tvTraceWindow(int min)=>min<=0?1440:min;
 
-/// Day / night mode of this device (Paramètres › Affichage), pushed to the
+/// Day / night mode of this device (« Fond et affichage »), pushed to the
 /// whole TV page with the view (lot 7, 30 Oct 2026).
 String tvThemeName(ThemeMode m)=>switch(m){ThemeMode.light=>'day',ThemeMode.dark=>'night',_=>'auto'};
 

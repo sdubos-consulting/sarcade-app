@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../features/map/map_load_status.dart';
 import '../features/map/stations.dart' show ServerLink, serverLink;
 import '../l10n/strings.dart';
 import 'test_ids.dart';
@@ -46,12 +47,14 @@ class _LinkStatusPillState extends State<LinkStatusPill> {
     final state=serverLink(syncOk:sync.lastSyncOk,realtime:rt?.connected??false);
     final pending=sync.currentItems.length;
     final scheme=Theme.of(context).colorScheme;
-    final text=linkText(state,pending);
-    return withId('link.status',Tooltip(message:'${S.t('links.serverLink')} : ${S.t('links.${state.name}')}',child:InkWell(key:const ValueKey('link-status'),
+    // Event refused, map not loaded: orange with its word, as on the map (lot 19).
+    final issue=linkIssueWord(linkIssue(access:sync.eventAccess,map:MapLoadStatus.active?.phase??MapLoadPhase.ok,serverAnswers:sync.lastSyncOk));
+    final text=issue==null?linkText(state,pending):pending>0?'$issue · $pending':issue;
+    return withId('link.status',Tooltip(message:'${S.t('links.serverLink')} : ${issue??S.t('links.${state.name}')}',child:InkWell(key:const ValueKey('link-status'),
       customBorder:const StadiumBorder(),onTap:linkStatusOnTap,
       child:ConstrainedBox(constraints:const BoxConstraints(minWidth:48,minHeight:48),child:Center(child:Padding(
         padding:const EdgeInsets.symmetric(horizontal:10),child:Row(mainAxisSize:MainAxisSize.min,children:[
-          Container(width:10,height:10,decoration:BoxDecoration(color:linkColor(state,scheme),shape:BoxShape.circle)),
+          Container(width:10,height:10,decoration:BoxDecoration(color:issue==null?linkColor(state,scheme):linkIssueColour,shape:BoxShape.circle)),
           if(text.isNotEmpty)...[const SizedBox(width:6),Text(text,style:TextStyle(fontSize:13,fontWeight:FontWeight.w600,color:scheme.onSurface))],
         ])))))));
   }
