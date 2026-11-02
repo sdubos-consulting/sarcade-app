@@ -19,13 +19,13 @@ import 'package:latlong2/latlong.dart';
 import '../../l10n/strings.dart';
 import '../../ui/theme.dart' show glass;
 import '../map/drawing/geometry.dart' show formatDistance;
+import '../remotes/remote.dart';
+import '../remotes/remotes_page.dart' show openRemote;
 import 'meshcore_chat.dart';
 import 'meshcore_chat_page.dart';
 import 'meshcore_link.dart';
 import 'meshcore_page.dart' show meshCoreAge, meshCoreHops;
 import 'meshcore_protocol.dart';
-import 'meshcore_remote.dart';
-import 'meshcore_remote_page.dart' show openMeshCoreRemote;
 
 /// A node not heard for more than 24 h is drawn grey.
 const meshCoreStaleAfter=Duration(hours:24);
@@ -137,18 +137,18 @@ class MeshCoreNodeOverlay extends StatelessWidget {
   final bool compact;
   const MeshCoreNodeOverlay({super.key,required this.map,this.me,this.compact=false});
 
-  @override Widget build(BuildContext context)=>ListenableBuilder(listenable:Listenable.merge([MeshCoreLink.instance,meshCoreSelected,MeshCoreChats.instance,MeshCoreRemotes.instance]),builder:(context,_){
+  @override Widget build(BuildContext context)=>ListenableBuilder(listenable:Listenable.merge([MeshCoreLink.instance,meshCoreSelected,MeshCoreChats.instance,Remotes.instance]),builder:(context,_){
     final key=meshCoreSelected.value, link=MeshCoreLink.instance;
     final node=key==null||!link.showOnMap?null:link.contacts.where((c)=>c.key==key).firstOrNull;
     if(node==null)return const SizedBox.shrink();
     final from=me??(link.info.lat==null?null:LatLng(link.info.lat!,link.info.lon!));
-    final remote=MeshCoreRemotes.instance.ofNode(node.key).firstOrNull;
+    final remote=Remotes.instance.ofTarget(RemoteTransport.meshcore,node.key).firstOrNull;
     final card=MeshCoreNodeCard(node:node,now:DateTime.now(),distance:meshCoreDistance(node,from),
       snr:MeshCoreChats.instance.snr[meshCorePrefix(node.key)],
       onClose:()=>meshCoreSelected.value=null,
       onWrite:meshCoreWritable(node)?()=>unawaited(openMeshCoreChat(context,node.key,node.name)):null,
       onCenter:meshCoreHasPosition(node)?()=>unawaited(meshCoreShowOnMap(map,node)):null,
-      onRemote:remote==null?null:()=>unawaited(openMeshCoreRemote(context,remote)));
+      onRemote:remote==null?null:()=>unawaited(openRemote(context,remote)));
     if(compact){
       return Positioned(left:8,right:8,bottom:140,child:Align(alignment:Alignment.bottomCenter,
         child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(context).height/3),child:SingleChildScrollView(child:card))));
