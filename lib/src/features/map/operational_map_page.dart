@@ -29,6 +29,7 @@ import '../../services/notification_keys.dart';
 import '../../modules/adrasec/aprs/aprs_page.dart';
 import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
+import '../search/map_search_sources.dart';
 import '../../ui/map_view.dart';
 import '../../ui/test_ids.dart';
 import '../../ui/compass_follow.dart';
@@ -132,6 +133,7 @@ import '../../modules/adrasec/adsb/adsb_controller.dart';
 import '../../modules/adrasec/adsb/adsb_layer.dart';
 import '../../modules/adrasec/adsb/adsb_models.dart';
 import '../../modules/adrasec/adsb/adsb_page.dart';
+import '../../modules/adrasec/adsb/adsb_search.dart';
 import '../meshcore/meshcore_link.dart';
 import '../meshcore/meshcore_link_card.dart' show meshCoreStateText, MeshCoreReconnectBanner;
 import '../meshcore/meshcore_page.dart';
@@ -1677,10 +1679,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     for(final p in _pois.values)Searchable(SearchKind.poi,p.label??p.kind,p.kind,LatLng(p.lat,p.lon)),
     for(final f in _drawing.features)if(f.label.trim().isNotEmpty&&f.points.isNotEmpty)Searchable(SearchKind.drawing,f.label,f.kind.name,f.points.first),
   ];
+  /// Lot 19: aircraft received and MeshCore nodes heard, in the search of the map only.
+  Iterable<Searchable> _mapSearchables()=>[..._searchables(),if(_adrasec)...aircraftSearchables(_adsb.received(DateTime.now())),
+    if(MeshCoreLink.instance.remembered)...meshCoreSearchables(MeshCoreLink.instance.contacts,DateTime.now())];
+  void _openMeshCoreOn(MeshCoreContact n){_deskId=null;_openDesk('meshcore',()=>MeshCorePage(key:ValueKey('mesh-focus-${n.key}'),focus:n,
+    onShowOnMap:(c){if(_isCompact)Navigator.of(context).pop();_onMapNow(()=>unawaited(meshCoreShowOnMap(_map,c)));}));}
   Future<List<SearchResult>> _searchAddresses(String q,LatLng? near) async =>
     addressResults(await widget.api.geocode(q,lat:near?.latitude,lon:near?.longitude));
   LatLng? _mapCentre(){try{return _map.camera.center;}catch(_){return null;}}
   void _onSearchPick(SearchResult r){
+    if(openFoundOnMap(r,map:_map,openNodeInTool:_openMeshCoreOn)||(_adrasec&&openAircraftFound(r,map:_map,adsb:_adsb)))return;
     setState(()=>_searchPin=r.point);
     _map.move(r.point,r.kind==SearchKind.address||r.kind==SearchKind.coordinates?16:15);
   }
@@ -2831,7 +2839,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
               // liaison collée au bord droit », 30 Oct 2026): one flexible
               // child only, so no free space is left after the pill.
               Expanded(child:Row(children:[
-                Flexible(child:MapSearchBar(items:_searchables,addresses:_searchAddresses,near:_mapCentre,onPick:_onSearchPick)),
+                Flexible(child:MapSearchBar(items:_mapSearchables,addresses:_searchAddresses,near:_mapCentre,onPick:_onSearchPick)),
                 if(!compact)...[const SizedBox(width:8),_trackingBadge()],
               ])),
               const SizedBox(width:8),

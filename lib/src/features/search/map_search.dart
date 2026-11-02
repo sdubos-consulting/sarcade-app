@@ -1,18 +1,27 @@
 /// Search bar of the map (request of 26 Oct 2026, « comme Google Maps »):
 /// operators and APRS stations, reference sites, points and drawings of the
 /// event, typed coordinates, and addresses through the server (Base Adresse
-/// Nationale). Everything but the addresses works offline.
+/// Nationale). Everything but the addresses works offline. Lot 19 (card
+/// « Recherche : nœuds MeshCore et avions », 1 Nov 2026, 21 h 42): the
+/// aircraft received (module ADRASEC) and the MeshCore nodes heard by the
+/// module of this device (see map_search_sources.dart).
 library;
 
 import 'package:latlong2/latlong.dart';
 
 import '../measure/coordinates.dart';
 
-enum SearchKind { coordinates, operator, reference, poi, drawing, address }
+/// Order of the results (lot 19): coordinates, operators, aircraft,
+/// MeshCore nodes, reference, points of interest, drawings, addresses.
+enum SearchKind { coordinates, operator, aircraft, meshNode, reference, poi, drawing, address }
 
 class SearchResult {
   final SearchKind kind; final String title, subtitle; final LatLng point;
-  const SearchResult(this.kind,this.title,this.subtitle,this.point);
+  /// Object found (key of a MeshCore node, ICAO code of an aircraft).
+  final String? ref;
+  /// False for a MeshCore node without position: [point] means nothing.
+  final bool placed;
+  const SearchResult(this.kind,this.title,this.subtitle,this.point,{this.ref,this.placed=true});
 }
 
 /// Lower case without accents, for « Chatron » = « châtron ».
@@ -31,9 +40,21 @@ bool matchesQuery(String query,String text){
 }
 
 /// One searchable item of the device: shown title, details, position.
+/// [prefix] (lot 19): a code also found by its start (public key of a
+/// MeshCore node, ICAO code of an aircraft), [ref] the object found,
+/// [placed] false when [point] is not known, [subtitle] shown in place
+/// of [details] (then searched only).
 class Searchable {
   final SearchKind kind; final String title, details; final LatLng point;
-  const Searchable(this.kind,this.title,this.details,this.point);
+  final String? prefix, ref, subtitle;
+  final bool placed;
+  const Searchable(this.kind,this.title,this.details,this.point,{this.prefix,this.ref,this.subtitle,this.placed=true});
+}
+
+/// The query is the start of [code] (spaces and capitals ignored).
+bool startsCode(String query,String? code){
+  final q=query.replaceAll(RegExp(r'\s+'),'').toLowerCase();
+  return code!=null&&q.isNotEmpty&&code.toLowerCase().startsWith(q);
 }
 
 /// Local results, coordinates first, then by kind, at most [limit].
@@ -43,11 +64,11 @@ List<SearchResult> searchLocal(String query,Iterable<Searchable> items,{int limi
   final out=<SearchResult>[];
   final coords=parseCoordinates(q);
   if(coords!=null)out.add(SearchResult(SearchKind.coordinates,q,'',coords));
-  final hits=[for(final i in items)if(matchesQuery(q,'${i.title} ${i.details}'))i]
+  final hits=[for(final i in items)if(matchesQuery(q,'${i.title} ${i.details}')||startsCode(q,i.prefix))i]
     ..sort((a,b){final k=a.kind.index.compareTo(b.kind.index);return k!=0?k:a.title.compareTo(b.title);});
   for(final i in hits){
     if(out.length>=limit)break;
-    out.add(SearchResult(i.kind,i.title,i.details,i.point));
+    out.add(SearchResult(i.kind,i.title,i.subtitle??i.details,i.point,ref:i.ref,placed:i.placed));
   }
   return out;
 }
