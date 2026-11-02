@@ -115,7 +115,9 @@ const Texts _fr={
   'bearings.signal':'Signal recherché','bearings.signalNew':'Nouveau signal','bearings.colorBy':'Couleur des relevés','bearings.colorSignal':'Signal','bearings.colorOperator':'Opérateur',
   'settings.subtitle':'Connexion, profil, affichage et diagnostic de cet appareil','settings.subtitleFirst':'Serveur SARCADE et identifiant pour cet événement',
   'settings.statusEvent':'Événement : {v}','settings.statusDevice':'Terminal : {v}',
-  'settings.tab.general':'Général','settings.tab.profile':'Profil','settings.tab.display':'Affichage','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostic','settings.tab.about':'À propos',
+  'settings.tab.general':'Général','settings.tab.profile':'Profil','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostic','settings.tab.about':'À propos',
+  // Lot 19, onglet Affichage supprimé: Main courante dans Outils › Au PC.
+  'settings.logbookHelp':'Journal de l’événement',
   'power.saver':'Mode économie','power.saverHelp':'Suivi de position toutes les 2 min au moins, carte rafraîchie moins souvent (batterie)',
   'power.consumption':'Consommation','power.gps':'GPS : suivi {interval}','power.gpsOff':'GPS : suivi arrêté','power.still':'à l’arrêt',
   'power.reduced':'précision réduite (arrière-plan)','power.compassOn':'boussole active','power.compassOff':'boussole arrêtée','power.saverOn':'mode économie',
@@ -597,7 +599,9 @@ const Texts _en={
   'bearings.signal':'Signal searched','bearings.signalNew':'New signal','bearings.colorBy':'Bearing colour','bearings.colorSignal':'Signal','bearings.colorOperator':'Operator',
   'settings.subtitle':'Connection, profile, display and diagnostics of this device','settings.subtitleFirst':'SARCADE server and identifier for this event',
   'settings.statusEvent':'Event: {v}','settings.statusDevice':'Terminal: {v}',
-  'settings.tab.general':'General','settings.tab.profile':'Profile','settings.tab.display':'Display','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostics','settings.tab.about':'About',
+  'settings.tab.general':'General','settings.tab.profile':'Profile','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostics','settings.tab.about':'About',
+  // Lot 19, Display tab removed: Logbook in Tools › At the command post.
+  'settings.logbookHelp':'Log of the event',
   'power.saver':'Power saving','power.saverHelp':'Beacon every 2 min at least, map refreshed less often (battery)',
   'power.consumption':'Power use','power.gps':'GPS: beacon {interval}','power.gpsOff':'GPS: beacon off','power.still':'standing still',
   'power.reduced':'reduced accuracy (background)','power.compassOn':'compass on','power.compassOff':'compass off','power.saverOn':'power saving',

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'ui/overlay_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -10,7 +9,6 @@ import 'ui/theme.dart';
 import 'features/map/operational_map_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/events/event_choice.dart';
-import 'features/logbook/logbook_page.dart';
 import 'services/sarcade_api.dart';
 import 'offline/local_store.dart';
 import 'offline/outbox_policy.dart' as outbox;
@@ -50,6 +48,9 @@ class _SarcadeAppState extends State<SarcadeApp> {
     _needsSetup=!_config.isComplete||(_asksSettings&&stored==null);
     _applyLanguage();
     themeMode.value=themeModeFrom(widget.store.preference('theme_mode'));
+    // Day / night / automatic is chosen in « Fond et affichage » of the map
+    // (lot 19): applied at once, kept on the device.
+    themeMode.addListener(_keepTheme);
     // Lot 19: the followed event checked at every start and on a 404.
     OfflineSyncService.onEventUnknown=_onEventUnknown;
     if(!_needsSetup)WidgetsBinding.instance.addPostFrameCallback((_)=>unawaited(_checkEvent()));
@@ -82,6 +83,10 @@ class _SarcadeAppState extends State<SarcadeApp> {
     await _rememberServer(c.serverUrl,eventId:c.eventId,deviceId:c.deviceId);
     if(mounted)setState(()=>_config=c);
   }
+
+  void _keepTheme()=>unawaited(widget.store.setPreference('theme_mode',themeModeName(themeMode.value)));
+
+  @override void dispose(){themeMode.removeListener(_keepTheme);super.dispose();}
 
   void _applyLanguage(){
     S.setLanguage(_config.language,systemLanguage:WidgetsBinding.instance.platformDispatcher.locale.languageCode);
@@ -143,12 +148,6 @@ class _SarcadeAppState extends State<SarcadeApp> {
     sendFirst:_sendFirst,
     readServers:_readServers,saveServers:_saveServers,
     api:firstRun?null:_apiFor(_config),store:widget.store,
-    onThemeChanged:(m)=>widget.store.setPreference('theme_mode',themeModeName(m)),
-    onOpenLogbook:firstRun?null:(){
-      // A window over Paramètres (« façon Google Play Console », 30 Oct 2026).
-      final c=_navigator.currentState?.overlay?.context;
-      if(c!=null)showOverlayPage<void>(c,(_)=>LogbookPage(api:_apiFor(_config),eventId:_config.eventId));
-    },
   );
 
   Future<List<Map<String,dynamic>>> _loadEvents(String server) async {

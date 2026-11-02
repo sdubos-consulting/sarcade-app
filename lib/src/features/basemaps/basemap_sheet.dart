@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../l10n/strings.dart';
+import '../settings/theme_choice.dart';
 import 'basemap_models.dart';
 
 /// One « Fond et affichage » button, two tabs (card « Carte, un seul bouton
 /// Fond et affichage », decision of 30 Oct 2026, 3 h 05): « Fond de carte »
 /// (one line per base map, the name only, decision of 1 h 34) and
-/// « Affichage » (sections Équipes, Opération, Référentiel ADRASEC). The
+/// « Affichage » (Thème Jour / Nuit / Automatique since lot 19, then the
+/// sections Équipes, Opération, Référentiel ADRASEC). The
 /// licence notices stay on the map (ⓘ) and in Paramètres › À propos.
 Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catalog,required Basemap current,
     required String eventDefault,required bool preferOffline,
@@ -28,11 +30,11 @@ Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catal
       ),
     ]);
     final height=MediaQuery.sizeOf(c).height*0.7;
-    return SafeArea(child:SizedBox(height:height,child:DefaultTabController(length:layers==null?1:2,child:Column(children:[
+    return SafeArea(child:SizedBox(height:height,child:DefaultTabController(length:2,child:Column(children:[
       // « Affichage » on the left and open by default, « Fond de carte » on
       // the right (card « Bouton Fond et affichage », 30 Oct 2026, 10 h 31).
-      TabBar(tabs:[if(layers!=null)Tab(text:S.t('display.layers')),Tab(text:S.t('basemap.title'))]),
-      Expanded(child:TabBarView(children:[if(layers!=null)ListView(children:layers(c,set)),basemaps])),
+      TabBar(tabs:[Tab(text:S.t('display.layers')),Tab(text:S.t('basemap.title'))]),
+      Expanded(child:TabBarView(children:[ListView(children:[const ThemeChoice(),...?layers?.call(c,set)]),basemaps])),
     ]))));
   }));
 }
