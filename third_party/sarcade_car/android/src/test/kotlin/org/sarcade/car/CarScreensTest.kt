@@ -128,10 +128,24 @@ class CarScreensTest {
     }
 
     @Test
-    fun sos_redIconAlone() {
+    fun sos_redIconAlone_onANeutralBackground() {
         val sos = tab(MainScreen.POINTS).actions.single()
         assertEquals(CarColor.RED, sos.icon!!.tint)
         assertTrue(sos.title == null)
+        assertEquals(CarUi.SOS_BACKGROUND, sos.backgroundColor)
+    }
+
+    @Test
+    fun sosInTheTopStrip_asOnOlderCars_isAccepted() {
+        // Layout of the fallback (CarUi.SOS_IN_STRIP) and of the cars below
+        // API level 6: one section, « Rubriques » and « SOS » at the top.
+        car.updateHandshakeInfo(HandshakeInfo("com.google.android.projection.gearhead", 5))
+        val screen = MainScreen(car, SarcadeSession())
+        screen.tab = MainScreen.ORDERS
+        val list = screen.onGetTemplate() as ListTemplate
+        val sos = list.actionStrip!!.actions[1]
+        assertEquals("SOS", sos.title.toString())
+        assertEquals(CarColor.RED, sos.icon!!.tint)
     }
 
     @Test
