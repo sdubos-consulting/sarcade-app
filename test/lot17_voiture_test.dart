@@ -53,7 +53,7 @@ void main(){
   setUp(()=>S.setLanguage('fr'));
 
   test('distance and direction from the phone, nothing without position',(){
-    expect(carAway(here,const LatLng(48.83,1.95)),'3,34 km au nord');
+    expect(carAway(here,const LatLng(48.83,1.95)),'3,5 km au nord');
     expect(carAway(here,const LatLng(48.77,1.91)),contains('au sud-ouest'));
     expect(carAway(null,const LatLng(48.83,1.95)),'');
     expect(carAway(here,here),'Ici');
@@ -89,7 +89,7 @@ void main(){
     final o=(s['orders'] as List).cast<Map<String,Object?>>();
     expect(o.map((x)=>x['id']),['o2','o1']);
     expect(o.first['title'],'P2'); expect(o.first['status'],'sent');
-    expect(o.first['text'],'PCO · ${S.t('order.status.sent')} · 3,34 km au nord');
+    expect(o.first['text'],'PCO · ${S.t('order.status.sent')} · 3,5 km au nord');
     expect(o.first['note'],'Prendre la radio'); expect(o.first['lat'],48.83);
   });
 
@@ -121,7 +121,7 @@ void main(){
       expect(labels.length,37,reason:'lot 18: navigateCar, navigateCarShort');
     }
     S.setLanguage('en');
-    expect(carAway(here,const LatLng(48.83,1.95)),'3,34 km north');
+    expect(carAway(here,const LatLng(48.83,1.95)),'3,5 km north');
   });
 
   group('actions of the driver',(){

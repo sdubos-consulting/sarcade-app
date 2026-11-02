@@ -29,7 +29,14 @@ import org.json.JSONObject
  */
 internal class MainScreen(carContext: CarContext, private val session: SarcadeSession) : Screen(carContext) {
     private var tab = MESSAGES
-    private val refresh: () -> Unit = { invalidate() }
+
+    /** What the shown tab displayed when last drawn (lot 20, choices 4 and
+     *  5): new data that do not change it are not drawn again, so the car
+     *  neither flickers nor moves the list. */
+    private var shown: String? = null
+    private val refresh: () -> Unit = {
+        if (Snapshot(CarData.snapshot(carContext)).signature(tab) != shown) invalidate()
+    }
 
     init {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
@@ -47,6 +54,7 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
 
     override fun onGetTemplate(): Template {
         val snap = Snapshot(CarData.snapshot(carContext))
+        shown = snap.signature(tab)
         if (!snap.ready) {
             return MessageTemplate.Builder(carContext.getString(R.string.sarcade_car_open_phone))
                 .setTitle("SARCADE")

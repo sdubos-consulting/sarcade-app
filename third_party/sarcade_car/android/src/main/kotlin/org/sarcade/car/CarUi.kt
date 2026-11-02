@@ -39,6 +39,12 @@ internal class Snapshot(private val json: JSONObject) {
 
     fun item(key: String, id: String): JSONObject? = items(key).firstOrNull { it.optString("id") == id }
 
+    /** What a tab shows, as text: the screen is drawn again only when it
+     *  changes (lot 20, card « Android Auto : l'écran clignote… », choice
+     *  4); the time of the write is not in it. */
+    fun signature(key: String): String =
+        listOf(ready, lang, distress, staleText() ?: "", json.optJSONArray(key)?.toString() ?: "").joinToString("|")
+
     /** « Données de 10:42 : ouvrez SARCADE sur le téléphone » when the
      *  application has not written for 2 minutes; null otherwise. */
     fun staleText(now: Long = System.currentTimeMillis()): String? {

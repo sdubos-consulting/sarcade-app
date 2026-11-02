@@ -2,7 +2,7 @@
 /// see car_screen.dart and the plugin `third_party/sarcade_car`.
 ///
 /// - while Android Auto shows SARCADE (`active` from the plugin), the data
-///   are written every few seconds, only when they changed;
+///   are checked every few seconds and written as [push] says (lot 20);
 /// - the actions of the driver wait in the plugin until they are taken
 ///   here (`actions` from the plugin, at start, and after each write), then
 ///   applied by [applyCarAction].
@@ -21,8 +21,15 @@ import 'car_screen.dart';
 
 const carScreenChannel=MethodChannel('org.sarcade.car/screen');
 
-/// Interval of the writes while the car shows SARCADE.
+/// Interval of the checks while the car shows SARCADE.
 const carScreenRefresh=Duration(seconds:3);
+/// Lot 20 (card « Android Auto : l'écran clignote… », choices 2 and 3):
+/// when only distances or ages changed, written at most this often; a new
+/// message, order or distress is written at once (see [carUrgentKey]).
+const carScreenMinorRefresh=Duration(seconds:15);
+/// Written again at least this often, unchanged, so that the car does not
+/// take the data for old (« Données de 10:42 » after 2 minutes).
+const carScreenKeepAlive=Duration(seconds:60);
 
 class CarScreenBridge {
   /// Current data of the application; null when it cannot tell yet.
@@ -31,12 +38,16 @@ class CarScreenBridge {
   final MethodChannel channel;
   /// False on the platforms without Android Auto nor CarPlay (tests may force it).
   final bool enabled;
-  CarScreenBridge({required this.read,required this.actions,this.channel=carScreenChannel,bool? enabled})
-    : enabled=enabled??(!kIsWeb&&(defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS));
+  /// Clock of the writes (tests).
+  final DateTime Function() clock;
+  CarScreenBridge({required this.read,required this.actions,this.channel=carScreenChannel,bool? enabled,DateTime Function()? clock})
+    : enabled=enabled??(!kIsWeb&&(defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS)),
+      clock=clock??DateTime.now;
 
   bool _active=false, _draining=false, _started=false;
   Timer? _timer;
-  String? _last;
+  String? _last, _lastKey;
+  DateTime? _lastAt;
 
   /// True while a car session shows SARCADE.
   bool get active=>_active;
@@ -70,23 +81,30 @@ class CarScreenBridge {
     _active=on;
     if(on){
       _timer??=Timer.periodic(carScreenRefresh,(_)=>unawaited(push()));
-      unawaited(push());
+      unawaited(push(force:true));
     }else{
       _timer?.cancel();
       _timer=null;
     }
   }
 
-  /// Writes the data when they changed since the last write.
+  /// Writes the data: at once when something that counts changed (message,
+  /// order, distress), at most every 15 s when only distances or ages
+  /// changed, every minute when nothing changed (lot 20).
   Future<void> push({bool force=false}) async {
     if(!enabled)return;
     final input=read();
     if(input==null)return;
-    final json=jsonEncode(carSnapshot(input));
-    if(!force&&json==_last)return;
+    final snap=carSnapshot(input);
+    final body=jsonEncode({...snap}..remove('at'));
+    final key=carUrgentKey(snap);
+    final now=clock();
+    final since=_lastAt==null?null:now.difference(_lastAt!);
+    final write=force||since==null||key!=_lastKey||since>=carScreenKeepAlive||(body!=_last&&since>=carScreenMinorRefresh);
+    if(!write)return;
     try{
-      await channel.invokeMethod<void>('update',json);
-      _last=json;
+      await channel.invokeMethod<void>('update',jsonEncode(snap));
+      _last=body; _lastKey=key; _lastAt=now;
     }catch(e){
       debugPrint('SARCADE car screen not updated: $e');
     }
