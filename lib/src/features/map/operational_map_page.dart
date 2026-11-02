@@ -89,6 +89,7 @@ import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart';
 import '../weather/weather_page.dart';
 import '../weather/weather_models.dart';
+import '../weather/map_weather.dart';
 import '../measure/coordinates.dart';
 import '../measure/external_maps.dart';
 import '../measure/measure_controller.dart';
@@ -1816,6 +1817,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.teams'))),body:tabs);
   }
 
+  /// Weather of the pill loaded by the map itself (lot 19, map_weather.dart).
+  late final MapWeather _mapWeather=MapWeather(load:()=>widget.api.eventWeather(widget.eventId,compact:_ops.settings.lowBandwidth),
+    read:()=>widget.store.cachedJson(weatherCacheKey(widget.eventId)),save:(j)=>widget.store.cacheJson(weatherCacheKey(widget.eventId),j),
+    online:()=>_sync.lastSyncOk,alive:()=>mounted,onChanged:(){if(mounted)setState((){});})..start();
   /// Phone « Plus »: a normal screen, a list of large buttons.
   /// Weather pill with the link dot (link_weather_pill.dart, decision of
   /// 30 Oct 2026, 1 h 30): the hour to come from the last forecast of the
@@ -1824,8 +1829,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _linkWeatherPill(){
     final dot=mapLinkDot(started:_started,map:_mapLoad.phase,access:_sync.eventAccess,syncOk:_sync.lastSyncOk,realtime:_realtime.connected,scheme:Theme.of(context).colorScheme);
     final colour=dot.colour, label=dot.label;
-    final j=widget.store.cachedJson('weather:${widget.eventId}');
-    final r=j==null?null:WeatherReport.fromJson(j);
+    final r=_mapWeather.report;
     final next=r?.upcoming(DateTime.now(),n:1)??const [];
     final h=next.isEmpty?null:next.first;
     final alert=(r?.vigilance?.colorId??1)>=3;
@@ -1836,8 +1840,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       mesh:mesh.remembered?meshCorePillTone(mesh.state):null,
       linkWord:dot.word,
       weatherIcon:h==null?null:weatherIcon(weatherKey(h.weatherCode)),
-      weatherText:h==null?null:pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
-        wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'),
+      weatherText:h==null?null:_mapWeather.pillText(pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
+        wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h')),
       compact:_isCompact,
       alert:alert?vigilanceColor(r!.vigilance!.colorId):null,
       onLinks:_openDiagnostics,onWeather:()=>_openWeather()));
