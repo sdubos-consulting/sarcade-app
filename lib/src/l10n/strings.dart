@@ -263,6 +263,8 @@ const Texts _fr={
   'draw.undo':'Annuler','draw.redo':'Rétablir','draw.import':'Importer GPX, KML ou GeoJSON','draw.hint.arrow':'Touchez le départ puis la pointe de la flèche','files.drawings':'Dessins de l’événement','files.importDrawings':'Importer des dessins','files.importDrawingsHelp':'GeoJSON, KML, GPX','files.exportDrawings':'Exporter les dessins','draw.export':'Exporter (GeoJSON, KML, GPX)',
   'draw.radius':'Rayon','draw.width':'Épaisseur','draw.editText':'Modifier le texte','draw.duplicate':'Dupliquer','draw.deselect':'Désélectionner',
   'draw.open':'Dessiner sur la carte',
+  // Double click on a drawn object, lot 19 (card « Point d'intérêt : double-clic pour le renommer »).
+  'draw.rename':'Modifier le nom',
   'feature.point':'Point','feature.line':'Ligne','feature.arrow':'Flèche','feature.circle':'Cercle','feature.rectangle':'Rectangle',
   'feature.zone':'Zone','feature.text':'Texte','feature.freehand':'Libre','feature.measure':'Mesure',
   // Operators, radio directory, APRS
@@ -736,6 +738,8 @@ const Texts _en={
   'draw.undo':'Undo','draw.redo':'Redo','draw.import':'Import GPX, KML or GeoJSON','draw.hint.arrow':'Tap the start then the tip of the arrow','files.drawings':'Drawings of the event','files.importDrawings':'Import drawings','files.importDrawingsHelp':'GeoJSON, KML, GPX','files.exportDrawings':'Export the drawings','draw.export':'Export (GeoJSON, KML, GPX)',
   'draw.radius':'Radius','draw.width':'Width','draw.editText':'Edit the text','draw.duplicate':'Duplicate','draw.deselect':'Deselect',
   'draw.open':'Draw on the map',
+  // Double click on a drawn object, lot 19 (card « Point d'intérêt : double-clic pour le renommer »).
+  'draw.rename':'Edit the name',
   'feature.point':'Point','feature.line':'Line','feature.arrow':'Arrow','feature.circle':'Circle','feature.rectangle':'Rectangle',
   'feature.zone':'Zone','feature.text':'Text','feature.freehand':'Freehand','feature.measure':'Measure',
   'operators.title':'Operators ({n})','operators.titleStations':'Operators ({n}) · Stations ({m})','operators.lastPosition':'Last position: {age}','operators.accuracy':'Accuracy: {m} m',

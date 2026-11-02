@@ -58,6 +58,7 @@ import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
 import '../../modules/adrasec/reference/reference_cluster_layer.dart';
 import 'drawing/drawing_layers.dart';
+import 'drawing/double_tap_rename.dart';
 import 'drawing/drawing_toolbar.dart';
 import 'drawing/geometry.dart';
 import 'drawing/hit_test.dart';
@@ -2736,6 +2737,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showHighPoints)touchableMarkers(ignoring:_placingOnMap,child:_faded('high',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isHighPoint).toList(),onSelect:_selectReference))),
           if(_showRelays)touchableMarkers(ignoring:_placingOnMap,child:_faded('relay',ReferenceClusterLayer(sites:_references.values.where((r)=>r.isRelay).toList(),onSelect:_selectReference))),
           if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
+          // Double click on a drawn object: its name, no zoom (lot 19).
+          if(_showDrawings)DrawingDoubleTapLayer(controller:_drawing,enabled:!_placingOnMap&&!_drawing.selectMode,radiusPx:_circleRadiusPx,onDoubleTap:(f)=>unawaited(renameDrawing(context,_drawing,f))),
           if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id&&b.id!=_aim?.editing?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
             zoneModes:_zoneModes,onTapBearing:_showBearingSheet,onTapZone:(t)=>unawaited(showZoneWindow(context,t,mode:zoneModeOf(_zoneModes,t.search),onMode:(m)=>_setZoneMode(t.search,m))))),
           if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
@@ -2748,7 +2751,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
-          if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p))))),
+          if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)),
+            onDoubleTap:(p)=>unawaited(doubleTapPoi(context,p,actor:widget.deviceId,openSheet:()=>unawaited(_openPoi(p)),
+              rename:(n) async {await renamePoi(_pois,widget.store,_sync,p,n,widget.deviceId);if(mounted)setState((){});}))))),
           // Card L1 (lot 17): while drawing, measuring or taking a bearing, a
           // touch on a marker places the point instead of opening the marker.
           IgnorePointer(ignoring:_placingOnMap,child:_faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())]))),
