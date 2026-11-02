@@ -302,9 +302,12 @@ class CarScreensTest {
         // Points is shown goes to the next filter.
         val screen = MainScreen(car, SarcadeSession())
         screen.tab = MainScreen.POINTS
+        // « Rubriques » opens the list of the sections.
+        click((screen.onGetTemplate() as ListTemplate).actionStrip!!.actions[0])
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is SectionsScreen)
         fun pick(id: String) {
-            click((screen.onGetTemplate() as ListTemplate).actionStrip!!.actions[0])
-            val sections = car.getCarService(TestScreenManager::class.java).screensPushed.last() as SectionsScreen
+            // Same list as the one pushed, its choice given to the main screen.
+            val sections = SectionsScreen(car, Snapshot(CarData.snapshot(car))) { screen.select(it) }
             val row = rows(sections.onGetTemplate() as ListTemplate)[MainScreen.TABS.indexOf(id)]
             row.onClickDelegate!!.sendClick(object : OnDoneCallback {})
             shadowOf(Looper.getMainLooper()).idle()

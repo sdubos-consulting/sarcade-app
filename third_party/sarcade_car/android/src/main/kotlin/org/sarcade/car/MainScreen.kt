@@ -54,8 +54,8 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
     /** Lot 23 (card « Android Auto, onglet Points : changer de filtre en
      *  appuyant de nouveau sur l'onglet »): Points chosen again while
      *  shown (tab touched again, or Points chosen again in « Rubriques »)
-     *  goes to the next filter. */
-    private fun select(id: String) {
+     *  goes to the next filter. Internal: the tests of the car screens. */
+    internal fun select(id: String) {
         if (id == tab && id == POINTS) CarData.nextPointsFilter(carContext)
         tab = id
         invalidate()
