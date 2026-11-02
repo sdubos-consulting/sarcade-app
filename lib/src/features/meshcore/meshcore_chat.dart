@@ -79,6 +79,9 @@ class MeshCoreChats extends ChangeNotifier {
   String? openThread;
   /// Expiry of the acknowledgements checked by a timer (off in the tests).
   bool autoExpire=true;
+  /// Every message of a node, also given here (lot 19: answers of a box of
+  /// relays, see meshcore_remote.dart).
+  void Function(String prefix,String text,DateTime at)? onIncoming;
 
   Future<void> Function(String key,String? value)? _save;
   Timer? _tick;
@@ -215,6 +218,7 @@ class MeshCoreChats extends ChangeNotifier {
       t.unread++;
       notify?.call('MeshCore · ${t.name}',i.text);
     }
+    onIncoming?.call(t.prefix,i.text,at);
     notifyListeners(); unawaited(_persist());
   }
 
@@ -238,5 +242,5 @@ class MeshCoreChats extends ChangeNotifier {
 
   /// Everything forgotten (tests).
   @visibleForTesting
-  void reset(){_threads.clear();snr.clear();openThread=null;_tick?.cancel();_tick=null;send=null;notify=null;_save=null;}
+  void reset(){_threads.clear();snr.clear();openThread=null;_tick?.cancel();_tick=null;send=null;notify=null;onIncoming=null;_save=null;}
 }

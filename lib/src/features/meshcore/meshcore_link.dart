@@ -20,6 +20,7 @@ import '../../l10n/strings.dart';
 import '../../services/notification_service.dart';
 import 'meshcore_chat.dart';
 import 'meshcore_protocol.dart';
+import 'meshcore_remote.dart';
 
 /// [waitingClick]: web app (lot 17), the browser lets join the module only
 /// after a click in this tab (« Reconnecter le module »). [disconnected]
@@ -281,6 +282,10 @@ class MeshCoreLink extends ChangeNotifier {
     _wired=true;
     showOnMap=store.preference(meshCoreMapKey)=='1';
     chats.attach(load:store.preference,save:store.setPreference);
+    // Lot 19: remote control of relays, its answers come as messages.
+    final remotes=MeshCoreRemotes.instance;
+    remotes.attach(load:store.preference,save:store.setPreference);
+    chats.onIncoming??=(prefix,text,at)=>remotes.onIncoming(prefix,text,now:at);
   }
 
   /// « Afficher les nœuds sur la carte », remembered on this device.
