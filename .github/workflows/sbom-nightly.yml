@@ -1,0 +1,142 @@
+name: SBOM nightly check
+
+# Card « SBOM : produire et exploiter l'inventaire des composants » (lot 22,
+# points 3 and 4). Every night, the inventories of the versions in service
+# (SBOMs attached to the web-dev, windows-dev and android-dev pre-releases)
+# and the one of the checked-out branch (main at night) go through
+# OSV-Scanner. A vulnerability not dismissed in osv-scanner.toml opens or
+# updates one issue « Faille dans un composant » (label security; GitHub
+# e-mails the owner); the issue is closed when nothing is left.
+# Never run on pull requests: an old vulnerability does not block a merge.
+# Also by hand: Actions › SBOM nightly check › Run workflow.
+on:
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+    inputs:
+      inject_test_vuln:
+        description: "Essai : ajouter un composant à faille connue (log4j-core 2.14.1) dans un SBOM d'essai"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sbom-nightly
+  cancel-in-progress: false
+
+env:
+  OSV_SCANNER_IMAGE: ghcr.io/google/osv-scanner:v2.3.0
+
+jobs:
+  osv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Register of dismissed vulnerabilities
+        run: python tool/osv_nightly.py check-config osv-scanner.toml
+      - name: SBOMs of the published versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p scan
+          for tag in web-dev windows-dev android-dev; do
+            mkdir -p "dl/$tag"
+            if gh release download "$tag" --pattern '*.cdx.json' --dir "dl/$tag" 2>/dev/null; then
+              for f in dl/$tag/*.cdx.json; do cp "$f" "scan/${tag}--$(basename "$f")"; done
+            else
+              echo "::notice title=SBOM::no SBOM attached to $tag yet"
+            fi
+          done
+          ls -l scan
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: SBOM of ${{ github.ref_name }}
+        shell: bash
+        run: |
+          flutter pub get
+          flutter --version --machine > "$RUNNER_TEMP/flutter-version.json" 2>/dev/null || true
+          python tool/sbom.py --platform all --build "${GITHUB_REF_NAME}@${GITHUB_SHA::7}" \
+            --flutter-json "$RUNNER_TEMP/flutter-version.json" --out "scan/${GITHUB_REF_NAME//\//-}--sarcade-app.cdx.json"
+          # Also the lock file itself, read natively by OSV-Scanner.
+          cp pubspec.lock "scan/${GITHUB_REF_NAME//\//-}--pubspec.lock"
+      - name: Test component (manual run only)
+        if: github.event_name == 'workflow_dispatch' && inputs.inject_test_vuln
+        run: |
+          python - <<'EOF'
+          import json
+          doc = {"bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
+                 "metadata": {"component": {"type": "application", "name": "essai", "bom-ref": "essai"}},
+                 "components": [{"type": "library", "bom-ref": "log4j", "group": "org.apache.logging.log4j",
+                                 "name": "log4j-core", "version": "2.14.1",
+                                 "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"}]}
+          open("scan/essai--sbom-test.cdx.json", "w").write(json.dumps(doc))
+          EOF
+      - name: OSV-Scanner
+        shell: bash
+        run: |
+          docker pull -q "$OSV_SCANNER_IMAGE"
+          mkdir -p results
+          status=0
+          for f in scan/*; do
+            name=$(basename "$f")
+            # The lock file must keep its name for OSV-Scanner to read it.
+            if [[ "$name" == *--pubspec.lock ]]; then
+              mkdir -p "lock/${name%%--*}" && cp "$f" "lock/${name%%--*}/pubspec.lock"
+              target="lock/${name%%--*}/pubspec.lock"
+            else
+              target="$f"
+            fi
+            set +e
+            docker run --rm -v "$PWD:/src" -w /src "$OSV_SCANNER_IMAGE" scan source \
+              --config=/src/osv-scanner.toml --format=json --all-packages -L "/src/$target" > "results/$name.json" 2> "results/$name.err"
+            code=$?
+            set -e
+            # 0: nothing found, 1: vulnerabilities found, 128: no package.
+            case $code in
+              0|1) ;;
+              128) echo "::warning title=OSV::$name: no package recognised"; echo '{}' > "results/$name.json" ;;
+              *) echo "::error title=OSV::$name: OSV-Scanner exit $code: $(tail -5 "results/$name.err" | tr '\n' ' ')"; status=1 ;;
+            esac
+            python - "$name" "results/$name.json" <<'EOF'
+          import collections, json, sys
+          name, path = sys.argv[1], sys.argv[2]
+          try:
+              data = json.load(open(path))
+          except ValueError:
+              data = {}
+          eco = collections.Counter()
+          vulns = 0
+          for r in data.get("results", []) or []:
+              for p in r.get("packages", []) or []:
+                  eco[p.get("package", {}).get("ecosystem", "?")] += 1
+                  vulns += len(p.get("vulnerabilities") or [])
+          print(f"::notice title=OSV {name}::{sum(eco.values())} packages ({', '.join(f'{k} {v}' for k, v in sorted(eco.items()))}), {vulns} vulnerability record(s) not dismissed")
+          EOF
+          done
+          exit $status
+      - name: Issue « Faille dans un composant »
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          args=()
+          for f in results/*.json; do n=$(basename "$f" .json); args+=("${n}=${f}"); done
+          python tool/osv_nightly.py issue --repo "$GITHUB_REPOSITORY" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-nightly
+          path: |
+            scan
+            results
+          retention-days: 30

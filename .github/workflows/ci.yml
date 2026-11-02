@@ -31,6 +31,24 @@ jobs:
             echo "::error title=flutter pub get::${msg}"
             exit 1
           fi
+      - name: SBOM (CycloneDX)
+        # Card « SBOM : produire et exploiter l'inventaire des composants »
+        # (lot 22): inventory of the Dart packages (pubspec.lock, plugins of
+        # third_party/) and of the Flutter SDK, kept with every run. Never
+        # fails the build (docs/sbom.md).
+        continue-on-error: true
+        shell: bash
+        run: |
+          flutter --version --machine > "$RUNNER_TEMP/flutter-version.json" 2>/dev/null || true
+          python3 tool/sbom.py --platform all --build "${SARCADE_BRANCH}@${GITHUB_SHA::7}" --build-number ${{ github.run_number }} \
+            --flutter-json "$RUNNER_TEMP/flutter-version.json" --out sbom/sarcade-app.cdx.json
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: sbom
+          path: sbom
+          if-no-files-found: warn
+          retention-days: 30
       - name: Analyze
         shell: bash
         run: |
@@ -53,6 +71,22 @@ jobs:
             grep -E "error •|warning •|info •|Expected:|Actual:|Error:|FAILED|\[E\]|^lib/|^test/" "$f" | head -60 \
               | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error title=$f::${line}"; done || true
           done
+
+  sbom-tools:
+    # Tests of the SBOM tools and check of the register of dismissed
+    # vulnerabilities (osv-scanner.toml: reason and re-examination date
+    # required). No vulnerability scan here: the nightly check
+    # (sbom-nightly.yml) reports them without blocking pull requests.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Tests of tool/sbom.py and tool/osv_nightly.py
+        run: python -m unittest discover -s tool -p "test_*.py" -v
+      - name: Register of dismissed vulnerabilities
+        run: python tool/osv_nightly.py check-config osv-scanner.toml
 
   windows-build:
     runs-on: windows-latest
@@ -211,6 +245,20 @@ jobs:
               --notes "Installeur Windows de développement V0.1, mis à jour automatiquement par la CI. Non signé tant que le certificat n'est pas dans les secrets."
           fi
           gh release upload windows-dev build/installer/sarcade-windows-setup.exe build/installer/sarcade-windows-portable.zip --clobber
+      - name: SBOM (CycloneDX)
+        continue-on-error: true
+        shell: bash
+        run: |
+          flutter --version --machine > "$RUNNER_TEMP/flutter-version.json" 2>/dev/null || true
+          python tool/sbom.py --platform windows --build "${SARCADE_BRANCH}@${GITHUB_SHA:0:7}" --build-number ${{ github.run_number }} \
+            --flutter-json "$RUNNER_TEMP/flutter-version.json" --out sbom/sarcade-app.cdx.json
+      - name: SBOM attached to the windows-dev pre-release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release upload windows-dev sbom/sarcade-app.cdx.json --clobber || echo "::warning title=SBOM::not attached to windows-dev"
 
   android-build:
     runs-on: ubuntu-latest
@@ -309,6 +357,30 @@ jobs:
           if [ -z "${SARCADE_KEYSTORE:-}" ]; then echo "::warning::signing key absent: no AAB (Google Play refuses a debug key)"; exit 0; fi
           flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD_NUMBER=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" ${SARCADE_FCM_DEFINES:-} 2>&1 | tee -a android-build.log
           echo "::notice::AAB versionCode ${{ github.run_number }}"
+      - name: SBOM (CycloneDX, Dart and Gradle)
+        # Two files: sarcade-app.cdx.json (Dart packages and Flutter SDK, as
+        # for the other platforms) and sarcade-app-android.cdx.json, plus the
+        # Maven libraries really packaged in the APK (releaseRuntimeClasspath
+        # of the app, plugins included). Never fails the build.
+        continue-on-error: true
+        shell: bash
+        env:
+          SARCADE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SARCADE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          flutter --version --machine > "$RUNNER_TEMP/flutter-version.json" 2>/dev/null || true
+          (cd android && ./gradlew :app:dependencies --configuration releaseRuntimeClasspath --console=plain) > "$RUNNER_TEMP/gradle-deps.txt" 2>&1 \
+            || echo "::warning title=SBOM::Gradle dependencies not listed: Android SBOM without the Maven libraries"
+          common=(--build "${SARCADE_BRANCH}@${GITHUB_SHA::7}" --build-number ${{ github.run_number }} --flutter-json "$RUNNER_TEMP/flutter-version.json")
+          python3 tool/sbom.py --platform all "${common[@]}" --out sbom/sarcade-app.cdx.json
+          python3 tool/sbom.py --platform android "${common[@]}" --gradle-deps "$RUNNER_TEMP/gradle-deps.txt" --out sbom/sarcade-app-android.cdx.json
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: sbom-android
+          path: sbom
+          if-no-files-found: warn
+          retention-days: 30
       - name: Report Android build errors
         if: failure()
         shell: bash
@@ -348,6 +420,17 @@ jobs:
             echo "::notice::AAB : https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/sarcade-play.aab"
           fi
           echo "::notice::APK : https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/sarcade-dev.apk"
+      - name: SBOM attached to the APK pre-release
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          if [ "$branch" = main ]; then tag=android-dev; else tag="android-$(echo "$branch" | tr '/' '-' | tr -cd 'A-Za-z0-9._-')"; fi
+          gh release upload "$tag" sbom/sarcade-app.cdx.json sbom/sarcade-app-android.cdx.json --clobber \
+            || echo "::warning title=SBOM::not attached to $tag"
 
       - name: Upload to Google Play (internal testing track)
         # Every push to main goes to the « Test interne » track. Needs the
@@ -474,6 +557,24 @@ jobs:
           xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee -a ios-build.log
           rm -f "$key" ~/.appstoreconnect/private_keys/*.p8
           echo "::notice::iPhone build ${{ github.run_number }} sent to TestFlight"
+      - name: SBOM (CycloneDX, Dart and CocoaPods)
+        # sarcade-app-ios.cdx.json: Dart packages, Flutter SDK and the pods
+        # of ios/Podfile.lock (Firebase…). Artifact only: TestFlight builds
+        # have no GitHub release. Never fails the build.
+        continue-on-error: true
+        shell: bash
+        run: |
+          flutter --version --machine > "$RUNNER_TEMP/flutter-version.json" 2>/dev/null || true
+          [ -f ios/Podfile.lock ] || echo "::warning title=SBOM::ios/Podfile.lock absent: iOS SBOM without the pods"
+          python3 tool/sbom.py --platform ios --build "${SARCADE_BRANCH}@${GITHUB_SHA::7}" --build-number ${{ github.run_number }} \
+            --flutter-json "$RUNNER_TEMP/flutter-version.json" --podfile-lock ios/Podfile.lock --out sbom/sarcade-app-ios.cdx.json
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: sbom-ios
+          path: sbom
+          if-no-files-found: warn
+          retention-days: 30
       - name: Report iOS build errors
         if: failure()
         shell: bash
@@ -580,6 +681,19 @@ jobs:
               --notes "Client Web V0.1, mis à jour automatiquement par la CI. Intégré à l'image Docker de sarcade-server."
           fi
           gh release upload web-dev sarcade-web.tar.gz --clobber
+      - name: SBOM (CycloneDX)
+        continue-on-error: true
+        shell: bash
+        run: |
+          flutter --version --machine > "$RUNNER_TEMP/flutter-version.json" 2>/dev/null || true
+          python3 tool/sbom.py --platform web --build "${SARCADE_BRANCH}@${GITHUB_SHA::7}" --build-number ${{ github.run_number }} \
+            --flutter-json "$RUNNER_TEMP/flutter-version.json" --out sbom/sarcade-app.cdx.json
+      - name: SBOM attached to the web-dev pre-release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload web-dev sbom/sarcade-app.cdx.json --clobber || echo "::warning title=SBOM::not attached to web-dev"
 
   e2e:
     # End-to-end tests (vault note « Tests automatiques de bout en bout »):

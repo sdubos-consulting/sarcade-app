@@ -1,0 +1,19 @@
+# Register of dismissed vulnerabilities of the SARCADE application
+# (card « SBOM : produire et exploiter l'inventaire des composants », lot 22,
+# point 4). Same format as sarcade-server: OSV-Scanner configuration, read by
+# the nightly check (.github/workflows/sbom-nightly.yml). See docs/sbom.md.
+#
+# One [[IgnoredVulns]] per vulnerability that does not affect SARCADE, with
+# all three fields (checked by tool/osv_nightly.py check-config, the CI
+# refuses an entry without them):
+#   id          OSV / GHSA / CVE identifier, as given in the issue
+#   ignoreUntil re-examination date: after it, the
+#               vulnerability is reported again
+#   reason      why SARCADE is not affected (« pas concerné, parce que… »),
+#               who decided and when
+#
+# Example:
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = 2027-05-01
+# reason = "Only the server part of the package is affected; SARCADE uses its client. Stéphane, 2 Nov 2026"
