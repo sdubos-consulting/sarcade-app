@@ -90,6 +90,7 @@ import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart';
 import '../weather/weather_page.dart';
 import '../weather/weather_models.dart';
+import '../weather/map_weather.dart';
 import '../measure/coordinates.dart';
 import '../measure/external_maps.dart';
 import '../measure/measure_controller.dart';
@@ -109,7 +110,11 @@ import '../../modules/adrasec/fixed_stations.dart';
 import '../orders/move_orders.dart';
 import '../../modules/adrasec/bearings/signals.dart';
 import '../settings/diagnostics_panel.dart' show diagnosticsAlert, showDiagnosticsSheet;
+import '../settings/settings_page.dart' show settingsRequestedTab;
+import 'map_load_status.dart';
 import '../tools/tools_page.dart';
+import '../settings/settings_tools.dart';
+import '../../modules/adrasec/bearings/signal_defaults_tool.dart';
 import 'sos_button.dart';
 import '../tools/coordinate_converter_page.dart';
 import '../places/readable_place.dart';
@@ -304,8 +309,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
   }
   void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId&&!p.deleted)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
+  /// Initial load followed by the Diagnostic and the dot (lot 19, map_load_status.dart).
+  late final _mapLoad=MapLoadStatus()..onRetry=_retryLinks;
+  void _retryLinks(){if(!mounted)return;if(!_started){unawaited(_start());}else if(!_realtime.connected){_realtime.reconnectNow();}}
   Future<void> _start() async {
-    if(_starting)return; _starting=true;
+    if(_starting)return; _starting=true; MapLoadStatus.active=_mapLoad; _mapLoad.begin();
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
       _mergePositions(data[0] as List<SarcadePosition>);
@@ -324,7 +332,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       registerWakeupHook=_wakeupNoted;
       unawaited(_wakeupNoted());
       if(mounted){setState(()=>_started=true);if(_savedView==null)WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
-    } catch(e){if(mounted)setState((){});} finally {_starting=false;}
+      _mapLoad.succeeded();
+    } catch(e){_mapLoad.failed(e);if(mounted)setState((){});} finally {_starting=false;}
   }
   Timer? _positionsTimer;
   /// Keeps the newest position of each device (a late answer never moves a
@@ -382,8 +391,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // time down, reconnect.
     if(_sync.lastSyncOk&&!_sync.eventUnknown){if(!_started){unawaited(_start());}else if(!_realtime.connected){_realtime.reconnectNow();}}
     showDiagnosticsSheet(context,api:widget.api,server:widget.api.baseUrl,eventId:widget.eventId,
-    actorId:widget.deviceId,failedAgain:failedAgain,onSignIn:_signIn).then((_){if(mounted)setState((){});});
+    actorId:widget.deviceId,failedAgain:failedAgain,onSignIn:_signIn,onChooseEvent:_chooseEvent).then((_){if(mounted)setState((){});});
   }
+  /// « Choisir un événement » of the Diagnostic: Paramètres › Général.
+  void _chooseEvent(){settingsRequestedTab='general';final b=widget.settingsBuilder;if(!_isCompact&&b!=null){_openDesk('settings',b);}else{widget.onSettings?.call();}}
   /// « Envoyer » of the banner = « Tout réessayer »; failing again opens the
   /// list with Supprimer and Exporter (unsent_summary.dart).
   Future<void> _retryAllUnsent() async {final left=await _sync.retryAll();if(!mounted)return;setState((){});if(left.isNotEmpty)_openDiagnostics(failedAgain:true);}
@@ -894,6 +905,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
       onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
+    // Main courante and the bearing frequencies, out of Paramètres (lot 19).
+    logbookToolItem(api:widget.api,eventId:widget.eventId,open:_openDesk),
+    if(_adrasec)?signalDefaultsToolItem(api:widget.api,store:widget.store,open:_openDesk),
   ];
   /// Convertisseur étoffé (lot 5): actions handed back to the map.
   void _openConverter({LatLng? initial})=>_openDesk('converter',()=>CoordinateConverterPage(key:ValueKey('desk-converter-$initial'),initial:initial,
@@ -1809,18 +1823,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.teams'))),body:tabs);
   }
 
+  /// Weather of the pill loaded by the map itself (lot 19, map_weather.dart).
+  late final MapWeather _mapWeather=MapWeather(load:()=>widget.api.eventWeather(widget.eventId,compact:_ops.settings.lowBandwidth),
+    read:()=>widget.store.cachedJson(weatherCacheKey(widget.eventId)),save:(j)=>widget.store.cacheJson(weatherCacheKey(widget.eventId),j),
+    online:()=>_sync.lastSyncOk,alive:()=>mounted,onChanged:(){if(mounted)setState((){});})..start();
   /// Phone « Plus »: a normal screen, a list of large buttons.
   /// Weather pill with the link dot (link_weather_pill.dart, decision of
   /// 30 Oct 2026, 1 h 30): the hour to come from the last forecast of the
   /// event, red when a vigilance is orange or red; the « Connecté » pill is
   /// gone, its dot is here; the word only when slowed or cut.
   Widget _linkWeatherPill(){
-    final state=_started?serverLink(syncOk:_sync.lastSyncOk,realtime:_realtime.connected):null;
-    final scheme=Theme.of(context).colorScheme;
-    final colour=switch(state){ServerLink.direct=>const Color(0xFF2E9D4B),ServerLink.slowed=>Colors.orange,ServerLink.cut=>scheme.error,null=>scheme.outline};
-    final label=state==null?S.t('links.starting'):S.t('links.${state.name}');
-    final j=widget.store.cachedJson('weather:${widget.eventId}');
-    final r=j==null?null:WeatherReport.fromJson(j);
+    final dot=mapLinkDot(started:_started,map:_mapLoad.phase,access:_sync.eventAccess,syncOk:_sync.lastSyncOk,realtime:_realtime.connected,scheme:Theme.of(context).colorScheme);
+    final colour=dot.colour, label=dot.label;
+    final r=_mapWeather.report;
     final next=r?.upcoming(DateTime.now(),n:1)??const [];
     final h=next.isEmpty?null:next.first;
     final alert=(r?.vigilance?.colorId??1)>=3;
@@ -1829,10 +1844,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       linkTooltip:[ '${S.t('links.serverLink')} : $label',
         if(mesh.remembered)S.t('mesh.pill',{'s':meshCoreStateText(mesh.state)})].join('\n'),
       mesh:mesh.remembered?meshCorePillTone(mesh.state):null,
-      linkWord:state==ServerLink.slowed||state==ServerLink.cut?label:null,
+      linkWord:dot.word,
       weatherIcon:h==null?null:weatherIcon(weatherKey(h.weatherCode)),
-      weatherText:h==null?null:pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
-        wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'),
+      weatherText:h==null?null:_mapWeather.pillText(pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
+        wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h')),
       compact:_isCompact,
       alert:alert?vigilanceColor(r!.vigilance!.colorId):null,
       onLinks:_openDiagnostics,onWeather:()=>_openWeather()));
@@ -2533,7 +2548,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
+  @override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).
@@ -2631,8 +2646,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Web: a server restarting (update of the NAS) is not an expired
           // session; « Recharger » only after 2 minutes without an answer
           // (1 Nov 2026), « nouvel essai… » before.
-          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline&&webOutageLong(_sync.lastServerContact!,DateTime.now())?reloadApp:null,
-          serverRetrying:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline&&!webOutageLong(_sync.lastServerContact!,DateTime.now()),
+          onReload:isWebPlatform&&_sync.serverDown&&_sync.lastServerContact!=null&&browserOnline&&webOutageLong(_sync.lastServerContact!,DateTime.now())?reloadApp:null,
+          serverRetrying:isWebPlatform&&_sync.serverDown&&_sync.lastServerContact!=null&&browserOnline&&!webOutageLong(_sync.lastServerContact!,DateTime.now()),
           onEnableNotifications:_notificationsBanner?_enableNotifications:null,
           onDismissNotifications:()=>setState(()=>_notificationsDismissed=true),
           webUpdateChange:versionChange(appVersionFull,_servedVersion),webUpdateBuilds:'$appBuild → ${_servedBuild??'?'}',
