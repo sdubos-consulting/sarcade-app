@@ -35,7 +35,7 @@ import org.robolectric.annotation.Config
  * and the navigation intent. The data are those the application writes
  * (lib/src/features/car/car_screen.dart).
  *
- * Run by the CI (job android-build): ./gradlew :sarcade_car:testReleaseUnitTest
+ * Run by the CI (job android-build): ./gradlew :sarcade_car:test
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
