@@ -80,7 +80,7 @@ class MeshCoreChats extends ChangeNotifier {
   /// Expiry of the acknowledgements checked by a timer (off in the tests).
   bool autoExpire=true;
   /// Every message of a node, also given here (lot 19: answers of a box of
-  /// relays, see meshcore_remote.dart).
+  /// relays, see remotes/remote.dart).
   void Function(String prefix,String text,DateTime at)? onIncoming;
 
   Future<void> Function(String key,String? value)? _save;
