@@ -49,7 +49,15 @@ class CarScreensTest {
         .put("from", "PCO-iphone-apps").put("away", "3 km NO")
         .put("lat", 48.8191).put("lon", 1.921).put("color", 0xFFFF5722.toInt())
 
-    private fun snapshot(orders: JSONArray = JSONArray().put(order("o1", "sent")), at: Long = System.currentTimeMillis()): JSONObject {
+    private fun mate(id: String, text: String, lat: Double? = 48.83) = JSONObject()
+        .put("id", id).put("title", id).put("icon", "car").put("color", 0xFF43A047.toInt()).put("text", text)
+        .apply { if (lat != null) put("lat", lat).put("lon", 1.95) }
+
+    private fun snapshot(
+        orders: JSONArray = JSONArray().put(order("o1", "sent")),
+        at: Long = System.currentTimeMillis(),
+        team: JSONArray = JSONArray(),
+    ): JSONObject {
         val labels = JSONObject()
         mapOf(
             "tab.messages" to "Messages", "tab.orders" to "Ordres", "tab.points" to "Points", "tab.team" to "Équipe",
@@ -67,7 +75,7 @@ class CarScreensTest {
                 .put("title", "Butte").put("text", "3 km NE · Point haut · 412 m").put("lat", 48.8191).put("lon", 1.979))
         return JSONObject().put("v", 1).put("at", at).put("lang", "fr").put("distress", false)
             .put("labels", labels).put("messages", JSONArray()).put("orders", orders)
-            .put("points", points).put("team", JSONArray())
+            .put("points", points).put("team", team)
     }
 
     private fun write(json: JSONObject) {
@@ -180,6 +188,43 @@ class CarScreensTest {
         rows(tab(MainScreen.POINTS))[1].onClickDelegate!!.sendClick(object : OnDoneCallback {})
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals("geo:48.819100,1.979000", car.startCarAppIntents.last().dataString)
+    }
+
+    @Test
+    fun teamTab_arrowAndRow_guideToTheLastPosition_noArrowWithoutPosition() {
+        // Lot 23 (card « Android Auto, onglet Équipe : naviguer vers un
+        // opérateur »).
+        write(snapshot(team = JSONArray()
+            .put(mate("TEL-2", "3 km au nord · vu il y a moins de 5 min"))
+            .put(mate("TEL-3", "position de 20 h 05", lat = null))))
+        val r = rows(tab(MainScreen.TEAM))
+        assertEquals(listOf("TEL-2", "TEL-3"), r.map { it.title.toString() })
+        assertEquals("position de 20 h 05", r[1].texts[0].toString())
+        val go = r[0].actions.single()
+        assertNotNull(go.icon)
+        click(go)
+        assertEquals(CarContext.ACTION_NAVIGATE, car.startCarAppIntents.last().action)
+        assertEquals("geo:48.830000,1.950000", car.startCarAppIntents.last().dataString)
+        // No position: no arrow, the row does nothing.
+        assertTrue(r[1].actions.isEmpty())
+        assertTrue(r[1].onClickDelegate == null)
+        // The person moved: touching the row again, without a new drawing,
+        // guides to the new position.
+        write(snapshot(team = JSONArray().put(mate("TEL-2", "3 km au nord · vu il y a moins de 5 min", lat = 48.85))))
+        r[0].onClickDelegate!!.sendClick(object : OnDoneCallback {})
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("geo:48.850000,1.950000", car.startCarAppIntents.last().dataString)
+    }
+
+    @Test
+    fun teamTab_notRedrawn_whenAnOperatorOnlyMoves() {
+        val t = System.currentTimeMillis()
+        val a = Snapshot(snapshot(at = t, team = JSONArray().put(mate("TEL-2", "3 km au nord", lat = 48.83))))
+        val b = Snapshot(snapshot(at = t, team = JSONArray().put(mate("TEL-2", "3 km au nord", lat = 48.8301))))
+        assertEquals(a.signature(MainScreen.TEAM), b.signature(MainScreen.TEAM))
+        // Position lost: the arrow goes, drawn again.
+        val c = Snapshot(snapshot(at = t, team = JSONArray().put(mate("TEL-2", "3 km au nord", lat = null))))
+        assertFalse(a.signature(MainScreen.TEAM) == c.signature(MainScreen.TEAM))
     }
 
     @Test

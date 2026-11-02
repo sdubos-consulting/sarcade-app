@@ -128,7 +128,7 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
             MESSAGES -> snap.items("messages").forEach { all.add(conversationRow(snap, it)) }
             ORDERS -> snap.items("orders").forEach { all.add(orderRow(snap, it)) }
             POINTS -> snap.items("points").forEach { all.add(pointRow(snap, it)) }
-            else -> snap.items("team").forEach { all.add(teammateRow(it)) }
+            else -> snap.items("team").forEach { all.add(teammateRow(snap, it)) }
         }
         all.take(limit).forEach { items.addItem(it) }
         if (all.isEmpty()) items.setNoItemsMessage(snap.label("empty.$id"))
@@ -182,11 +182,34 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
         return b.build()
     }
 
-    private fun teammateRow(t: JSONObject): Row = Row.Builder()
-        .setTitle(t.optString("title"))
-        .addText(t.optString("text"))
-        .setImage(CarUi.tile(carContext, CarUi.operatorIcon(t.optString("icon")), t.optInt("color", DEFAULT_COLOR)))
-        .build()
+    /** Lot 23 (card « Android Auto, onglet Équipe : naviguer vers un
+     *  opérateur »): the itinerary arrow on the right, as in Points, and
+     *  the row itself, guide Maps or Waze to the last known position of
+     *  the operator, read when touched (the person moves: touching again
+     *  updates the destination; the screen is not drawn again for a move,
+     *  see [Snapshot.signature]). No position, no arrow. */
+    private fun teammateRow(snap: Snapshot, t: JSONObject): Row {
+        val b = Row.Builder()
+            .setTitle(t.optString("title"))
+            .addText(t.optString("text"))
+            .setImage(CarUi.tile(carContext, CarUi.operatorIcon(t.optString("icon")), t.optInt("color", DEFAULT_COLOR)))
+        if (!hasPosition(t)) return b.build()
+        val id = t.optString("id")
+        val go = {
+            val now = Snapshot(CarData.snapshot(carContext))
+            val last = now.item("team", id)?.takeIf { hasPosition(it) } ?: t
+            CarUi.navigate(carContext, now, last.optDouble("lat"), last.optDouble("lon"))
+        }
+        b.setOnClickListener { go() }
+        if (level >= TABS_LEVEL) {
+            b.addAction(
+                Action.Builder().setTitle(CarUi.navigateTitle(carContext, snap))
+                    .setIcon(CarUi.icon(carContext, R.drawable.sarcade_car_directions))
+                    .setFlags(Action.FLAG_PRIMARY).setOnClickListener { go() }.build()
+            )
+        }
+        return b.build()
+    }
 
     private fun openSos() {
         screenManager.push(SosScreen(carContext))
@@ -203,6 +226,10 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
         const val TABS_LEVEL = 6
         /** Car API level from which a row shows 2 buttons (1 before). */
         const val TWO_ROW_ACTIONS_LEVEL = 8
+
+        /** An operator with a known position (lot 23, choice 4). */
+        fun hasPosition(t: JSONObject): Boolean =
+            t.has("lat") && t.has("lon") && !t.optDouble("lat").isNaN() && !t.optDouble("lon").isNaN()
 
         fun tabIcon(id: String): Int = when (id) {
             MESSAGES -> R.drawable.sarcade_car_chat

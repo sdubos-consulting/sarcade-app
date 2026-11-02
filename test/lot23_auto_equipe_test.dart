@@ -1,6 +1,10 @@
-// Android Auto, lot 23 (card « Android Auto : SOS dans la barre du haut,
-// opérateurs anciens masqués dans l'onglet Équipe », choice 2): only the
-// operators seen within 24 h, else « Personne d'autre en ligne ».
+// Android Auto, lot 23, Équipe tab:
+// - card « Android Auto : SOS dans la barre du haut, opérateurs anciens
+//   masqués dans l'onglet Équipe », choice 2: only the operators seen
+//   within 24 h, else « Personne d'autre en ligne »;
+// - card « Android Auto, onglet Équipe : naviguer vers un opérateur »: last
+//   known position sent to the car, its age rounded, « position de 20 h 05 »
+//   beyond 15 min.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sarcade_app/src/features/car/car_screen.dart';
@@ -40,5 +44,36 @@ void main(){
     expect(carLabels()['empty.team'],'Personne d’autre en ligne');
     S.setLanguage('en');
     expect(carLabels()['empty.team'],'Nobody else online');
+  });
+
+  test('Équipe: last known position sent, for « Naviguer »',(){
+    final t=team([pos('TEL-2',const Duration(minutes:3),lat:48.83)]).single;
+    expect(t['lat'],48.83); expect(t['lon'],1.95);
+  });
+
+  test('Équipe: age by 5 min up to 15 min, then the time of the position',(){
+    String seen(Duration age)=>carSeen(now.subtract(age),now);
+    expect(seen(Duration.zero),'vu il y a moins de 5 min');
+    expect(seen(const Duration(minutes:4,seconds:59)),'vu il y a moins de 5 min');
+    expect(seen(const Duration(minutes:5)),'vu il y a 5\u00A0min');
+    expect(seen(const Duration(minutes:9,seconds:30)),'vu il y a 5\u00A0min');
+    expect(seen(const Duration(minutes:14)),'vu il y a 10\u00A0min');
+    expect(seen(const Duration(minutes:15)),'vu il y a 15\u00A0min');
+    final old=now.subtract(const Duration(minutes:25)).toLocal();
+    final hm='${old.hour} h ${old.minute.toString().padLeft(2,'0')}';
+    expect(seen(const Duration(minutes:25)),'position de $hm');
+    S.setLanguage('en');
+    expect(seen(const Duration(minutes:25)),'position at ${old.hour}:${old.minute.toString().padLeft(2,'0')}');
+    expect(seen(const Duration(minutes:2)),'seen less than 5 min ago');
+  });
+
+  test('Équipe: the text does not change with every write (lot 20 rule)',(){
+    // Same operator, written 40 s apart: same line, the car does not redraw.
+    final a=carTeam(CarScreenInput(me:'TEL-1',eventId:'e',now:now,here:here,positions:[pos('TEL-2',const Duration(minutes:6))]));
+    final b=carTeam(CarScreenInput(me:'TEL-1',eventId:'e',now:now.add(const Duration(seconds:40)),here:here,positions:[pos('TEL-2',const Duration(minutes:6))]));
+    expect(a.single['text'],b.single['text']);
+    final c=carTeam(CarScreenInput(me:'TEL-1',eventId:'e',now:now.add(const Duration(minutes:30)),here:here,positions:[pos('TEL-2',const Duration(minutes:6))]));
+    final d=carTeam(CarScreenInput(me:'TEL-1',eventId:'e',now:now.add(const Duration(minutes:50)),here:here,positions:[pos('TEL-2',const Duration(minutes:6))]));
+    expect(c.single['text'],d.single['text']);
   });
 }
