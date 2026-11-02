@@ -25,6 +25,7 @@ import '../../models/position.dart';
 import '../../modules/adrasec/reference/reference_site.dart';
 import '../messages/messages_page.dart';
 import '../messages/messages_nav.dart';
+import '../messages/message_selection.dart' show MessageSelection;
 import '../../services/notification_keys.dart';
 import '../../modules/adrasec/aprs/aprs_page.dart';
 import '../search/map_search.dart';
@@ -2683,9 +2684,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final fullBleed=compact&&_tab==0&&sosAlert==null&&!banners.visible&&graphBanner==null;
     return PopScope(
       // Phone: Back first returns to the Carte tab, then leaves the application.
-      // A panel over the map is closed first (31 Oct 2026).
+      // A panel over the map is closed first (31 Oct 2026); a selection of
+      // messages is left first (lot 21).
       canPop:!compact||(_tab==0&&!_mapPanelOpen&&!_drawing.selectMode&&!_drawing.hasSelection&&_pickPoint==null),
-      onPopInvokedWithResult:(didPop,_){if(didPop)return;if(_pickPoint!=null){_cancelPick();}else if(_drawing.selectMode||_drawing.hasSelection){_drawing.endSelection();}else if(_mapPanelOpen){_escapePanel();}else if(_tab!=0){_goTab(0);}},
+      onPopInvokedWithResult:(didPop,_){if(didPop||MessageSelection.anyActive)return;if(_pickPoint!=null){_cancelPick();}else if(_drawing.selectMode||_drawing.hasSelection){_drawing.endSelection();}else if(_mapPanelOpen){_escapePanel();}else if(_tab!=0){_goTab(0);}},
       child:Scaffold(
       extendBody:fullBleed,
       body:SafeArea(top:!fullBleed,bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
