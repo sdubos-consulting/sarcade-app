@@ -24,6 +24,15 @@ void Start(HINSTANCE instance);
 // Closes it; called at the first image of Flutter. Safe to call twice.
 void Close();
 
+// Closes it without waiting for Flutter and waits (2 s at most) for its
+// thread to end: called before the process ends (second instance refused
+// by the Dart code, end of wWinMain), so no thread still draws while the
+// process exits.
+void Stop();
+
+// Appends a line (UTF-8) to %LOCALAPPDATA%\SARCADE\logs\demarrage.log.
+void Log(const char* text);
+
 }  // namespace splash_window
 
 #endif  // RUNNER_SPLASH_WINDOW_H_

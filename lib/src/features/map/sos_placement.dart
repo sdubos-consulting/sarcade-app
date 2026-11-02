@@ -27,9 +27,3 @@ Widget mapBottomMargin(BuildContext context,{required bool fullBleed,required Wi
   return Padding(padding:EdgeInsets.only(bottom:bottom),
     child:MediaQuery.removePadding(context:context,removeBottom:true,child:child));
 }
-
-/// Phone: the ⓘ of the base map sits above « Suivi actif » (bottom left).
-const double mapAttributionLift=52;
-
-/// The scale sits just above the ⓘ of the base map (bottom left).
-double mapScaleBottom({required bool compact})=>compact?mapAttributionLift+44:44;
