@@ -38,6 +38,7 @@ import '../measure/wmm.dart' show magneticDeclination;
 import 'drawing/export_formats.dart';
 import 'cinematique_escape.dart';
 import '../../ui/theme.dart';
+import 'aprs_gateway.dart';
 import 'stations.dart';
 import 'cinematique_touch.dart';
 import 'layer_opacity.dart';
@@ -1945,8 +1946,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final id='${d['device_id']??''}';if(id.isEmpty)return;final m=_forced;final k='${d['kind']??''}';
     if(k=='fixed'){m[id]='f';}else if(k=='mobile'){m[id]='m';}else{m.remove(id);}await _saveForced(m);
   }
-  Marker _fixedMarker(SarcadePosition p)=>Marker(point:LatLng(p.lat,p.lon),width:22,height:22,child:Tooltip(message:p.label,child:GestureDetector(onTap:()=>_tapStation(p),
-    child:Opacity(opacity:0.7,child:_stationIcon(p,size:20)))));
+  // Gateways a little larger: readable and easy to touch (lot 19).
+  Marker _fixedMarker(SarcadePosition p)=>Marker(point:LatLng(p.lat,p.lon),width:stationIconSize(p.aprsSymbol,22),height:stationIconSize(p.aprsSymbol,22),child:Tooltip(message:p.label,child:GestureDetector(onTap:()=>_tapStation(p),
+    child:Opacity(opacity:0.7,child:_stationIcon(p,size:stationIconSize(p.aprsSymbol,20))))));
   Future<void> _setTraceHours(int h) async {
     setState((){_traceHours=h;_scrub=null;_trace=traceWithin(_history,DateTime.now().toUtc(),h);});
   }
@@ -1965,6 +1967,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Icon chosen in SARCADE first (Paramètres › Profil), then the APRS
     // symbol of the station (1 Nov 2026).
     final mine=operatorIcon(chosenIcon(_devices,deviceId:p.isAprs?null:p.deviceId,callsign:p.isAprs?p.callsign:null));
+    // Gateways (« L& », « I& »…): diamond (aprs_gateway.dart, lot 19).
+    final gate=gatewayStationIcon(symbol:p.aprsSymbol,isAprs:p.isAprs,hasChosenIcon:mine!=null,size:size);
+    if(gate!=null)return gate;
     final sym=mine!=null?(icon:mine,overlay:null,kind:'operator'):p.isAprs?aprsSymbol(p.aprsSymbol):null;
     // Same letters as the avatars of the lists and Messages (revue n° 8).
     final initials=avatarInitials(p.label.trim().isEmpty?p.deviceId:p.label);
