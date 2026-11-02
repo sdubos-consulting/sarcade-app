@@ -69,6 +69,8 @@ const Texts _fr={
   'point.selectArea':'Sélectionner une zone','appbar.more':'Plus d’actions','draw.selectHint':'Touchez des objets, ou appui long puis glisser pour un rectangle',
   'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Annuler le dernier point','routes.done':'Terminer',
   'tvb.title':'Écrans','tvb.sent':'Vue envoyée à {name}','tvb.sentAll':'Vue envoyée à {n} écrans','tvb.all':'Tous les écrans','tvb.follow':'Suivre ma vue','tvb.followStop':'Arrêter','tvb.following':'suit votre vue','tvb.connected':'Connecté','tvb.notConnected':'Non connecté','tvb.manage':'Appairer et gérer les écrans','tvb.settings':'Réglages de l’écran','tvb.disconnect':'Déconnecter','tvb.disconnected':'Écran déconnecté',
+  // Lot 19 : boutons directs d’un écran.
+  'tvb.messages':'Messages','tvb.modeHelp':'Mode de l’écran : un appui passe au suivant','tvb.mode.day':'Jour','tvb.mode.night':'Nuit','tvb.mode.auto':'Auto',
   'poi.createHere':'Créer un point d’intérêt ici','poi.create':'Créer','poi.defaultName':'Point {hm}','poi.iconTitle':'Icône','poi.changeIcon':'Changer l’icône','poi.created':'Point d’intérêt créé',
   'poi.icon.pin':'Épingle','poi.icon.gathering':'Rassemblement','poi.icon.command_post':'PC','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Eau',
   'poi.icon.helipad':'Hélisurface','poi.icon.vehicle':'Véhicule','poi.icon.viewpoint':'Point de vue','poi.icon.medical':'Secours','poi.icon.radio':'Radio','poi.icon.shelter':'Abri','poi.icon.flag':'Repère',
@@ -553,6 +555,8 @@ const Texts _en={
   'point.selectArea':'Select an area','appbar.more':'More actions','draw.selectHint':'Tap objects, or long press then drag for a rectangle',
   'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Undo last point','routes.done':'Done',
   'tvb.title':'Screens','tvb.sent':'View sent to {name}','tvb.sentAll':'View sent to {n} screens','tvb.all':'All screens','tvb.follow':'Follow my view','tvb.followStop':'Stop','tvb.following':'follows your view','tvb.connected':'Connected','tvb.notConnected':'Not connected','tvb.manage':'Pair and manage the screens','tvb.settings':'Screen settings','tvb.disconnect':'Disconnect','tvb.disconnected':'Screen disconnected',
+  // Lot 19: direct buttons of a screen.
+  'tvb.messages':'Messages','tvb.modeHelp':'Screen mode: one tap goes to the next','tvb.mode.day':'Day','tvb.mode.night':'Night','tvb.mode.auto':'Auto',
   'poi.createHere':'Create a point of interest here','poi.create':'Create','poi.defaultName':'Point {hm}','poi.iconTitle':'Icon','poi.changeIcon':'Change the icon','poi.created':'Point of interest created',
   'poi.icon.pin':'Pin','poi.icon.gathering':'Gathering','poi.icon.command_post':'Command post','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Water',
   'poi.icon.helipad':'Helipad','poi.icon.vehicle':'Vehicle','poi.icon.viewpoint':'Viewpoint','poi.icon.medical':'Medical','poi.icon.radio':'Radio','poi.icon.shelter':'Shelter','poi.icon.flag':'Marker',
