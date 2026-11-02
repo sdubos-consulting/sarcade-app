@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import '../../l10n/strings.dart';
 import '../../ui/link_status.dart';
 import '../../ui/overlay_page.dart';
+import '../messages/chat_bottom.dart';
 import 'meshcore_chat.dart';
 import 'meshcore_link.dart';
 import 'meshcore_protocol.dart';
@@ -43,13 +44,43 @@ class _MeshCoreChatPageState extends State<MeshCoreChatPage> {
   final chats=MeshCoreChats.instance, link=MeshCoreLink.instance;
   final _text=TextEditingController();
   final _scroll=ScrollController();
+  /// Same opening as Messages (lot 19): on the last message, the
+  /// « N non lus » separator above the first unread one, « ↑ N non lus ».
+  final _separator=SeparatorWatch();
+  String? _firstUnreadId;
+  int _unreadAtOpen=0;
+  bool _atBottom=true;
 
   @override void initState(){
     super.initState();
+    final t=chats.thread(widget.prefix);
+    if(t!=null&&t.unread>0){
+      final i=firstUnreadReceived([for(final m in t.messages)m.mine],t.unread);
+      if(i!=null){_firstUnreadId=t.messages[i].id;_unreadAtOpen=t.messages.skip(i).where((m)=>!m.mine).length;}
+    }
     chats.openThread=widget.prefix;
     chats.addListener(_changed); link.addListener(_changed);
+    _scroll.addListener((){
+      final atBottom=chatAtBottom(_scroll);
+      if(atBottom!=_atBottom&&mounted)setState(()=>_atBottom=atBottom);
+      _watchSeparator();
+    });
     // After the first frame: the list of Messages rebuilds its unread count.
-    WidgetsBinding.instance.addPostFrameCallback((_)=>chats.markRead(widget.prefix));
+    WidgetsBinding.instance.addPostFrameCallback((_){chats.markRead(widget.prefix);_toBottom();});
+  }
+
+  void _toBottom(){
+    chatJumpToBottom(_scroll,alive:()=>mounted);
+    _watchSeparator();
+  }
+  void _watchSeparator()=>_separator.check(alive:()=>mounted,changed:()=>setState((){}));
+
+  Future<void> _toUnread() async {
+    final messages=chats.thread(widget.prefix)?.messages??const <MeshCoreChatMessage>[];
+    final i=messages.indexWhere((m)=>m.id==_firstUnreadId);
+    setState((){_separator.seen=true;_atBottom=false;});
+    if(i<0)return;
+    await chatScrollToKey(_scroll,_separator.key,i,messages.length,alive:()=>mounted);
   }
   @override void dispose(){
     if(chats.openThread==widget.prefix)chats.openThread=null;
@@ -60,8 +91,10 @@ class _MeshCoreChatPageState extends State<MeshCoreChatPage> {
   void _changed(){
     if(!mounted)return;
     chats.markRead(widget.prefix);
+    // At the bottom, a new message stays in view.
+    final follow=_atBottom;
     setState((){});
-    WidgetsBinding.instance.addPostFrameCallback((_){if(_scroll.hasClients)_scroll.jumpTo(_scroll.position.maxScrollExtent);});
+    if(follow)WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
   }
 
   bool get _connected=>link.state==MeshCoreState.connected;
@@ -108,7 +141,19 @@ class _MeshCoreChatPageState extends State<MeshCoreChatPage> {
           child:Text(S.t('mesh.chat.noModule'),key:const ValueKey('mesh-chat-offline'),style:TextStyle(color:s.onErrorContainer)))),
         Expanded(child:messages.isEmpty
           ?Center(child:Padding(padding:const EdgeInsets.all(24),child:Text(S.t('mesh.chat.help'),textAlign:TextAlign.center,style:small)))
-          :ListView.builder(controller:_scroll,padding:const EdgeInsets.symmetric(vertical:8),itemCount:messages.length,itemBuilder:(_,i)=>_bubble(messages[i]))),
+          :Stack(children:[
+            StickToBottom(controller:_scroll,stick:()=>_atBottom,child:ListView.builder(controller:_scroll,padding:const EdgeInsets.symmetric(vertical:8),itemCount:messages.length,itemBuilder:(_,i){
+              final m=messages[i];
+              if(m.id!=_firstUnreadId)return _bubble(m);
+              return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+                Padding(key:_separator.key,padding:const EdgeInsets.symmetric(vertical:6),child:Center(child:Chip(
+                  label:Text(S.t('messages.unreadSeparator',{'n':_unreadAtOpen})),visualDensity:VisualDensity.compact))),
+                _bubble(m),
+              ]);
+            })),
+            if(_firstUnreadId!=null&&_unreadAtOpen>0&&!_separator.seen)Positioned(top:10,left:0,right:0,child:Center(
+              child:UnreadUpButton(count:_unreadAtOpen,onPressed:()=>unawaited(_toUnread())))),
+          ])),
         SafeArea(top:false,child:Padding(padding:const EdgeInsets.fromLTRB(10,4,6,8),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
           Expanded(child:TextField(key:const ValueKey('mesh-chat-field'),controller:_text,minLines:1,maxLines:4,
             maxLength:meshCoreMaxText,maxLengthEnforcement:MaxLengthEnforcement.enforced,

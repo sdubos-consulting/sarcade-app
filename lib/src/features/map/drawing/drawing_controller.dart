@@ -257,6 +257,29 @@ class DrawingController extends ChangeNotifier {
     });
   }
 
+  /// Corner [corner] of a rectangle, in the order of [rectangleCorners],
+  /// dragged to [to] (lot 19, choice 3): the object keeps its 2 opposite
+  /// corners; corners 1 and 3 move the matching sides.
+  void moveRectangleCorner(int corner,LatLng to){
+    _mutateSelected((f){
+      if(f.kind!=FeatureKind.rectangle||f.points.length<2)return f;
+      final a=f.points[0], b=f.points[1];
+      final next=switch(corner){
+        0=>[to,b],
+        1=>[LatLng(to.latitude,a.longitude),LatLng(b.latitude,to.longitude)],
+        2=>[a,to],
+        3=>[LatLng(a.latitude,to.longitude),LatLng(to.latitude,b.longitude)],
+        _=>f.points,
+      };
+      return f.copyWith(points:next);
+    });
+  }
+
+  /// A finger or the mouse holds a handle (lot 19, choice 4): the map
+  /// does not move at all meanwhile.
+  bool handleHeld=false;
+  void holdHandle(bool held){if(handleHeld==held)return;handleHeld=held;notifyListeners();}
+
   void setRadius(double r){_mutateSelected((f)=>f.copyWith(radiusM:r<1?1:r));}
 
   void endEdit(){
