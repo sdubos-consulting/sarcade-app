@@ -3,7 +3,6 @@
 // at once for what counts, at most every 15 s for the distances.
 import 'dart:convert';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sarcade_app/src/features/car/car_screen.dart';
@@ -68,11 +67,12 @@ void main(){
       var t=now, lat=48.80;
       var orders=<MoveOrder>[];
       final b=CarScreenBridge(enabled:true,clock:()=>t,
-        read:()=>CarScreenInput(me:'TEL-1',eventId:'e',now:t,here:LatLng(lat,1.95),orders:orders),
+        read:()=>CarScreenInput(me:'TEL-1',eventId:'e',now:t,here:LatLng(lat,1.95),orders:orders,
+          pois:[SarcadePoi(id:'p1',eventId:'e',kind:'designated',lat:48.90,lon:1.95,createdAt:now,label:'PC',createdBy:'PCO')]),
         actions:CarScreenActions(order:(o,s) async {},ack:(a,m) async {},send:(m) async {},sos:() async {},sosEnd:() async {}));
       await b.push();
       expect(updates,hasLength(1));
-      // The car moves: distance changed, 3 s later: not written.
+      // The car moves (« 11 km » becomes « 12 km »), 3 s later: not written.
       t=t.add(const Duration(seconds:3)); lat=48.79;
       await b.push();
       expect(updates,hasLength(1));
