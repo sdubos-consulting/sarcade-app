@@ -24,6 +24,7 @@ import '../meshcore/meshcore_protocol.dart';
 import '../tools/tools_page.dart';
 import 'remote.dart';
 import 'remote_meshcore.dart';
+import 'remote_node_picker.dart';
 
 /// Declaring or changing a remote: the PCO only; using it: every operator.
 bool remoteCanDeclare([String? actor])=>isPco(actor??myActorId??'');
@@ -265,6 +266,11 @@ class _RemoteEditPageState extends State<RemoteEditPage> {
     if(mounted)nav.pop();
   }
 
+  Future<void> _pickNode(List<MeshCoreContact> companions) async {
+    final key=await pickRemoteNode(context,nodes:companions,selected:_node,selectedName:widget.remote?.targetName??'');
+    if(key!=null&&mounted)setState(()=>_node=key);
+  }
+
   Future<void> _delete() async {
     final r=widget.remote; if(r==null)return;
     final nav=Navigator.of(context);
@@ -303,10 +309,11 @@ class _RemoteEditPageState extends State<RemoteEditPage> {
           child:Text(remoteTransportName(_transport))),
         const SizedBox(height:14),
         if(keys.isEmpty)Text(S.t('remote.noCompanion'),style:TextStyle(color:t.colorScheme.error))
-        else DropdownButtonFormField<String>(key:const ValueKey('remote-node'),initialValue:selected,isExpanded:true,
-          decoration:InputDecoration(labelText:S.t('remote.node'),border:const OutlineInputBorder()),
-          items:[for(final e in keys.entries)DropdownMenuItem(value:e.key,child:Text(e.value,overflow:TextOverflow.ellipsis))],
-          onChanged:(v)=>setState(()=>_node=v)),
+        // Lot 21: a window of choice in place of the drop-down list.
+        else InkWell(key:const ValueKey('remote-node'),borderRadius:BorderRadius.circular(4),onTap:()=>unawaited(_pickNode(companions)),
+          child:InputDecorator(isEmpty:selected==null,decoration:InputDecoration(labelText:S.t('remote.node'),
+            border:const OutlineInputBorder(),suffixIcon:const Icon(Icons.arrow_drop_down)),
+            child:Text(selected==null?'':keys[selected]??'',overflow:TextOverflow.ellipsis))),
         const SizedBox(height:14),
         Text(S.t('remote.count'),style:t.textTheme.titleSmall),
         const SizedBox(height:6),
