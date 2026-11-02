@@ -10,6 +10,8 @@ name: SBOM nightly check
 # Never run on pull requests: an old vulnerability does not block a merge.
 # Also by hand: Actions › SBOM nightly check › Run workflow.
 on:
+  push:  # TEMPORARY: registers the workflow so it can be dispatched on this branch; removed before review
+    branches: [claude/l22-sbom]
   schedule:
     - cron: "41 2 * * *"
   workflow_dispatch:
