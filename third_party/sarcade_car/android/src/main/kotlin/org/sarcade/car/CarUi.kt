@@ -157,15 +157,29 @@ internal object CarUi {
         return b.build()
     }
 
-    /** « Naviguer » : the navigation application of the car (Google Maps,
-     *  Waze…), towards the point. */
-    fun navigate(context: CarContext, snap: Snapshot, lat: Double, lon: Double, label: String) {
-        val q = Uri.encode("$lat,$lon($label)")
-        val intent = Intent(CarContext.ACTION_NAVIGATE, Uri.parse("geo:$lat,$lon?q=$q"))
+    /** Intent of the navigation application of the car towards a point
+     *  (lot 20, card « Android Auto : ordres de déplacement peu
+     *  utilisables… », choice 3). Car App Library (CarContext.startCarApp)
+     *  and Android Auto navigation intents: action ACTION_NAVIGATE, data
+     *  « geo:latitude,longitude ». Until lot 19 a query « ?q=lat,lon(name) »
+     *  was added: Google Maps and Waze then search that text as an address
+     *  and may start nothing, without error. Coordinates with a dot. */
+    fun navigateIntent(lat: Double, lon: Double): Intent =
+        Intent(CarContext.ACTION_NAVIGATE, Uri.parse("geo:${coord(lat)},${coord(lon)}"))
+
+    private fun coord(v: Double): String = String.format(Locale.US, "%.6f", v)
+
+    /** « Naviguer », « Y aller » : Google Maps or Waze of the car, guided
+     *  towards the point; a clear message when no application takes it. */
+    fun navigate(context: CarContext, snap: Snapshot, lat: Double, lon: Double) {
+        if (lat.isNaN() || lon.isNaN()) {
+            toast(context, snap.label("navigateFailed"))
+            return
+        }
         try {
-            context.startCarApp(intent)
+            context.startCarApp(navigateIntent(lat, lon))
         } catch (e: Exception) {
-            CarToast.makeText(context, snap.label("navigateFailed"), CarToast.LENGTH_LONG).show()
+            toast(context, snap.label("navigateFailed"))
         }
     }
 

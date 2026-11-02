@@ -2,11 +2,14 @@ package org.sarcade.car
 
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import androidx.car.app.AppManager
 import androidx.car.app.CarAppService
 import androidx.car.app.Screen
+import androidx.car.app.ScreenManager
 import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 
 /**
@@ -34,14 +37,17 @@ class SarcadeCarAppService : CarAppService() {
 /** One car screen: tabs, then the detail screens pushed over them. */
 internal class SarcadeSession : Session() {
     private var speaker: Speaker? = null
+    private val orders: () -> Unit = { announceOrders() }
 
     init {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onCreate(owner: LifecycleOwner) {
                 CarData.sessionChanged(1)
+                CarData.addListener(orders)
             }
 
             override fun onDestroy(owner: LifecycleOwner) {
+                CarData.removeListener(orders)
                 CarData.sessionChanged(-1)
                 speaker?.shutdown()
                 speaker = null
@@ -56,5 +62,40 @@ internal class SarcadeSession : Session() {
         speaker?.stop()
     }
 
-    override fun onCreateScreen(intent: Intent): Screen = MainScreen(carContext, this)
+    override fun onCreateScreen(intent: Intent): Screen {
+        val main = MainScreen(carContext, this)
+        val id = orderOf(intent) ?: return main
+        // « Voir » of the notification, SARCADE not open in the car yet:
+        // the tabs, with the order screen over them.
+        carContext.getCarService(ScreenManager::class.java).push(main)
+        return OrderScreen(carContext, id)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        val id = orderOf(intent) ?: return
+        carContext.getCarService(ScreenManager::class.java).push(OrderScreen(carContext, id))
+    }
+
+    private fun orderOf(intent: Intent): String? =
+        if (intent.action == OrderAlerts.ACTION_VIEW) intent.getStringExtra(OrderAlerts.EXTRA_ID)?.takeIf { it.isNotEmpty() } else null
+
+    /** New move orders (lot 20): alert over SARCADE when it is on the car
+     *  screen, otherwise a notification of the car. */
+    private fun announceOrders() {
+        val snap = Snapshot(CarData.snapshot(carContext))
+        val fresh = OrderAlerts.take(carContext, snap)
+        if (fresh.isEmpty()) return
+        val shown = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        for (o in fresh) {
+            val done = shown && runCatching { carContext.carAppApiLevel >= OrderAlerts.ALERT_LEVEL }.getOrDefault(false) &&
+                runCatching {
+                    carContext.getCarService(AppManager::class.java).showAlert(
+                        OrderAlerts.alert(carContext, snap, o) {
+                            carContext.getCarService(ScreenManager::class.java).push(OrderScreen(carContext, o.optString("id")))
+                        }
+                    )
+                }.isSuccess
+            if (!done) OrderAlerts.notify(carContext, snap, o)
+        }
+    }
 }

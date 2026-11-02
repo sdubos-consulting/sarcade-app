@@ -28,7 +28,7 @@ import '../../models/poi.dart';
 import '../../models/position.dart';
 import '../../ui/operator_color.dart';
 import '../map/drawing/geometry.dart' show bearingDeg, distanceM;
-import '../map/operator_icons.dart' show chosenIcon;
+import '../map/operator_icons.dart' show baseCallsign, chosenIcon;
 import '../map/stations.dart' show ageLabel;
 import '../messages/conversations.dart';
 import '../orders/move_orders.dart';
@@ -159,10 +159,21 @@ Map<String,Object?> _conversation(String key,List<SarcadeMessage> c,CarScreenInp
   };
 }
 
-/// Orders addressed to this terminal: in progress first, then the recent
-/// answers (same 30 min as the map); never the cancelled ones.
+/// True when [target] is this terminal, or another terminal of the same
+/// person: same callsign (without its SSID) in Paramètres › Profil (lot 20,
+/// card « Android Auto : ordres de déplacement peu utilisables… », choice
+/// 2: the order on every terminal of the person, phone and car).
+bool carSamePerson(String target,String me,Map<String,Map<String,dynamic>> devices){
+  if(target==me)return true;
+  final mine=baseCallsign('${devices[me]?['callsign']??''}');
+  return mine.isNotEmpty&&baseCallsign('${devices[target]?['callsign']??''}')==mine;
+}
+
+/// Orders addressed to this terminal or to another terminal of the same
+/// person: in progress first, then the recent answers (same 30 min as the
+/// map); never the cancelled ones.
 List<MoveOrder> carOrders(CarScreenInput i){
-  final mine=i.orders.where((o)=>o.targetId==i.me&&o.status!='cancelled'&&(o.open||moveOrderOnMap(o,i.now))).toList()
+  final mine=i.orders.where((o)=>carSamePerson(o.targetId,i.me,i.devices)&&o.status!='cancelled'&&(o.open||moveOrderOnMap(o,i.now))).toList()
     ..sort((a,b){
       if(a.open!=b.open)return a.open?-1:1;
       return '${b.json['updated_at']}'.compareTo('${a.json['updated_at']}');
@@ -172,6 +183,8 @@ List<MoveOrder> carOrders(CarScreenInput i){
 
 Map<String,Object?> _order(MoveOrder o,CarScreenInput i)=>{
   'id':o.id,'title':o.label,'status':o.status,
+  // Alert of a new order (lot 20): « P2 », then « Ordre de déplacement · PCO · 3 km NO ».
+  'from':o.createdBy,'away':carAway(i.here,o.destination,short:true),
   'text':_join([o.createdBy,S.t('order.status.${o.status}'),carAway(i.here,o.destination)]),
   'note':o.note,
   'lat':o.destination.latitude,'lon':o.destination.longitude,
@@ -232,7 +245,7 @@ Map<String,String> carLabels()=>{
   for(final t in const ['messages','orders','points','team'])'empty.$t':S.t('car.empty.$t'),
   for(final k in const ['sos','sosTitle','sosAsk','sosSend','sosSent','sosOn','sosEnd','sosEnded','cancel','navigate','navigateCar','navigateCarShort','navigateFailed',
     'accept','refuse','arrived','read','reply','replyTo','listening','dictationFailed','retry','send','sent','stale','sections',
-    'gone','note','order'])k:S.t('car.$k'),
+    'gone','note','order','go','view','orderAlert'])k:S.t('car.$k'),
 };
 
 /// Everything the car shows, as written to the plugin.
@@ -315,7 +328,7 @@ bool carOrderAnswerAllowed(String from,String to)=>switch(to){
 Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{Uuid uuid=const Uuid()}) async {
   switch(a.type){
     case 'order':
-      final o=i.orders.where((x)=>x.id==a.id&&x.targetId==i.me).firstOrNull;
+      final o=carOrders(i).where((x)=>x.id==a.id).firstOrNull;
       if(o!=null&&carOrderAnswerAllowed(o.status,a.status))await act.order(o,a.status);
     case 'read':
       final c=carConversations(i)[a.conversation];

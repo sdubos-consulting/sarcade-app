@@ -15,7 +15,7 @@ import io.flutter.plugin.common.MethodChannel
  * The manifest of the plugin also declares SARCADE to Android Auto
  * (messaging by notifications, lot 1b; screen with tabs, lot 17).
  */
-class SarcadeCarPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class SarcadeCarPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, CarDataClient {
     private var channel: MethodChannel? = null
     private var context: Context? = null
 
@@ -52,11 +52,11 @@ class SarcadeCarPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
     }
 
-    internal fun notifyActions() {
+    override fun notifyActions() {
         channel?.invokeMethod("actions", null)
     }
 
-    internal fun notifyActive(active: Boolean) {
+    override fun notifyActive(active: Boolean) {
         channel?.invokeMethod("active", active)
     }
 
