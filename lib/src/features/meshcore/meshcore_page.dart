@@ -12,13 +12,14 @@ import 'package:flutter/material.dart';
 import '../../l10n/strings.dart';
 import '../../ui/link_status.dart';
 import '../../ui/overlay_page.dart';
+import '../remotes/remote.dart';
+import '../remotes/remotes_page.dart' show openRemotes;
 import 'meshcore_chat_page.dart';
 import 'meshcore_link.dart';
 import 'meshcore_link_card.dart';
 import 'meshcore_map.dart';
 import 'meshcore_node_list.dart';
 import 'meshcore_protocol.dart';
-import 'meshcore_remote_page.dart';
 
 /// « Diagnostic » of Outils › MeshCore: the card of the module (search,
 /// choice, state, journal, « Oublier ce module »).
@@ -45,6 +46,21 @@ String? meshCoreFocusQuery(MeshCoreContact? c)=>c==null?null:c.name.isEmpty?c.sh
 
 IconData meshCoreKindIcon(String kind)=>switch(kind){
   'repeater'=>Icons.cell_tower,'room'=>Icons.forum_outlined,'sensor'=>Icons.sensors,_=>Icons.person_pin_circle_outlined};
+
+/// Outils › MeshCore keeps a simple link to Outils › Télécommandes (lot
+/// 21): the remotes are a tool of their own, MeshCore one of their
+/// transports.
+class MeshCoreRemotesTile extends StatelessWidget {
+  const MeshCoreRemotesTile({super.key});
+  @override Widget build(BuildContext context)=>ListenableBuilder(listenable:Remotes.instance,builder:(context,_){
+    final all=Remotes.instance.remotes;
+    return Card(key:const ValueKey('remote-tile'),child:ListTile(leading:const Icon(Icons.settings_remote),
+      title:Text(S.t('remote.title')),
+      subtitle:Text(all.isEmpty?S.t('remote.none'):all.map((r)=>r.name).join(' · '),maxLines:2,overflow:TextOverflow.ellipsis),
+      trailing:const Icon(Icons.chevron_right),
+      onTap:()=>unawaited(openRemotes(context))));
+  });
+}
 
 class MeshCorePage extends StatefulWidget {
   /// « Voir sur la carte »: the map shows the node (lot 17).
@@ -79,7 +95,7 @@ class _MeshCorePageState extends State<MeshCorePage> {
       body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),child:ListView(padding:const EdgeInsets.all(16),children:[
         // Web (lot 17): the browser waits for a click to join the module.
         const MeshCoreReconnectBanner(),
-        // Lot 19: remotes of relays (declared by the PCO).
+        // Lot 21: a link to Outils › Télécommandes.
         const MeshCoreRemotesTile(),
         if(!link.remembered)...[
           Text(S.t('mesh.noModule')),

@@ -138,6 +138,7 @@ import '../meshcore/meshcore_link.dart';
 import '../meshcore/meshcore_link_card.dart' show meshCoreStateText, MeshCoreReconnectBanner;
 import '../meshcore/meshcore_page.dart';
 import '../meshcore/meshcore_map.dart';
+import '../remotes/remotes_page.dart' show remotesToolItem;
 import 'locate_button.dart';
 import 'locate_cycle.dart';
 import 'point_menu.dart';
@@ -918,6 +919,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
     // Main courante and the bearing frequencies, out of Paramètres (lot 19).
     logbookToolItem(api:widget.api,eventId:widget.eventId,open:_openDesk),
+    // Télécommandes, a tool of their own (lot 21).
+    remotesToolItem(open:_openDesk),
     if(_adrasec)?signalDefaultsToolItem(api:widget.api,store:widget.store,open:_openDesk),
   ];
   /// Convertisseur étoffé (lot 5): actions handed back to the map.
