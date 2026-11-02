@@ -10,8 +10,6 @@ name: SBOM nightly check
 # Never run on pull requests: an old vulnerability does not block a merge.
 # Also by hand: Actions › SBOM nightly check › Run workflow.
 on:
-  push:  # TEMPORARY: registers the workflow so it can be dispatched on this branch; removed before review
-    branches: [claude/l22-sbom]
   schedule:
     - cron: "41 2 * * *"
   workflow_dispatch:
@@ -119,7 +117,7 @@ jobs:
           vulns = 0
           for r in data.get("results", []) or []:
               for p in r.get("packages", []) or []:
-                  eco[p.get("package", {}).get("ecosystem", "?")] += 1
+                  eco[p.get("package", {}).get("ecosystem") or "lockfile"] += 1
                   vulns += len(p.get("vulnerabilities") or [])
           print(f"::notice title=OSV {name}::{sum(eco.values())} packages ({', '.join(f'{k} {v}' for k, v in sorted(eco.items()))}), {vulns} vulnerability record(s) not dismissed")
           EOF

@@ -102,9 +102,13 @@ def findings_from_reports(reports: dict[str, dict]) -> list[dict]:
                         continue
                     aliases = sorted(set(group.get("aliases", []) or []) | set(ids))
                     main_id = next((i for i in ids if i.startswith("GHSA-")), ids[0])
-                    key = (info.get("ecosystem", ""), info.get("name", ""),
-                           info.get("version", ""), main_id)
                     v = vulns.get(main_id) or next(iter(vulns.values()))
+                    # Lock file reports may leave the ecosystem empty: the
+                    # advisory still names it.
+                    eco = info.get("ecosystem") or next(
+                        ((a.get("package") or {}).get("ecosystem", "")
+                         for a in v.get("affected", []) or []), "")
+                    key = (eco, info.get("name", ""), info.get("version", ""), main_id)
                     f = found.setdefault(key, {
                         "id": main_id, "aliases": aliases,
                         "ecosystem": key[0], "package": key[1], "version": key[2],

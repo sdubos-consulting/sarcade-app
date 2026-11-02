@@ -208,6 +208,11 @@ class OsvTest(unittest.TestCase):
         self.assertEqual(f[0]["fixed"], ["2.15.0"])
         self.assertEqual(f[0]["seen_in"], ["web-dev", "main"])
         self.assertEqual(f[0]["severity"], "10.0")
+        lock = json.loads(json.dumps(REPORT))
+        pkg = lock["results"][0]["packages"][1]
+        pkg["package"]["ecosystem"] = ""
+        pkg["vulnerabilities"][0]["affected"][0]["package"]["ecosystem"] = "Maven"
+        self.assertEqual(osv_nightly.findings_from_reports({"lock": lock})[0]["ecosystem"], "Maven")
 
     def test_issue_lifecycle(self):
         f = osv_nightly.findings_from_reports({"main": REPORT})
