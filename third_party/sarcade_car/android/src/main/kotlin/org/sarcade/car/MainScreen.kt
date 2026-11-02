@@ -26,10 +26,18 @@ import org.json.JSONObject
  *   SOS round button; rows with their buttons (2 from level 8, 1 before);
  * - older hosts: a list per section with an action strip « Rubriques » and
  *   « SOS ».
+ *
+ * Lot 23: the second layout everywhere (CarUi.SOS_IN_STRIP), Android Auto
+ * painting the round SOS button in its own blue.
  */
 internal class MainScreen(carContext: CarContext, private val session: SarcadeSession) : Screen(carContext) {
     /** Tab shown (internal: the tests of the car screens choose it). */
     internal var tab = MESSAGES
+
+    /** SOS in the top strip, one section at a time (CarUi.SOS_IN_STRIP,
+     *  in force since lot 23); internal: the tests of the car screens also
+     *  draw the tabs of the lot 20 layout. */
+    internal var sosInStrip = CarUi.SOS_IN_STRIP
 
     /** What the shown tab displayed when last drawn (lot 20, choices 4 and
      *  5): new data that do not change it are not drawn again, so the car
@@ -62,9 +70,10 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
                 .setHeaderAction(Action.APP_ICON)
                 .build()
         }
-        // SOS in the action strip (fallback of lot 20, CarUi.SOS_IN_STRIP):
-        // one section at a time, as on the older hosts.
-        return if (level >= TABS_LEVEL && !CarUi.SOS_IN_STRIP) tabs(snap) else sections(snap)
+        // SOS in the action strip (fallback of lot 20, in force since lot 23,
+        // CarUi.SOS_IN_STRIP): one section at a time, as on the older hosts;
+        // no round button.
+        return if (level >= TABS_LEVEL && !sosInStrip) tabs(snap) else sections(snap)
     }
 
     // --- Tabs (car API 6+) ---------------------------------------------------

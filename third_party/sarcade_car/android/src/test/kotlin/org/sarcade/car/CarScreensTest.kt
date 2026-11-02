@@ -85,11 +85,14 @@ class CarScreensTest {
         write(snapshot())
     }
 
-    private fun tab(id: String): ListTemplate {
+    /** List of a tab or a section, in the layout in force (one section at
+     *  a time since lot 23) or in the tabs of lot 20 ([inStrip] false). */
+    private fun tab(id: String, inStrip: Boolean = CarUi.SOS_IN_STRIP): ListTemplate {
         val screen = MainScreen(car, SarcadeSession())
+        screen.sosInStrip = inStrip
         screen.tab = id
-        val tabs = screen.onGetTemplate() as TabTemplate
-        return tabs.tabContents.template as ListTemplate
+        val t = screen.onGetTemplate()
+        return if (t is TabTemplate) t.tabContents.template as ListTemplate else t as ListTemplate
     }
 
     private fun rows(list: ListTemplate): List<Row> = list.singleList!!.items.map { it as Row }
@@ -128,8 +131,27 @@ class CarScreensTest {
     }
 
     @Test
-    fun sos_redIconAlone_onANeutralBackground() {
-        val sos = tab(MainScreen.POINTS).actions.single()
+    fun sos_inTheTopStrip_noRoundButtonLeft() {
+        // Lot 23 (card « Android Auto : SOS dans la barre du haut… », choice
+        // 1): the car of the owner (API level 8) shows one section at a
+        // time, « Rubriques » and a red « SOS » at the top, no round button.
+        assertTrue(CarUi.SOS_IN_STRIP)
+        for (id in MainScreen.TABS) {
+            val screen = MainScreen(car, SarcadeSession())
+            screen.tab = id
+            val list = screen.onGetTemplate() as ListTemplate
+            assertTrue("round button left in $id", list.actions.isEmpty())
+            assertEquals(Snapshot(CarData.snapshot(car)).label("tab.$id"), list.title.toString())
+            val strip = list.actionStrip!!.actions
+            assertEquals(2, strip.size)
+            assertEquals("SOS", strip[1].title.toString())
+            assertEquals(CarColor.RED, strip[1].icon!!.tint)
+        }
+    }
+
+    @Test
+    fun sos_redIconAlone_onANeutralBackground_inTheTabsOfLot20() {
+        val sos = tab(MainScreen.POINTS, inStrip = false).actions.single()
         assertEquals(CarColor.RED, sos.icon!!.tint)
         assertTrue(sos.title == null)
         assertEquals(CarUi.SOS_BACKGROUND, sos.backgroundColor)

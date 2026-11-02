@@ -290,7 +290,7 @@ const Texts _fr={
   'notif.action.accept':'Accepter','notif.action.refuse':'Refuser','notif.action.read':'Lu','notif.action.reply':'Répondre','car.replyHint':'Votre réponse','car.allChannel':'Tous','car.channel':'Canal','notif.action.open':'Ouvrir',
   // Android Auto screen with tabs (lot 17, card « Voiture : vraie interface SARCADE avec onglets »)
   'car.tab.messages':'Messages','car.tab.orders':'Ordres','car.tab.points':'Points','car.tab.team':'Équipe',
-  'car.empty.messages':'Aucun message','car.empty.orders':'Aucun ordre','car.empty.points':'Aucun point','car.empty.team':'Personne d’autre sur la carte',
+  'car.empty.messages':'Aucun message','car.empty.orders':'Aucun ordre','car.empty.points':'Aucun point','car.empty.team':'Personne d’autre en ligne',
   'car.sos':'SOS','car.sosTitle':'Détresse','car.sosAsk':'Envoyer à tous une détresse avec votre position ?','car.sosSend':'Envoyer SOS',
   'car.sosSent':'Détresse envoyée','car.sosOn':'Détresse en cours. Y mettre fin ?','car.sosEnd':'Fin de détresse','car.sosEnded':'Fin de détresse envoyée',
   'car.cancel':'Annuler','car.navigate':'Naviguer','car.navigateFailed':'Navigation impossible : installez Google Maps ou Waze sur le téléphone','car.accept':'Accepter','car.refuse':'Refuser',
@@ -774,7 +774,7 @@ const Texts _en={
   'notif.action.accept':'Accept','notif.action.refuse':'Refuse','notif.action.read':'Read','notif.action.reply':'Reply','car.replyHint':'Your answer','car.allChannel':'Everyone','car.channel':'Channel','notif.action.open':'Open',
   // Android Auto screen with tabs (lot 17, card « Voiture : vraie interface SARCADE avec onglets »)
   'car.tab.messages':'Messages','car.tab.orders':'Orders','car.tab.points':'Points','car.tab.team':'Team',
-  'car.empty.messages':'No message','car.empty.orders':'No order','car.empty.points':'No point','car.empty.team':'Nobody else on the map',
+  'car.empty.messages':'No message','car.empty.orders':'No order','car.empty.points':'No point','car.empty.team':'Nobody else online',
   'car.sos':'SOS','car.sosTitle':'Distress','car.sosAsk':'Send everyone a distress with your position?','car.sosSend':'Send SOS',
   'car.sosSent':'Distress sent','car.sosOn':'Distress in progress. End it?','car.sosEnd':'End of distress','car.sosEnded':'End of distress sent',
   'car.cancel':'Cancel','car.navigate':'Navigate','car.navigateFailed':'Navigation not possible: install Google Maps or Waze on the phone','car.accept':'Accept','car.refuse':'Refuse',
