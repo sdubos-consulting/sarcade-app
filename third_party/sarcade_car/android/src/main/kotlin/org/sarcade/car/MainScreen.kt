@@ -28,7 +28,8 @@ import org.json.JSONObject
  *   « SOS ».
  */
 internal class MainScreen(carContext: CarContext, private val session: SarcadeSession) : Screen(carContext) {
-    private var tab = MESSAGES
+    /** Tab shown (internal: the tests of the car screens choose it). */
+    internal var tab = MESSAGES
 
     /** What the shown tab displayed when last drawn (lot 20, choices 4 and
      *  5): new data that do not change it are not drawn again, so the car
@@ -154,7 +155,7 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
     }
 
     private fun pointRow(snap: Snapshot, p: JSONObject): Row {
-        val go = { CarUi.navigate(carContext, snap, p.optDouble("lat"), p.optDouble("lon"), p.optString("title")) }
+        val go = { CarUi.navigate(carContext, snap, p.optDouble("lat"), p.optDouble("lon")) }
         val b = Row.Builder()
             .setTitle(p.optString("title"))
             .addText(p.optString("text"))
@@ -225,7 +226,7 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
                     answer("arrived", "arrived", R.drawable.sarcade_car_flag, false),
                     Action.Builder().setTitle(CarUi.navigateTitle(context, snap)).setFlags(Action.FLAG_PRIMARY)
                         .setIcon(CarUi.icon(context, R.drawable.sarcade_car_directions))
-                        .setOnClickListener { CarUi.navigate(context, snap, o.optDouble("lat"), o.optDouble("lon"), o.optString("title")) }
+                        .setOnClickListener { CarUi.navigate(context, snap, o.optDouble("lat"), o.optDouble("lon")) }
                         .build(),
                 )
                 else -> emptyList()

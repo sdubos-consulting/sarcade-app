@@ -283,6 +283,19 @@ jobs:
           set -o pipefail
           # versionCode = CI run number: always increasing, as Google Play requires.
           flutter build apk --release --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD_NUMBER=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" ${SARCADE_FCM_DEFINES:-} 2>&1 | tee android-build.log
+      - name: Car screen tests (Android Auto, without a car)
+        # Lot 20 (card « Android Auto : ordres de déplacement peu
+        # utilisables… », choice 4): screens of the plugin third_party/
+        # sarcade_car with androidx.car.app:app-testing on Robolectric
+        # (tabs, buttons, SOS, order alert, navigation intent).
+        shell: bash
+        run: |
+          set -o pipefail
+          cd android
+          if ! ./gradlew :sarcade_car:test --console=plain 2>&1 | tee ../car-tests.log; then
+            grep -E "FAILED|Exception|Error|^e: |expected:" ../car-tests.log | head -40 | while IFS= read -r line; do echo "::error title=car screen tests::${line}"; done
+            exit 1
+          fi
       - name: Build Play Store bundle (AAB)
         # Google Play only accepts an AAB signed with the upload key (the
         # SARCADE key; Google re-signs with its own key: Play App Signing).

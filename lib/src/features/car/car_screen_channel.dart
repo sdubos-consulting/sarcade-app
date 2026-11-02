@@ -40,7 +40,11 @@ class CarScreenBridge {
   final bool enabled;
   /// Clock of the writes (tests).
   final DateTime Function() clock;
-  CarScreenBridge({required this.read,required this.actions,this.channel=carScreenChannel,bool? enabled,DateTime Function()? clock})
+  /// Called when the car starts showing SARCADE (lot 20): the application
+  /// fetches the move orders at once, without waiting for the realtime
+  /// channel, often cut while the phone sleeps in the car.
+  final VoidCallback? onActive;
+  CarScreenBridge({required this.read,required this.actions,this.channel=carScreenChannel,bool? enabled,DateTime Function()? clock,this.onActive})
     : enabled=enabled??(!kIsWeb&&(defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS)),
       clock=clock??DateTime.now;
 
@@ -78,7 +82,9 @@ class CarScreenBridge {
   }
 
   void _setActive(bool on){
+    final was=_active;
     _active=on;
+    if(on&&!was)onActive?.call();
     if(on){
       _timer??=Timer.periodic(carScreenRefresh,(_)=>unawaited(push()));
       unawaited(push(force:true));
