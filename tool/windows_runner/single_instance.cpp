@@ -3,6 +3,7 @@
 // warnings. Plain ASCII source: accented texts are written with escapes.
 #include "single_instance.h"
 
+#include <cstdio>
 #include <cwchar>
 
 #include "splash_window.h"
@@ -52,13 +53,31 @@ bool Acquire() {
   if (mutex == nullptr) {
     // Held by a SARCADE started as administrator: refused as well. Any other
     // failure lets this one start (the Dart lock still applies).
-    return error != ERROR_ACCESS_DENIED;
+    if (error == ERROR_ACCESS_DENIED) {
+      return false;
+    }
+    char line[160];
+    snprintf(line, sizeof(line),
+             "natif : verrou d'instance unique indisponible (erreur %lu, "
+             "pid %lu), d\xC3\xA9" "marrage quand m\xC3\xAA" "me",
+             static_cast<unsigned long>(error),
+             static_cast<unsigned long>(GetCurrentProcessId()));
+    splash_window::Log(line);
+    return true;
   }
   if (error == ERROR_ALREADY_EXISTS) {
     CloseHandle(mutex);
     return false;
   }
   g_mutex = mutex;
+  // Which process won, when two start in the same second (lot 25, owner's
+  // crash of 2 Nov 2026): one line per start, before the engine loads.
+  char line[120];
+  snprintf(line, sizeof(line),
+           "natif : verrou d'instance unique pris (pid %lu, "
+           "single_instance=acquired)",
+           static_cast<unsigned long>(GetCurrentProcessId()));
+  splash_window::Log(line);
   return true;
 }
 
@@ -79,13 +98,15 @@ void ShowExisting() {
     }
     SetForegroundWindow(target);
   }
-  splash_window::Log(
-      target != nullptr
-          ? "natif : deuxi\xC3\xA8" "me instance refus\xC3\xA9" "e, fen\xC3\xAA"
-            "tre SARCADE existante remise au premier plan "
-            "(second_instance=refused)"
-          : "natif : deuxi\xC3\xA8" "me instance refus\xC3\xA9" "e, aucune "
-            "fen\xC3\xAA" "tre SARCADE visible (second_instance=refused)");
+  char line[200];
+  snprintf(line, sizeof(line), "%s (pid %lu, second_instance=refused)",
+           target != nullptr
+               ? "natif : deuxi\xC3\xA8" "me instance refus\xC3\xA9" "e, "
+                 "fen\xC3\xAA" "tre SARCADE existante remise au premier plan"
+               : "natif : deuxi\xC3\xA8" "me instance refus\xC3\xA9" "e, "
+                 "aucune fen\xC3\xAA" "tre SARCADE visible",
+           static_cast<unsigned long>(GetCurrentProcessId()));
+  splash_window::Log(line);
 }
 
 }  // namespace single_instance

@@ -533,6 +533,13 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('client_check',r.statusCode,r.body);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }
+  /// Client packages offered by the server, by platform: {"windows":
+  /// {"version","sha256","size","url"}, …} (Windows updates, lot 25).
+  Future<Map<String,dynamic>> clientsLatest() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/clients/latest'));
+    if(r.statusCode!=200) throw SarcadeHttpException('clients_latest',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Bytes of a path of the server (client package, offline map package).
   Future<List<int>> download(String path) async {
     final r=await _client.get(Uri.parse('$baseUrl$path'));

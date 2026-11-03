@@ -101,7 +101,7 @@ for (const size of SIZES) {
     });
     test.afterAll(async () => { await page?.close(); await api?.dispose(); });
 
-    test('bottom of the map: nothing under the tab bar, scale beside « Suivi de position » (lot 19)', async () => {
+    test('bottom of the map: nothing under the tab bar, scale beside « Suivi de position » (lot 19), right column aligned (lot 25)', async () => {
       // Card « Téléphone : boutons du bas de la carte cachés par la barre de
       // navigation »: ⓘ above the bar, scale on the line of « Suivi de
       // position », bottom of the SOS disc (46 in a 56 box) on that line.
@@ -111,9 +111,20 @@ for (const size of SIZES) {
       expect(layers, '« Fond et affichage » on screen').not.toBeNull();
       expect(info.bottom, 'ⓘ inside the window').toBeLessThanOrEqual(size.height);
       expect(info.right, 'ⓘ clear of the right column').toBeLessThan(layers.left);
+      // Lot 25: the buttons of the right column share one vertical axis.
+      const sosBox = await rectOf(page, 'map.sos');
+      const meBox = await rectOf(page, 'map.map-me');
+      if (sosBox) {
+        const axis = (sosBox.left + sosBox.right) / 2;
+        for (const [n, b] of [['« Fond et affichage »', layers], ['position', meBox]]) {
+          if (b) expect(Math.abs((b.left + b.right) / 2 - axis), `${n} centred on SOS`).toBeLessThanOrEqual(1);
+        }
+      }
       if (!compact) {
         const scale = await rectOf(page, 'map.scale');
         expect(scale, 'no scale beside « Suivi de position » on a large screen').toBeNull();
+        // Lot 25, point 7: the SOS disc ends on the same bottom line as on a phone (12 px).
+        if (sosBox) expect(Math.abs(sosBox.bottom - 5 - (size.height - 12)), 'bottom of SOS on the bottom line').toBeLessThanOrEqual(2);
         return;
       }
       const tab = await rectOf(page, 'nav.map');
@@ -141,6 +152,26 @@ for (const size of SIZES) {
         await tapId(page, 'nav.map');
         await expectMapFree(page, size, `${id} › Carte`);
       }
+    });
+
+    test('computer and tablet: Opérateurs and Messages stay open when the map is clicked (lot 25)', async () => {
+      if (compact) test.skip(true, 'phone unchanged: a touch on the map closes the panel');
+      // Card « PC : le panneau Opérateurs se ferme au clic sur la carte ».
+      const away = { x: size.width - 140, y: size.height * 0.2 };
+      await tapId(page, 'nav.teams');
+      await expect.poll(() => centreOf(page, 'team.panel.close'), { timeout: 10_000 }).not.toBeNull();
+      await page.mouse.click(away.x, away.y); await page.waitForTimeout(800);
+      expect(await centreOf(page, 'team.panel.close'), 'Opérateurs open after a click on the map').not.toBeNull();
+      await tapId(page, 'team.panel.close');
+      await expect.poll(() => centreOf(page, 'team.panel.close'), { timeout: 5_000 }).toBeNull();
+      await tapId(page, 'nav.messages');
+      await expect.poll(() => centreOf(page, 'messages.panel'), { timeout: 10_000 }).not.toBeNull();
+      expect(await centreOf(page, 'map.map-layers'), 'the map beside Messages').not.toBeNull();
+      await page.mouse.click(away.x, away.y); await page.waitForTimeout(800);
+      expect(await centreOf(page, 'messages.panel'), 'Messages open after a click on the map').not.toBeNull();
+      await tapId(page, 'nav.messages');
+      await expect.poll(() => centreOf(page, 'messages.panel'), { timeout: 5_000 }).toBeNull();
+      await expectMapFree(page, size, 'Opérateurs and Messages closed');
     });
 
     test('Itinéraires and Résection: ✕ and « Carte » give the map back', async () => {

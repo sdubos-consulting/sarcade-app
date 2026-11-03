@@ -6,7 +6,8 @@
 // A small borderless window, centred, with the SARCADE logo, "Demarrage..."
 // and an animated bar. Drawn by its own thread from the first instant of the
 // process, before the Flutter engine loads; closed when the window of the
-// application shows its first image.
+// application shows its first image. It never calls flutter_windows.dll:
+// the engine is delay-loaded (lot 25), after this window shows.
 #ifndef RUNNER_SPLASH_WINDOW_H_
 #define RUNNER_SPLASH_WINDOW_H_
 

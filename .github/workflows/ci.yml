@@ -225,12 +225,27 @@ jobs:
           $code = $LASTEXITCODE
           Remove-Item cert.pfx
           exit $code
+      - name: Version manifest of the installer (sarcade-windows-version.json)
+        # Card « Windows : menu Mise à jour » (lot 25): read by SARCADE when
+        # its server does not answer; the SHA-256 of the installer (after
+        # signing) is checked before the silent install.
+        shell: bash
+        run: |
+          f=build/installer/sarcade-windows-setup.exe
+          v=$(sed -n 's/^version:[[:space:]]*\([0-9.]*\).*/\1/p' pubspec.yaml | head -1)
+          sha=$(sha256sum "$f" | cut -d' ' -f1)
+          size=$(wc -c < "$f" | tr -d ' ')
+          printf '{"version":"%s+%s","build":"%s@%s","sha256":"%s","size":%s,"installer":"sarcade-windows-setup.exe"}\n' \
+            "$v" "${{ github.run_number }}" "$SARCADE_BRANCH" "${GITHUB_SHA:0:7}" "$sha" "$size" > build/installer/sarcade-windows-version.json
+          cat build/installer/sarcade-windows-version.json
+          python -c "import json,sys; d=json.load(open(sys.argv[1])); assert len(d['sha256'])==64 and d['size']>0 and '+' in d['version']" build/installer/sarcade-windows-version.json
       - uses: actions/upload-artifact@v4
         with:
           name: sarcade-windows
           path: |
             build/installer/sarcade-windows-setup.exe
             build/installer/sarcade-windows-portable.zip
+            build/installer/sarcade-windows-version.json
           if-no-files-found: error
           retention-days: 30
       - name: Publish to the windows-dev pre-release
@@ -245,6 +260,8 @@ jobs:
               --notes "Installeur Windows de développement V0.1, mis à jour automatiquement par la CI. Non signé tant que le certificat n'est pas dans les secrets."
           fi
           gh release upload windows-dev build/installer/sarcade-windows-setup.exe build/installer/sarcade-windows-portable.zip --clobber
+          # After the installer: the manifest never announces a file not yet there.
+          gh release upload windows-dev build/installer/sarcade-windows-version.json --clobber
       - name: SBOM (CycloneDX)
         continue-on-error: true
         shell: bash
