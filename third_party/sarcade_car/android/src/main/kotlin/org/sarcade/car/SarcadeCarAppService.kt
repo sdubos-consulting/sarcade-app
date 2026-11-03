@@ -37,7 +37,9 @@ class SarcadeCarAppService : CarAppService() {
 /** One car screen: tabs, then the detail screens pushed over them. */
 internal class SarcadeSession : Session() {
     private var speaker: Speaker? = null
-    private val orders: () -> Unit = { announceOrders() }
+    private val orders: () -> Unit = { announceOrders(); askArrivals() }
+    /** Dictation of the spoken answer to the arrival question (lot 24). */
+    private var listening: Dictation? = null
 
     init {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
@@ -48,6 +50,8 @@ internal class SarcadeSession : Session() {
 
             override fun onDestroy(owner: LifecycleOwner) {
                 CarData.removeListener(orders)
+                listening?.cancel()
+                listening = null
                 CarData.sessionChanged(-1)
                 speaker?.shutdown()
                 speaker = null
@@ -64,6 +68,9 @@ internal class SarcadeSession : Session() {
 
     override fun onCreateScreen(intent: Intent): Screen {
         val main = MainScreen(carContext, this)
+        if (intent.action == ArrivalAlerts.ACTION_YES) {
+            intent.getStringExtra(OrderAlerts.EXTRA_ID)?.takeIf { it.isNotEmpty() }?.let { ArrivalAlerts.yes(carContext, it) }
+        }
         val id = orderOf(intent) ?: return main
         // « Voir » of the notification, SARCADE not open in the car yet:
         // the tabs, with the order screen over them.
@@ -72,8 +79,54 @@ internal class SarcadeSession : Session() {
     }
 
     override fun onNewIntent(intent: Intent) {
+        if (intent.action == ArrivalAlerts.ACTION_YES) {
+            // « Oui » of the arrival notification (lot 24).
+            intent.getStringExtra(OrderAlerts.EXTRA_ID)?.takeIf { it.isNotEmpty() }?.let { ArrivalAlerts.yes(carContext, it) }
+            return
+        }
         val id = orderOf(intent) ?: return
         carContext.getCarService(ScreenManager::class.java).push(OrderScreen(carContext, id))
+    }
+
+    /** Lot 24 (card « Android Auto : arrivée détectée près du point d'un
+     *  ordre »): once per order, within 100 m of its point, « Vous êtes
+     *  arrivé à … Signaler l'arrivée ? »: alert over SARCADE (« Oui »,
+     *  « Plus tard ») or notification of the car; the question is read
+     *  aloud, then the answer listened (« oui », « plus tard »). */
+    private fun askArrivals() {
+        val snap = Snapshot(CarData.snapshot(carContext))
+        val fresh = ArrivalAlerts.take(carContext, snap)
+        if (fresh.isEmpty()) return
+        val o = fresh.first()
+        val shown = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        var open = true
+        val alertShown = shown && runCatching { carContext.carAppApiLevel >= OrderAlerts.ALERT_LEVEL }.getOrDefault(false) &&
+            runCatching {
+                carContext.getCarService(AppManager::class.java).showAlert(
+                    ArrivalAlerts.alert(carContext, snap, o) { open = false; listening?.cancel(); listening = null }
+                )
+            }.isSuccess
+        if (!alertShown) ArrivalAlerts.notify(carContext, snap, o)
+        runCatching {
+            speaker().say(ArrivalAlerts.question(snap, o), snap.lang) {
+                if (!open) return@say
+                val d = Dictation(carContext, snap.lang) { heard ->
+                    listening = null
+                    val yes = ArrivalAlerts.spokenAnswer(heard)
+                    if (yes != null && open) {
+                        open = false
+                        if (yes) {
+                            ArrivalAlerts.yes(carContext, o.optString("id"))
+                            CarUi.toast(carContext, snap.label("sent"))
+                        }
+                        if (alertShown) runCatching { carContext.getCarService(AppManager::class.java).dismissAlert(ArrivalAlerts.alertId(o)) }
+                        else ArrivalAlerts.cancelNotification(carContext, o)
+                    }
+                }
+                listening?.cancel()
+                listening = if (d.start()) d else null
+            }
+        }
     }
 
     private fun orderOf(intent: Intent): String? =

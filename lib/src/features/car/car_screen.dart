@@ -33,6 +33,7 @@ import '../messages/conversations.dart';
 import '../orders/move_orders.dart';
 import '../poi/poi_icons.dart' show poiIconLabel;
 import '../poi/poi_sheet.dart' show poiColor;
+import 'car_field.dart';
 import 'car_messaging.dart' show carReply;
 
 /// Messages of a conversation kept for the car (text and reading aloud).
@@ -69,9 +70,14 @@ class CarScreenInput {
   final LatLng? here;
   final bool inDistress;
   final DateTime now;
+  /// What the car sends for the field (lot 24: status…), null in the tests
+  /// that do not need it.
+  final CarField? field;
+  /// Settings of the event (`settings` of the heartbeat, lot 24).
+  final Map<String,dynamic> settings;
   const CarScreenInput({required this.me,required this.eventId,this.messages=const [],this.groups=const {},this.acks=const [],
     this.orders=const [],this.pois=const [],this.references=const [],this.positions=const [],this.devices=const {},
-    this.here,this.inDistress=false,required this.now});
+    this.here,this.inDistress=false,required this.now,this.field,this.settings=const {}});
 }
 
 /// Distance shown in the car (lot 20, card « Android Auto : l'écran
@@ -188,7 +194,18 @@ Map<String,Object?> _order(MoveOrder o,CarScreenInput i)=>{
   'note':o.note,
   'lat':o.destination.latitude,'lon':o.destination.longitude,
   'color':moveOrderColor(o.status).toARGB32(),
+  // Lot 24 (card « Android Auto : arrivée détectée près du point d'un
+  // ordre », choice 1): within 100 m of the point of an accepted order.
+  if(carNearArrival(o,i))'near':true,
 };
+
+/// Distance to the point of an accepted order under which the car asks
+/// « Vous êtes arrivé à … Signaler l'arrivée ? » (lot 24).
+const carArrivalRadiusM=100.0;
+
+/// True within [carArrivalRadiusM] of the point of an accepted order of mine.
+bool carNearArrival(MoveOrder o,CarScreenInput i)=>
+  o.status=='accepted'&&i.here!=null&&distanceM(i.here!,o.destination)<=carArrivalRadiusM;
 
 /// Designated points of the event (all, the nearest first), then the
 /// nearest high points with their altitude, up to 10 within 50 km (the
@@ -263,6 +280,8 @@ Map<String,Object?> carTeammateCard(SarcadePosition p,CarScreenInput i){
     'seen':carSeen(p.time,i.now),
     if(battery is num)'battery':S.t('car.battery',{'pct':battery.round()}),
     if(last!=null)'last':_join([_hm(last.createdAt),_prioLabel(last.priority),_text(last)]),
+    // Lot 24 (card « statut en un appui », choice 2): his status.
+    if(carStatuses.contains(i.devices[p.deviceId]?['operator_status']))'status':S.t('car.status.${i.devices[p.deviceId]!['operator_status']}'),
   };
 }
 
@@ -307,7 +326,10 @@ Map<String,String> carLabels()=>{
     // Lot 24: card of an operator.
     'operator','write','writeTo','lastMessage','noPosition',
     // Lot 24: cards of a point and of an order.
-    'point','onSite','writePco','pcoTitle'])k:S.t('car.$k'),
+    'point','onSite','writePco','pcoTitle',
+    // Lot 24: status in one touch, arrival detected.
+    'myStatus','noStatus','statusSent','statusCurrent','arrivalTitle','arrivalAsk','yes','later'])k:S.t('car.$k'),
+  for(final st in carStatuses)'status.$st':S.t('car.status.$st'),
 };
 
 /// Everything the car shows, as written to the plugin.
@@ -323,6 +345,8 @@ Map<String,Object?> carSnapshot(CarScreenInput i){
     'orders':[for(final o in carOrders(i).take(carMaxItems))_order(o,i)],
     'points':carPoints(i),
     'team':carTeam(i),
+    // Lot 24: my status (first row of the Équipe tab).
+    'me':{'status':i.field?.myStatus(i.devices[i.me])},
   };
 }
 
@@ -335,7 +359,8 @@ String carUrgentKey(Map<String,Object?> snapshot){
   return jsonEncode({
     'distress':snapshot['distress'],'lang':snapshot['lang'],'labels':snapshot['labels'],
     'messages':[for(final m in list('messages'))if(m is Map)[m['id'],m['body'],m['unread'],m['prio']]],
-    'orders':[for(final o in list('orders'))if(o is Map)[o['id'],o['status'],o['title'],o['note']]],
+    'orders':[for(final o in list('orders'))if(o is Map)[o['id'],o['status'],o['title'],o['note'],o['near']]],
+    'me':snapshot['me'],
   });
 }
 
@@ -421,6 +446,17 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
       final p=carPoints(i).where((x)=>x['id']==a.id).firstOrNull;
       if(p==null)return;
       await act.send(carPcoMessage(id:uuid.v4(),i:i,text:carOnSiteText('${p['title']}',i.here)));
+    case 'status':
+      // Status in one touch (lot 24); empty: no status.
+      final st=a.status.isEmpty?null:a.status;
+      if(st==null||carStatuses.contains(st))await i.field?.setStatus(st);
+    case 'arrival':
+      // « Oui » to « Vous êtes arrivé à … » (lot 24, card « arrivée
+      // détectée », choice 3): the order arrived, my status « Sur place ».
+      final o=carOrders(i).where((x)=>x.id==a.id).firstOrNull;
+      if(o==null||!carOrderAnswerAllowed(o.status,'arrived'))return;
+      await act.order(o,'arrived');
+      await i.field?.setStatus('sur_place');
     case 'sos':
       if(!i.inDistress)await act.sos();
     case 'sosEnd':

@@ -69,6 +69,7 @@ import 'drawing/map_feature.dart';
 import '../../services/wakeup_fcm.dart';
 import '../car/car_background.dart' show CarContext, listenWakeups, saveCarContext, takePendingReplies;
 import '../car/car_messaging.dart' show carConversation, carThread;
+import '../car/car_field.dart' show CarField;
 import '../car/car_screen.dart' show CarScreenActions, CarScreenInput;
 import '../car/car_screen_channel.dart';
 import '../../services/wakeup_state.dart';
@@ -777,7 +778,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       groups:{for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)},
       acks:widget.store.acks().map(SarcadeAck.fromJson).toList(),orders:_moveOrders,pois:_pois.values.toList(),
       references:_adrasec?[for(final r in _references.values)if(r.isHighPoint||r.isRelay)(id:r.id,name:r.name,relay:r.isRelay,lat:r.lat,lon:r.lon,mhz:r.txMhz,altM:r.altM)]:const [],positions:_positions.values.toList(),devices:_devices,
-      here:_me??_positionOf(widget.deviceId),inDistress:_inDistress,now:DateTime.now()),
+      here:_me??_positionOf(widget.deviceId),inDistress:_inDistress,now:DateTime.now(),field:_carField,settings:_ops.settings.raw),
     actions:CarScreenActions(
       order:(o,s)=>_routes.setMoveOrderStatus(o.json,s),
       ack:(a,m) async {await widget.store.cacheAck(a.toJson());await _sync.queue(objectId:a.id,objectType:'ack',payload:a.toJson());
@@ -785,6 +786,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       send:(m) async {await widget.store.cacheMessage(m.toJson());await _sync.queue(objectId:m.id,objectType:'message',payload:m.toJson());if(mounted)setState((){});},
       sos:_sendDistress,sosEnd:_endDistress),
     onActive:()=>unawaited(_routes.refresh()));
+  // Android Auto, lot 24: what the car sends for the field (car_field.dart).
+  late final _carField=CarField(baseUrl:widget.api.baseUrl,eventId:widget.eventId,me:widget.deviceId,queue:_sync.queue);
   // Firebase wake-up seen by the application (lot 20): synchronised at once.
   void Function()? _stopWakeups;
   void _onWakeup(){unawaited(_sync.syncNow());unawaited(_routes.refresh());}
@@ -2593,7 +2596,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_stopWakeups?.call();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
+  @override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_carField.dispose();_stopWakeups?.call();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).

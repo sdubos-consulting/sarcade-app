@@ -8,6 +8,8 @@ import androidx.car.app.HandshakeInfo
 import androidx.car.app.OnDoneCallback
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarColor
+import androidx.car.app.model.GridItem
+import androidx.car.app.model.GridTemplate
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
@@ -72,6 +74,10 @@ class CarScreensTest {
             "operator" to "Opérateur", "write" to "Écrire", "writeTo" to "Message à {who}",
             "lastMessage" to "Dernier message", "noPosition" to "Position inconnue",
             "point" to "Point", "onSite" to "Je suis sur place", "writePco" to "Écrire au PCO", "pcoTitle" to "Message au PCO",
+            "myStatus" to "Mon statut", "noStatus" to "Aucun statut", "statusSent" to "Statut envoyé", "statusCurrent" to "Actuel",
+            "status.en_route" to "En route", "status.sur_place" to "Sur place", "status.disponible" to "Disponible",
+            "status.pause" to "Pause", "arrivalTitle" to "Vous êtes arrivé à {point}", "arrivalAsk" to "Signaler l’arrivée ?",
+            "yes" to "Oui", "later" to "Plus tard",
         ).forEach { (k, v) -> labels.put(k, v) }
         val points = JSONArray()
             .put(JSONObject().put("id", "poi1").put("kind", "poi").put("icon", "gathering").put("color", 0xFF1E88E5.toInt())
@@ -256,7 +262,10 @@ class CarScreensTest {
         write(snapshot(team = JSONArray()
             .put(mate("TEL-2", "3 km au nord · vu il y a moins de 5 min"))
             .put(mate("TEL-3", "position de 20 h 05", lat = null))))
-        val r = rows(tab(MainScreen.TEAM))
+        val all = rows(tab(MainScreen.TEAM))
+        // Lot 24 (card « statut en un appui »): « Mon statut » first.
+        assertEquals("Mon statut", all[0].title.toString())
+        val r = all.drop(1)
         assertEquals(listOf("TEL-2", "TEL-3"), r.map { it.title.toString() })
         assertEquals("position de 20 h 05", r[1].texts[0].toString())
         val go = r[0].actions.single()
@@ -306,6 +315,69 @@ class CarScreensTest {
         val n = TeammateScreen(car, "TEL-3").onGetTemplate() as PaneTemplate
         assertEquals("Position inconnue", n.pane.rows[1].title.toString())
         assertEquals(listOf("Écrire"), n.pane.actions.map { it.title.toString() })
+    }
+
+    @Test
+    fun myStatus_firstRowOfTeam_gridOfFour_oneTouchSends() {
+        // Lot 24 (card « Android Auto : statut en un appui », choices 1 to 3).
+        val first = rows(tab(MainScreen.TEAM))[0]
+        assertEquals("Aucun statut", first.texts[0].toString())
+        // Nobody else: the message stays below « Mon statut ».
+        assertEquals("Personne", rows(tab(MainScreen.TEAM))[1].title.toString())
+        first.onClickDelegate!!.sendClick(object : OnDoneCallback {})
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is StatusScreen)
+        val grid = StatusScreen(car).onGetTemplate() as GridTemplate
+        val items = grid.singleList!!.items.map { it as GridItem }
+        assertEquals(listOf("En route", "Sur place", "Disponible", "Pause"), items.map { it.title.toString() })
+        items.forEach { assertNotNull(it.image) }
+        items[1].onClickDelegate!!.sendClick(object : OnDoneCallback {})
+        shadowOf(Looper.getMainLooper()).idle()
+        val sent = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("status", sent.getString("type"))
+        assertEquals("sur_place", sent.getString("status"))
+        // The application tells the status back: shown, and « Actuel » in the grid.
+        write(CarData.snapshot(car).put("me", JSONObject().put("status", "sur_place")))
+        assertEquals("Sur place", rows(tab(MainScreen.TEAM))[0].texts[0].toString())
+        val again = (StatusScreen(car).onGetTemplate() as GridTemplate).singleList!!.items.map { it as GridItem }
+        assertEquals("Actuel", again[1].text.toString())
+        assertTrue(again[0].text == null)
+    }
+
+    @Test
+    fun arrival_onceByOrder_within100m_yesSendsTheArrival() {
+        // Lot 24 (card « Android Auto : arrivée détectée près du point d'un
+        // ordre », choices 1, 3 and 4).
+        write(snapshot(JSONArray().put(order("o1", "accepted"))))
+        assertTrue(ArrivalAlerts.take(app, Snapshot(CarData.snapshot(car))).isEmpty())
+        write(snapshot(JSONArray().put(order("o1", "accepted").put("near", true)).put(order("o2", "sent").put("near", true))))
+        val asked = ArrivalAlerts.take(app, Snapshot(CarData.snapshot(car)))
+        assertEquals(listOf("o1"), asked.map { it.optString("id") })
+        // Driving around the point: not asked again.
+        assertTrue(ArrivalAlerts.take(app, Snapshot(CarData.snapshot(car))).isEmpty())
+        val snap = Snapshot(CarData.snapshot(car))
+        assertEquals("Vous êtes arrivé à Point de la carte. Signaler l’arrivée ?", ArrivalAlerts.question(snap, asked[0]))
+        var ended = false
+        val alert = ArrivalAlerts.alert(car, snap, asked[0]) { ended = true }
+        assertEquals("Vous êtes arrivé à Point de la carte", alert.title.toString())
+        assertEquals(listOf("Oui", "Plus tard"), alert.actions.map { it.title.toString() })
+        click(alert.actions[0])
+        assertTrue(ended)
+        val sent = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("arrival", sent.getString("type"))
+        assertEquals("o1", sent.getString("id"))
+    }
+
+    @Test
+    fun arrival_spokenAnswer() {
+        assertEquals(true, ArrivalAlerts.spokenAnswer("Oui"))
+        assertEquals(true, ArrivalAlerts.spokenAnswer("oui je suis arrivé"))
+        assertEquals(true, ArrivalAlerts.spokenAnswer("d'accord"))
+        assertEquals(false, ArrivalAlerts.spokenAnswer("plus tard"))
+        assertEquals(false, ArrivalAlerts.spokenAnswer("non"))
+        assertEquals(true, ArrivalAlerts.spokenAnswer("yes"))
+        assertEquals(null, ArrivalAlerts.spokenAnswer("euh"))
+        assertEquals(null, ArrivalAlerts.spokenAnswer(null))
     }
 
     @Test

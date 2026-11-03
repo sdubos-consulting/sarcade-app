@@ -6,6 +6,9 @@ import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarText
+import androidx.car.app.model.GridItem
+import androidx.car.app.model.GridTemplate
+import androidx.car.app.model.ItemList
 import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Pane
 import androidx.car.app.model.PaneTemplate
@@ -218,7 +221,9 @@ internal class TeammateScreen(carContext: CarContext, private val id: String) : 
         val pane = Pane.Builder()
         val first = Row.Builder().setTitle(t.optString("role").ifEmpty { s.label("operator") })
             .setImage(CarUi.tile(carContext, CarUi.operatorIcon(t.optString("icon")), t.optInt("color", MainScreen.DEFAULT_COLOR)))
-        t.optString("battery").takeIf { it.isNotEmpty() }?.let { first.addText(it) }
+        // Lot 24 (card « statut en un appui », choice 2): his status.
+        listOf(t.optString("status"), t.optString("battery")).filter { it.isNotEmpty() }
+            .takeIf { it.isNotEmpty() }?.let { first.addText(it.joinToString(" · ")) }
         pane.addRow(first.build())
         val where = Row.Builder().setTitle(t.optString("away").ifEmpty { s.label("noPosition") })
         t.optString("seen").takeIf { it.isNotEmpty() }?.let { where.addText(it) }
@@ -340,6 +345,36 @@ internal class PointScreen(carContext: CarContext, private val id: String) : Liv
         )
         return PaneTemplate.Builder(pane.build())
             .setTitle(p.optString("title"))
+            .setHeaderAction(Action.BACK)
+            .build()
+    }
+}
+
+/**
+ * Status in one touch (lot 24, card « Android Auto : statut en un appui »,
+ * choices 1 to 3): grid of 4 squares En route, Sur place, Disponible,
+ * Pause; one touch sends it to the PCO; it stays until the next one.
+ */
+internal class StatusScreen(carContext: CarContext) : LiveScreen(carContext) {
+    override fun watched(s: Snapshot): String = "${s.lang}|${s.myStatus}"
+
+    override fun onGetTemplate(): Template {
+        val s = snap
+        drawn(s)
+        val items = ItemList.Builder()
+        for (status in CarUi.STATUSES) {
+            val b = GridItem.Builder().setTitle(s.label("status.$status"))
+                .setImage(CarUi.tile(carContext, CarUi.statusIcon(status), CarUi.statusColor(status)), GridItem.IMAGE_TYPE_LARGE)
+                .setOnClickListener {
+                    CarUi.post(carContext, "status") { put("status", status) }
+                    CarUi.toast(carContext, s.label("statusSent"))
+                    screenManager.pop()
+                }
+            if (status == s.myStatus) b.setText(s.label("statusCurrent"))
+            items.addItem(b.build())
+        }
+        return GridTemplate.Builder().setSingleList(items.build())
+            .setTitle(s.label("myStatus"))
             .setHeaderAction(Action.BACK)
             .build()
     }
