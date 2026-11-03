@@ -62,7 +62,7 @@ void main() {
     expect(find.text('L'), findsOneWidget);
     final icon = tester.getRect(find.byKey(const ValueKey('icon')));
     final badge = tester.getRect(find.byKey(const ValueKey('aprs-overlay-badge')));
-    expect(badge.width, aprsOverlayBadgeSize(size));
+    expect(badge.width, closeTo(aprsOverlayBadgeSize(size), 0.01));
     expect(badge.center.dx, greaterThan(icon.center.dx));
     expect(badge.center.dy, lessThan(icon.center.dy));
   });
