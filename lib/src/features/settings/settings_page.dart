@@ -7,6 +7,7 @@ import '../../access/access_manager.dart';
 import '../../access/access_session.dart';
 import '../../account/account_section.dart' show AccountBanner, AccountSection;
 import '../../account/rights.dart' show RightsState;
+import '../../admin/admin_section.dart' show AdminSection;
 import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
 import '../../config/version.dart';
@@ -371,7 +372,9 @@ class _SettingsPageState extends State<SettingsPage> {
   /// « Paramètres : supprimer l'onglet Affichage », 1 Nov 2026, 22 h 17):
   /// the theme is in « Fond et affichage » of the map, the power saving in
   /// Général, the language in Profil.
-  List<String> get _tabs=>settingsTabs(firstRun:widget.firstRun,event:_eventTab);
+  List<String> get _tabs=>settingsTabs(firstRun:widget.firstRun,event:_eventTab,admin:_adminTab);
+  /// Paramètres › Administration (lot 26): administrators only (`/me`).
+  bool get _adminTab=>widget.api!=null&&RightsState.instance.of(widget.initial.serverUrl)?.canAdminister==true;
   bool get _eventTab=>widget.api!=null&&isPco(widget.initial.deviceId);
   int _tab=0;
 
@@ -577,6 +580,7 @@ class _SettingsPageState extends State<SettingsPage> {
     // Default frequencies of the bearing tool: Outils › Fréquences du
     // relevé (22 h 18, point 7).
     'event'=>EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
+    'admin'=>AdminSection(server:widget.initial.serverUrl,rights:RightsState.instance.of(widget.initial.serverUrl),row:_row),
     _=>const Padding(padding:EdgeInsets.only(top:16),child:SarcadeAboutContent()),
   };
 
@@ -640,8 +644,8 @@ class _SettingsPageState extends State<SettingsPage> {
             return TabBar(isScrollable:true,tabAlignment:TabAlignment.start,
               onTap:(i)=>setState(()=>_tab=i),
               tabs:[for(final id in _tabs)id=='diagnostics'&&diagnosticsAlert()
-                ?Tab(child:Badge(key:const ValueKey('diag-tab-alert'),smallSize:8,offset:const Offset(8,-2),child:Text(S.t('settings.tab.$id'))))
-                :Tab(text:S.t('settings.tab.$id'))]);
+                ?Tab(child:Badge(key:const ValueKey('diag-tab-alert'),smallSize:8,offset:const Offset(8,-2),child:Text(settingsTabLabel(id))))
+                :Tab(text:settingsTabLabel(id))]);
           })),
           const Divider(height:1),
           Expanded(child:IndexedStack(index:_tab,children:[for(final id in _tabs)ListView(
@@ -654,15 +658,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
 /// Tabs of Paramètres: Général, Événement (PCO), Profil, Notifications,
 /// Diagnostic, À propos; at the first setup Général, Profil, À propos.
-List<String> settingsTabs({required bool firstRun,required bool event})=>firstRun
+List<String> settingsTabs({required bool firstRun,required bool event,bool admin=false})=>firstRun
   ?const ['general','profile','about']
-  :['general',if(event)'event','profile','notifications','diagnostics','about'];
+  :['general',if(event)'event','profile','notifications',if(admin)'admin','diagnostics','about'];
+/// Name of a tab; « Administration » is a text of lot 26.
+String settingsTabLabel(String id)=>id=='admin'?S.t('admin.title'):S.t('settings.tab.$id');
 
 /// Tab the next opening of Paramètres shows (« Choisir un événement » of
 /// the Diagnostic over the map, lot 19); read once.
 String? settingsRequestedTab;
 
 /// The save bar, except on Diagnostic and À propos with nothing changed.
-bool settingsShowsSaveBar({required String tab,required bool firstRun,required bool dirty})=>firstRun||dirty||!(tab=='diagnostics'||tab=='about');
+bool settingsShowsSaveBar({required String tab,required bool firstRun,required bool dirty})=>firstRun||dirty||!(tab=='diagnostics'||tab=='about'||tab=='admin');
 /// Value of « + Ajouter un serveur… » in the list of servers.
 const addServerValue='\u0000add-server';
