@@ -154,6 +154,26 @@ for (const size of SIZES) {
       }
     });
 
+    test('computer and tablet: Opérateurs and Messages stay open when the map is clicked (lot 25)', async () => {
+      if (compact) test.skip(true, 'phone unchanged: a touch on the map closes the panel');
+      // Card « PC : le panneau Opérateurs se ferme au clic sur la carte ».
+      const away = { x: size.width - 140, y: size.height * 0.2 };
+      await tapId(page, 'nav.teams');
+      await expect.poll(() => centreOf(page, 'team.panel.close'), { timeout: 10_000 }).not.toBeNull();
+      await page.mouse.click(away.x, away.y); await page.waitForTimeout(800);
+      expect(await centreOf(page, 'team.panel.close'), 'Opérateurs open after a click on the map').not.toBeNull();
+      await tapId(page, 'team.panel.close');
+      await expect.poll(() => centreOf(page, 'team.panel.close'), { timeout: 5_000 }).toBeNull();
+      await tapId(page, 'nav.messages');
+      await expect.poll(() => centreOf(page, 'messages.panel'), { timeout: 10_000 }).not.toBeNull();
+      expect(await centreOf(page, 'map.map-layers'), 'the map beside Messages').not.toBeNull();
+      await page.mouse.click(away.x, away.y); await page.waitForTimeout(800);
+      expect(await centreOf(page, 'messages.panel'), 'Messages open after a click on the map').not.toBeNull();
+      await tapId(page, 'nav.messages');
+      await expect.poll(() => centreOf(page, 'messages.panel'), { timeout: 5_000 }).toBeNull();
+      await expectMapFree(page, size, 'Opérateurs and Messages closed');
+    });
+
     test('Itinéraires and Résection: ✕ and « Carte » give the map back', async () => {
       for (const tool of ['tool.routes', 'tool.resection']) {
         await tapId(page, 'nav.tools'); await tapId(page, tool);
