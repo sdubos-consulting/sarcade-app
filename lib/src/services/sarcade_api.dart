@@ -375,8 +375,11 @@ class SarcadeApi {
   /// New event (PCO), with the model that decides its modules (card
   /// « Séparer le Core et les modules », step 2): family, friends → Core;
   /// exercise, sater, mission → ADRASEC; race → Course.
-  Future<Map<String,dynamic>> createEvent(String name,String kind) async {
-    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events'),headers:_json,body:jsonEncode({'name':name,'kind':kind}));
+  /// Lot 26: [organizerGroupId] and [invitedGroupIds] (groups of
+  /// organisation); without them the server chooses.
+  Future<Map<String,dynamic>> createEvent(String name,String kind,{String? organizerGroupId,List<String>? invitedGroupIds}) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events'),headers:_json,body:jsonEncode({'name':name,'kind':kind,
+      'organizer_group_id':?organizerGroupId,if(invitedGroupIds!=null&&invitedGroupIds.isNotEmpty)'invited_group_ids':invitedGroupIds}));
     if(r.statusCode!=201) throw SarcadeHttpException('create_event',r.statusCode,r.body);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }

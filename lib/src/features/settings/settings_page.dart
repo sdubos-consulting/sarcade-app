@@ -19,6 +19,7 @@ import '../../ui/color_palette.dart';
 import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
 import '../events/event_choice.dart' show singleOpenEvent, eventName;
+import '../events/event_access.dart' show EventGroupsChoice, EventGroupsSelection, offersEventGroups;
 import '../../operations/event_settings.dart';
 import '../../services/notification_service.dart';
 import '../../models/comm_group.dart' show isPco;
@@ -289,8 +290,8 @@ class _SettingsPageState extends State<SettingsPage> {
     &&normalServer(_serverText)==normalServer(widget.initial.serverUrl);
 
   Future<void> _createEvent() async {
-    var kind='exercise';
-    final name=await showTextFieldsDialog<String>(context,initial:const [''],builder:(c,f,set)=>AlertDialog(title:Text(S.t('events.new')),
+    var kind='exercise'; final groups=EventGroupsSelection();
+    final name=await showTextFieldsDialog<String>(context,initial:const [''],builder:(c,f,set)=>AlertDialog(scrollable:true,title:Text(S.t('events.new')),
       content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         TextField(key:const ValueKey('event-new-name'),controller:f[0],autofocus:true,decoration:InputDecoration(labelText:S.t('events.name'))),
         const SizedBox(height:12),
@@ -298,6 +299,8 @@ class _SettingsPageState extends State<SettingsPage> {
           items:[for(final k in eventKinds)DropdownMenuItem(value:k,child:Text(S.t('events.kind.$k')))],onChanged:(v)=>set(()=>kind=v??kind)),
         const SizedBox(height:6),
         Text(S.t('events.modulesOf',{'m':eventKindModules(kind)}),style:Theme.of(c).textTheme.bodySmall),
+        // Lot 26: organiser group and invited groups.
+        if(offersEventGroups(widget.api!.baseUrl))EventGroupsChoice(server:widget.api!.baseUrl,selection:groups),
       ]),
       actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
         FilledButton(key:const ValueKey('event-new-create'),onPressed:()=>Navigator.pop(c,f[0].text),child:Text(S.t('events.create')))]));
@@ -305,7 +308,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if(n.isEmpty||!mounted)return;
     final m=ScaffoldMessenger.of(context);
     try{
-      final e=await widget.api!.createEvent(n,kind);
+      final e=await widget.api!.createEvent(n,kind,organizerGroupId:groups.offered?groups.organizer:null,invitedGroupIds:groups.invited);
       if(!mounted)return;
       await _loadEvents();
       if(!mounted)return;
