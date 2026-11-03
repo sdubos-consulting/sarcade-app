@@ -164,13 +164,17 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
         return b.build()
     }
 
+    /** Lot 24 (card « fiches dans les onglets Points et Ordres », choice
+     *  1): touching the row opens the card of the point; the arrow keeps
+     *  the direct navigation. */
     private fun pointRow(snap: Snapshot, p: JSONObject): Row {
         val go = { CarUi.navigate(carContext, snap, p.optDouble("lat"), p.optDouble("lon")) }
+        val id = p.optString("id")
         val b = Row.Builder()
             .setTitle(p.optString("title"))
             .addText(p.optString("text"))
             .setImage(CarUi.tile(carContext, CarUi.pointIcon(p.optString("icon")), p.optInt("color", DEFAULT_COLOR)))
-            .setOnClickListener { go() }
+            .setOnClickListener { screenManager.push(PointScreen(carContext, id)) }
         if (level >= TABS_LEVEL) {
             // Lot 20 (card « boutons ronds gris vides », choice 1): the car
             // only shows the icon of a row button, so it must have one.

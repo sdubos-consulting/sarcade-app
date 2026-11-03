@@ -204,6 +204,9 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
       'title':(p.label??'').trim().isEmpty?poiIconLabel(p.icon):p.label!.trim(),
       'text':carAway(here,LatLng(p.lat,p.lon),short:true),
       'lat':p.lat,'lon':p.lon,
+      // Card of the point (lot 24): type, distance and direction, author.
+      'type':poiIconLabel(p.icon),'away':carAway(here,LatLng(p.lat,p.lon)),
+      if((p.createdBy??'').trim().isNotEmpty)'by':S.t('car.createdBy',{'who':p.createdBy!.trim()}),
     },
   ];
   if(here!=null){
@@ -215,6 +218,8 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
         'title':r.name,
         'text':_join([carAway(here,LatLng(r.lat,r.lon),short:true),S.t('car.highPoint'),if(r.altM!=null)'${r.altM!.round()} m']),
         'lat':r.lat,'lon':r.lon,
+        'type':S.t('car.highPoint'),'away':carAway(here,LatLng(r.lat,r.lon)),
+        if(r.altM!=null)'alt':S.t('car.altitude',{'m':r.altM!.round()}),
       });
     }
   }
@@ -300,7 +305,9 @@ Map<String,String> carLabels()=>{
     'accept','refuse','arrived','read','reply','replyTo','listening','dictationFailed','retry','send','sent','stale','sections',
     'gone','note','order','go','view','orderAlert',
     // Lot 24: card of an operator.
-    'operator','write','writeTo','lastMessage','noPosition'])k:S.t('car.$k'),
+    'operator','write','writeTo','lastMessage','noPosition',
+    // Lot 24: cards of a point and of an order.
+    'point','onSite','writePco','pcoTitle'])k:S.t('car.$k'),
 };
 
 /// Everything the car shows, as written to the plugin.
@@ -404,6 +411,16 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
       // « Écrire » of the card of an operator (lot 24): a direct message.
       if(a.to.isEmpty||a.to==i.me||a.text.isEmpty)return;
       await act.send(carDirectMessage(id:uuid.v4(),eventId:i.eventId,me:i.me,to:a.to,text:a.text,now:i.now));
+    case 'writePco':
+      // « Écrire au PCO » of the card of an order (lot 24).
+      if(a.text.isEmpty)return;
+      await act.send(carPcoMessage(id:uuid.v4(),i:i,text:a.text));
+    case 'onSite':
+      // « Je suis sur place » of the card of a point (lot 24): to the PCO,
+      // with my position.
+      final p=carPoints(i).where((x)=>x['id']==a.id).firstOrNull;
+      if(p==null)return;
+      await act.send(carPcoMessage(id:uuid.v4(),i:i,text:carOnSiteText('${p['title']}',i.here)));
     case 'sos':
       if(!i.inDistress)await act.sos();
     case 'sosEnd':
@@ -416,3 +433,21 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
 SarcadeMessage carDirectMessage({required String id,required String eventId,required String me,required String to,
     required String text,required DateTime now,String priority='routine'})=>SarcadeMessage(
   id:id,eventId:eventId,senderId:me,recipientIds:['user:$to'],priority:priority,body:text.trim(),createdAt:now.toUtc());
+
+/// Who « Écrire au PCO » and « Je suis sur place » go to (lot 24): the PCO
+/// channel of the event, else the PCO terminals known, else everyone.
+List<String> carPcoRecipients(CarScreenInput i){
+  final channel=i.groups.values.where((g)=>g.kind=='default'&&g.name=='PCO'&&!g.archived).firstOrNull;
+  if(channel!=null)return [channel.recipientId];
+  final pco={for(final id in [...i.devices.keys,for(final p in i.positions)if(!p.isAprs)p.deviceId])if(id!=i.me&&isPco(id))id}.toList()..sort();
+  return [for(final id in pco)'user:$id'];
+}
+
+/// A message dictated or sent from the car to the PCO (lot 24), routine.
+SarcadeMessage carPcoMessage({required String id,required CarScreenInput i,required String text,String priority='routine'})=>SarcadeMessage(
+  id:id,eventId:i.eventId,senderId:i.me,recipientIds:carPcoRecipients(i),priority:priority,body:text.trim(),createdAt:i.now.toUtc());
+
+/// « Je suis sur place : P2 (48.81910, 1.92100) ».
+String carOnSiteText(String point,LatLng? here)=>here==null
+  ?S.t('car.onSiteNoPos',{'point':point})
+  :S.t('car.onSiteBody',{'point':point,'pos':'${here.latitude.toStringAsFixed(5)}, ${here.longitude.toStringAsFixed(5)}'});

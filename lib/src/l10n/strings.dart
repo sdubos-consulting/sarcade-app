@@ -325,6 +325,10 @@ const Texts _fr={
   // Lot 24 · fiche d'un opérateur (onglet Équipe)
   'car.operator':'Opérateur','car.write':'Écrire','car.writeTo':'Message à {who}','car.lastMessage':'Dernier message',
   'car.noPosition':'Position inconnue','car.battery':'Batterie {pct} %',
+  // Lot 24 · fiches d'un point et d'un ordre
+  'car.point':'Point','car.createdBy':'Créé par {who}','car.altitude':'Altitude {m} m','car.onSite':'Je suis sur place',
+  'car.onSiteBody':'Je suis sur place : {point} ({pos})','car.onSiteNoPos':'Je suis sur place : {point}','car.writePco':'Écrire au PCO',
+  'car.pcoTitle':'Message au PCO',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -828,6 +832,10 @@ const Texts _en={
   // Lot 24 · fiche d'un opérateur (onglet Équipe)
   'car.operator':'Operator','car.write':'Write','car.writeTo':'Message to {who}','car.lastMessage':'Last message','car.noPosition':'Position unknown',
   'car.battery':'Battery {pct} %',
+  // Lot 24 · fiches d'un point et d'un ordre
+  'car.point':'Point','car.createdBy':'Created by {who}','car.altitude':'Altitude {m} m','car.onSite':'I am on site',
+  'car.onSiteBody':'I am on site: {point} ({pos})','car.onSiteNoPos':'I am on site: {point}','car.writePco':'Write to the PCO',
+  'car.pcoTitle':'Message to the PCO',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',
