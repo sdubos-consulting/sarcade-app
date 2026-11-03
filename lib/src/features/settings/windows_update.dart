@@ -206,10 +206,21 @@ class WindowsUpdates extends ChangeNotifier {
 
   void _set(WindowsUpdateState s){state=s;notifyListeners();}
 
+  Future<void>? _checking;
+
   /// Server first, GitHub when the server does not answer or has no
-  /// Windows package.
-  Future<void> check() async {
-    if(!supported||busy)return;
+  /// Windows package. A check already running is shared.
+  Future<void> check(){
+    if(!supported)return Future<void>.value();
+    final running=_checking;
+    if(running!=null)return running;
+    if(busy)return Future<void>.value();
+    final f=_check().whenComplete(()=>_checking=null);
+    _checking=f;
+    return f;
+  }
+
+  Future<void> _check() async {
     failure=null;
     _set(WindowsUpdateState.checking);
     WindowsRelease? found;
