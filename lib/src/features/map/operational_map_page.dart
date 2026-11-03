@@ -153,6 +153,7 @@ import '../team/operator_status.dart';
 import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
 import '../poi/poi_move.dart';
+import '../poi/poi_selection.dart';
 import '../../ui/map_sheet.dart';
 import '../routes/waypoint_sheet.dart';
 import '../../ui/action_buttons.dart';
@@ -1345,6 +1346,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     );
     _drawing.color=_profileDrawColor;
     _drawing.canSelect=(f)=>canMultiSelect(f,widget.deviceId,pco:isPco(widget.deviceId));
+    // Points of interest in the selection (lot 25, poi_selection.dart).
+    _drawing.poiHooks=poiSelectionHooks(pois:_pois,store:widget.store,sync:_sync,actor:widget.deviceId,
+      format:(p)=>formatCoordinates(p,_coordFormat,mgrsDigits:_mgrsDigits),refresh:(){if(mounted)setState((){});});
     _drawing.addListener(_onDrawingChanged);
   }
   /// Colour of new drawings chosen in the profile (Paramètres).
@@ -1661,7 +1665,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _placingOnMap=>markersIgnoreTouches(drawing:_drawing.isDrawing||_drawingRouteId!=null||_drawingClosure,picking:_pickPoint!=null,
     measuring:_measure.active||_pickingOrigin,bearing:_bearings.taking||_aim!=null||_adjusting!=null);
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
-  void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
+  void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));
+    if(_showPois)_drawing.addPoisToSelection(poisInRect(_pois.values,r,cam.latLngToScreenOffset));}
   /// Selection mode: a drag moves the map, a pinch or the wheel zooms
   /// (card C1); the rectangle needs a long press first, or Maj.
   double _selZoom=0;
@@ -1676,7 +1681,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final cam=_map.camera;
     _map.move(cam.center,(cam.zoom-e.scrollDelta.dy/200).clamp(cam.minZoom??1.0,cam.maxZoom??20.0).toDouble());
   }
-  void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null){_drawing.toggle(hit.id);}else{_drawing.endSelection();}}
+  void _onSelectionTap(Offset at){final cam=_map.camera;
+    final poi=_showPois?poiAtOffset(_pois.values,at,cam.latLngToScreenOffset):null;if(poi!=null){_drawing.togglePoi(poi.id);return;}
+    final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null){_drawing.toggle(hit.id);}else{_drawing.endSelection();}}
   void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
   /// A window open over the map (side panel, page beside the rail).
   bool get _mapPanelOpen=>mapPanelOpen(teams:_showPanel,reference:_showReferencePanel,routes:_showRoutesPanel,resection:_showResection,chat:_chatPeer!=null,desk:_deskId!=null);
@@ -2813,7 +2820,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showOrders)...buildEtaLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
-          if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)),
+          if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),selection:_drawing,toLatLng:_globalToLatLng,
+            onTap:(p){if(!poiTapSelects(_drawing,p))unawaited(_openPoi(p));},
             onDoubleTap:(p)=>unawaited(doubleTapPoi(context,p,actor:widget.deviceId,openSheet:()=>unawaited(_openPoi(p)),
               save:(d) async {await savePoiDraft(_pois,widget.store,_sync,p,d,widget.deviceId);if(mounted)setState((){});}))))),
           ...poiMoveLayers(_poiMove,_globalToLatLng,_drawing.holdHandle),
@@ -2909,7 +2917,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // the bubble stays only if the bar is hidden by a selection.
           if(_drawing.isDrawing&&!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selectMode&&!_drawing.hasSelection)Padding(padding:const EdgeInsets.only(top:8),child:SelectionHint(controller:_drawing)),
-          if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:(f)=>_exportGeoJson(only:_drawing.selection,format:f))),
+          if(_drawing.showsCommonBar)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:(f)=>_exportGeoJson(only:_drawing.exportSelection,format:f),onSend:_sendText)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
           if(!compact&&_adsb.on&&_adrasec&&_adsb.selectedId!=null)Padding(padding:const EdgeInsets.only(top:8),child:AircraftCard(adsb:_adsb,onClose:_closeAircraft)),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[

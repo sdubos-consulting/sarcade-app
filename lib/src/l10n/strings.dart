@@ -78,6 +78,8 @@ const Texts _fr={
   // Lot 25 · points d'intérêt : fenêtre unique (nom, icône, couleur), déplacement, sélection (features/poi/).
   'poi.editTitle':'Modifier le point d’intérêt','poi.edit':'Modifier','poi.colorTitle':'Couleur','poi.move':'Déplacer',
   'poi.moveHint':'Glissez le point, puis Valider','poi.moveOk':'Valider','poi.moved':'Point déplacé de {d}',
+  'poi.selDrawings':'{n## dessin|# dessins}','poi.selPoints':'{n## point|# points}','poi.drawingLine':'{kind}{name} : {pos}',
+  'poi.deleteSel':'Supprimer {what} ?','poi.deleteSelHelp':'Supprimés pour tous les participants. Les points d’intérêt ne reviennent pas avec Annuler',
   'routes.movePoint':'Déplacer','routes.moveHint':'Touchez la carte à la nouvelle place du point','routes.open':'Ouvrir l’itinéraire',
   'order.remove':'Retirer de la carte','order.removed':'Ordre retiré de la carte','order.layer':'Ordres','order.none':'Aucun ordre','order.inProgress':'En cours','order.done':'Terminés',
   // Lot 24, heure d'arrivée estimée d'un ordre (features/orders/move_order_eta.dart).
@@ -621,6 +623,8 @@ const Texts _en={
   // Lot 25 · points of interest: one window (name, icon, colour), move, selection (features/poi/).
   'poi.editTitle':'Edit the point of interest','poi.edit':'Edit','poi.colorTitle':'Colour','poi.move':'Move',
   'poi.moveHint':'Drag the point, then Confirm','poi.moveOk':'Confirm','poi.moved':'Point moved by {d}',
+  'poi.selDrawings':'{n## drawing|# drawings}','poi.selPoints':'{n## point|# points}','poi.drawingLine':'{kind}{name}: {pos}',
+  'poi.deleteSel':'Delete {what}?','poi.deleteSelHelp':'Deleted for every participant. Points of interest do not come back with Undo',
   'routes.movePoint':'Move','routes.moveHint':'Tap the map at the new place of the point','routes.open':'Open the route',
   'order.remove':'Remove from the map','order.removed':'Order removed from the map','order.layer':'Orders','order.none':'No order','order.inProgress':'In progress','order.done':'Done',
   // Lot 24, estimated arrival of an order (features/orders/move_order_eta.dart).
