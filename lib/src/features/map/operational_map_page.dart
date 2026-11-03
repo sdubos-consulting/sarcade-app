@@ -113,6 +113,7 @@ import '../tv/tv_nearby.dart';
 import '../tv/tv_screens_button.dart';
 import '../../modules/adrasec/fixed_stations.dart';
 import '../orders/move_orders.dart';
+import '../orders/move_order_eta.dart';
 import '../../modules/adrasec/bearings/signals.dart';
 import '../settings/diagnostics_panel.dart' show diagnosticsAlert, showDiagnosticsSheet;
 import '../settings/settings_page.dart' show settingsRequestedTab;
@@ -589,7 +590,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _showMoveOrder(MoveOrder o){
     showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       ListTile(leading:Icon(Icons.flag,color:moveOrderColor(o.status)),title:Text('${S.t('order.title')} · ${o.targetId}'),
-        subtitle:Text('« ${o.label} » · ${S.t('order.status.${o.status}')}${o.note.isEmpty?'':'\n${o.note}'}')),
+        subtitle:Text('« ${o.label} » · ${moveOrderSubtitle(o)}${o.note.isEmpty?'':'\n${o.note}'}')),
       // « Ouvrir dans… » Waze, Google Maps… (31 Oct 2026).
       ListTile(key:const ValueKey('order-open-in'),leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),
         onTap:(){Navigator.pop(c);unawaited(_openElsewhere(o.destination,o.label));}),
@@ -2765,6 +2766,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             lineHits:_routeHits,onWaypointTap:(w)=>unawaited(_openWaypoint(w))),
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
+          if(_showOrders)...buildEtaLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
           if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)),

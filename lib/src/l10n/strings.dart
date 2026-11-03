@@ -77,6 +77,8 @@ const Texts _fr={
   'poi.seeList':'Voir la liste','poi.search':'Rechercher un point','poi.sort.date':'Date','poi.sort.name':'Nom','poi.sort.distance':'Distance','poi.filterIcon':'Icône','poi.filterAuthor':'Auteur','poi.all':'Tous','poi.none':'Aucun point',
   'routes.movePoint':'Déplacer','routes.moveHint':'Touchez la carte à la nouvelle place du point','routes.open':'Ouvrir l’itinéraire',
   'order.remove':'Retirer de la carte','order.removed':'Ordre retiré de la carte','order.layer':'Ordres','order.none':'Aucun ordre','order.inProgress':'En cours','order.done':'Terminés',
+  // Lot 24, heure d'arrivée estimée d'un ordre (features/orders/move_order_eta.dart).
+  'orders.eta.at':'arrivée estimée {time}','orders.eta.remaining':'encore {d}','orders.eta.label':'Arrivée {time}',
   'traces.layer':'Toutes les traces','traces.aprs':'Traces APRS','traces.event':'Événement','traces.pinned':'Trace épinglée','traces.unpinned':'Trace retirée','traces.pin':'Épingler la trace','traces.unpin':'Retirer la trace',
   'locate.follow':'Suivi','locate.compass':'Boussole','locate.all':'Tous les opérateurs',
   'display.menu':'Fond et affichage','display.layers':'Affichage','layers.teams':'Équipes',
@@ -578,6 +580,8 @@ const Texts _en={
   'poi.seeList':'See the list','poi.search':'Search a point','poi.sort.date':'Date','poi.sort.name':'Name','poi.sort.distance':'Distance','poi.filterIcon':'Icon','poi.filterAuthor':'Author','poi.all':'All','poi.none':'No point',
   'routes.movePoint':'Move','routes.moveHint':'Tap the map at the new place of the point','routes.open':'Open the route',
   'order.remove':'Remove from the map','order.removed':'Order removed from the map','order.layer':'Orders','order.none':'No order','order.inProgress':'In progress','order.done':'Done',
+  // Lot 24, estimated arrival of an order (features/orders/move_order_eta.dart).
+  'orders.eta.at':'estimated arrival {time}','orders.eta.remaining':'{d} to go','orders.eta.label':'ETA {time}',
   'traces.layer':'All traces','traces.aprs':'APRS traces','traces.event':'Event','traces.pinned':'Trace pinned','traces.unpinned':'Trace removed','traces.pin':'Pin the trace','traces.unpin':'Remove the trace',
   'locate.follow':'Follow','locate.compass':'Compass','locate.all':'All operators',
   'display.menu':'Base map and display','display.layers':'Display','layers.teams':'Teams',
