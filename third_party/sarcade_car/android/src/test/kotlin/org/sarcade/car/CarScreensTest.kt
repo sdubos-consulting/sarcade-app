@@ -78,7 +78,7 @@ class CarScreensTest {
             "myStatus" to "Mon statut", "noStatus" to "Aucun statut", "statusSent" to "Statut envoyé", "statusCurrent" to "Actuel",
             "status.en_route" to "En route", "status.sur_place" to "Sur place", "status.disponible" to "Disponible",
             "status.pause" to "Pause", "arrivalTitle" to "Vous êtes arrivé à {point}", "arrivalAsk" to "Signaler l’arrivée ?",
-            "yes" to "Oui", "later" to "Plus tard",
+            "yes" to "Oui", "later" to "Plus tard", "finish" to "Terminé, disponible",
         ).forEach { (k, v) -> labels.put(k, v) }
         val points = JSONArray()
             .put(JSONObject().put("id", "poi1").put("kind", "poi").put("icon", "gathering").put("color", 0xFF1E88E5.toInt())
@@ -251,10 +251,22 @@ class CarScreensTest {
         assertEquals("arrived", answer.getString("status"))
         click(accepted.pane.actions[0])
         assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is ReplyScreen)
+        // Lot 27: arrived, « Terminé, disponible » in place of « Y aller »
+        // (2 buttons at most in a card), the main one.
         write(snapshot(JSONArray().put(order("o1", "arrived"))))
         val arrived = OrderScreen(car, "o1").onGetTemplate() as PaneTemplate
-        assertEquals(listOf("Écrire au PCO", "Y aller"), arrived.pane.actions.map { it.title.toString() })
+        assertEquals(listOf("Écrire au PCO", "Terminé, disponible"), arrived.pane.actions.map { it.title.toString() })
         assertTrue(arrived.actionStrip == null)
+        CarData.takeActions(app)
+        click(arrived.pane.actions[1])
+        val done = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("order", done.getString("type"))
+        assertEquals("o1", done.getString("id"))
+        assertEquals("finished", done.getString("status"))
+        // Finished: « Y aller » again.
+        write(snapshot(JSONArray().put(order("o1", "arrived").put("finished", true))))
+        val finished = OrderScreen(car, "o1").onGetTemplate() as PaneTemplate
+        assertEquals(listOf("Écrire au PCO", "Y aller"), finished.pane.actions.map { it.title.toString() })
     }
 
     @Test
@@ -332,7 +344,9 @@ class CarScreensTest {
         assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is StatusScreen)
         val grid = StatusScreen(car).onGetTemplate() as GridTemplate
         val items = grid.singleList!!.items.map { it as GridItem }
-        assertEquals(listOf("En route", "Sur place", "Disponible", "Pause"), items.map { it.title.toString() })
+        // Lot 27: « Aucun statut » stays a choice, current while none.
+        assertEquals(listOf("En route", "Sur place", "Disponible", "Pause", "Aucun statut"), items.map { it.title.toString() })
+        assertEquals("Actuel", items[4].text.toString())
         items.forEach { assertNotNull(it.image) }
         items[1].onClickDelegate!!.sendClick(object : OnDoneCallback {})
         shadowOf(Looper.getMainLooper()).idle()
@@ -345,6 +359,13 @@ class CarScreensTest {
         val again = (StatusScreen(car).onGetTemplate() as GridTemplate).singleList!!.items.map { it as GridItem }
         assertEquals("Actuel", again[1].text.toString())
         assertTrue(again[0].text == null)
+        assertTrue(again[4].text == null)
+        CarData.takeActions(app)
+        again[4].onClickDelegate!!.sendClick(object : OnDoneCallback {})
+        shadowOf(Looper.getMainLooper()).idle()
+        val none = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("status", none.getString("type"))
+        assertEquals("", none.getString("status"))
     }
 
     @Test

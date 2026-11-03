@@ -90,12 +90,26 @@ class OperatorStatusBook extends ChangeNotifier {
     _changed();
   }
   OperatorStatusEntry? entryOf(String deviceId)=>_entries[deviceId];
+  Iterable<String> get deviceIds=>_entries.keys;
 
   void applyAll(Iterable<Map<String,dynamic>> list){for(final j in list){applyJson(j);}}
 
   Map<String,dynamic> toJson()=>{'statuses':{for(final e in _entries.entries)e.key:{'s':e.value.status,'at':e.value.at?.toIso8601String()}}};
 
   void _changed(){save?.call(toJson());notifyListeners();}
+}
+
+/// [devices] (GET …/devices, `device.updated`) with the statuses of
+/// [book], which also follows `operator.status` and the changes feed: what
+/// the car shows (lot 27: statuses set by the server from the move orders
+/// and « Disponible » by default come by `operator.status`).
+Map<String,Map<String,dynamic>> devicesWithStatuses(Map<String,Map<String,dynamic>> devices,OperatorStatusBook book){
+  final out={for(final e in devices.entries)e.key:e.value};
+  for(final id in book.deviceIds){
+    final e=book.entryOf(id)!;
+    out[id]={...?devices[id],'operator_status':e.status,'operator_status_at':e.at?.toUtc().toIso8601String()};
+  }
+  return out;
 }
 
 /// Body of PUT …/status and payload of the Outbox (`at` always sent: the

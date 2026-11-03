@@ -24,6 +24,26 @@ class MoveOrder {
   /// Still to carry out: sent or accepted.
   bool get open=>status=='sent'||status=='accepted';
   DateTime? get updatedAt=>DateTime.tryParse('${json['updated_at']??''}');
+  /// « Terminé, disponible » touched on the arrived order (lot 27, server:
+  /// `finished_at`, the order stays arrived).
+  bool get finished=>status=='arrived'&&json['finished_at']!=null;
+  /// Arrived, mission not finished yet: « Terminé, disponible » offered.
+  bool get awaitingFinish=>status=='arrived'&&!finished;
+}
+
+/// Pseudo-answer of [RoutesController.setMoveOrderStatus] (lot 27): the
+/// order stays « arrived », with `finished_at`; the server then sets the
+/// status of the operator to « Disponible ».
+const moveOrderFinished='finished';
+
+/// The order shown in my banner: the latest open one addressed to me,
+/// else an arrived one not finished yet, while it stays on the map (lot 27:
+/// « Terminé, disponible » at hand).
+MoveOrder? myMoveOrder(List<MoveOrder> orders,String me,DateTime now){
+  String at(MoveOrder o)=>'${o.json['updated_at']}';
+  final mine=orders.where((o)=>o.targetId==me&&(o.open||(o.awaitingFinish&&moveOrderOnMap(o,now)))).toList()
+    ..sort((a,b){if(a.open!=b.open)return a.open?-1:1;return at(b).compareTo(at(a));});
+  return mine.isEmpty?null:mine.first;
 }
 
 /// An order arrived or refused leaves the map on its own after 30 min
@@ -104,7 +124,9 @@ Future<MoveOrderDraft?> showMoveOrderDialog(BuildContext context,List<({String i
 class MoveOrderBanner extends StatelessWidget {
   final MoveOrder order;
   final VoidCallback onAccept, onRefuse, onNavigate, onArrived;
-  const MoveOrderBanner({super.key,required this.order,required this.onAccept,required this.onRefuse,required this.onNavigate,required this.onArrived});
+  /// « Terminé, disponible » of an arrived order (lot 27).
+  final VoidCallback? onFinished;
+  const MoveOrderBanner({super.key,required this.order,required this.onAccept,required this.onRefuse,required this.onNavigate,required this.onArrived,this.onFinished});
   @override Widget build(BuildContext context){
     final sent=order.status=='sent';
     return Material(elevation:4,borderRadius:BorderRadius.circular(14),color:Colors.deepOrange.shade50,
@@ -119,6 +141,9 @@ class MoveOrderBanner extends StatelessWidget {
           if(sent)...[
             FilledButton.icon(onPressed:onAccept,icon:const Icon(Icons.check),label:Text(S.t('order.accept'))),
             OutlinedButton(onPressed:onRefuse,child:Text(S.t('order.refuse'))),
+          ] else if(order.status=='arrived')...[
+            FilledButton.icon(key:const ValueKey('order-finished'),onPressed:onFinished,icon:const Icon(Icons.task_alt),
+              label:Text(S.t('orders.status.finish'))),
           ] else ...[
             FilledButton.icon(onPressed:onNavigate,icon:const Icon(Icons.directions),label:Text(S.t('nav.goHere'))),
             OutlinedButton(onPressed:onArrived,child:Text(S.t('order.arrived'))),

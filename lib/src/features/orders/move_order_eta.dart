@@ -36,7 +36,7 @@ String? moveOrderEtaText(MoveOrder o){
 }
 
 /// Subtitle of an order in the list: its state, then the estimate.
-String moveOrderSubtitle(MoveOrder o)=>[S.t('order.status.${o.status}'),?moveOrderEtaText(o)].join(' · ');
+String moveOrderSubtitle(MoveOrder o)=>[S.t(o.finished?'orders.status.finished':'order.status.${o.status}'),?moveOrderEtaText(o)].join(' · ');
 
 /// Labels « Arrivée 8 h 15 » under the operator going to an order, or
 /// under the flag when his position is unknown.
