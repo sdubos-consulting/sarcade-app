@@ -8,12 +8,12 @@ void main(){
   SarcadePoi poi({String? by='TEL-02',int? color})=>SarcadePoi(id:'p1',eventId:'e1',kind:'designated',lat:48.82,lon:1.91,
     createdAt:DateTime.utc(2026,10,29,18),label:'Point haut',createdBy:by,color:color);
 
-  test('the pin is never the red of the beacons',(){
+  test('the author colour is never the red of the beacons; a chosen colour is kept (lot 25)',(){
     expect(isReservedRed(0xFFE53935),isTrue);
     expect(isReservedRed(0xFF1E88E5),isFalse);
     expect(poiColorFor(0xFFE53935),poiFallbackColor);
     expect(poiColor(poi(color:0xFF43A047)),0xFF43A047);
-    expect(isReservedRed(poiColor(poi(color:0xFFFF0000))),isFalse);
+    expect(poiColor(poi(color:0xFFE53935)),0xFFE53935,reason:'red Danger chosen in the window');
     expect(isReservedRed(poiColor(poi())),isFalse);
   });
 

@@ -35,9 +35,14 @@ const drawingOpacities=<double>[1,0.75,0.5,0.25];
 /// One undoable action: the state of each touched object before and after.
 /// A null value means the object did not exist. Undo only touches these
 /// objects, so it never reverts what other operators changed (ADR-001).
+/// A change made outside the drawings (lot 25: move of a point of
+/// interest) can join the history with [undoExtra] and [redoExtra], so the
+/// « Annuler » arrow and Ctrl+Z undo it too.
 class _Step {
   final Map<String,MapFeature?> before, after;
-  _Step(this.before,this.after);
+  final VoidCallback? undoExtra, redoExtra;
+  final Object? tag;
+  _Step(this.before,this.after,{this.undoExtra,this.redoExtra,this.tag});
 }
 
 /// State of the PowerPoint-like drawing tools: active tool, shape being drawn,
@@ -330,6 +335,7 @@ class DrawingController extends ChangeNotifier {
     final step=_undo.removeLast();
     _redo.add(step);
     _grouped('undo',step.before.length,()=>_apply(step.before));
+    step.undoExtra?.call();
   }
 
   void redo(){
@@ -337,6 +343,26 @@ class DrawingController extends ChangeNotifier {
     final step=_redo.removeLast();
     _undo.add(step);
     _grouped('redo',step.after.length,()=>_apply(step.after));
+    step.redoExtra?.call();
+  }
+
+  /// A change made outside the drawings joins the history (lot 25).
+  void recordExternal({required VoidCallback undo,required VoidCallback redo,Object? tag}){
+    _undo.add(_Step(const {},const {},undoExtra:undo,redoExtra:redo,tag:tag));
+    if(_undo.length>_historyLimit)_undo.removeAt(0);
+    _redo.clear();
+    notifyListeners();
+  }
+
+  /// Undoes the step recorded with [tag] (« Annuler » of its message),
+  /// wherever it is in the history; false when it is gone.
+  bool undoTagged(Object tag){
+    final i=_undo.lastIndexWhere((s)=>s.tag==tag);
+    if(i<0)return false;
+    final step=_undo.removeAt(i);
+    step.undoExtra?.call();
+    notifyListeners();
+    return true;
   }
 
   /// Applies a server state. Ignored when it is not newer than the local copy,

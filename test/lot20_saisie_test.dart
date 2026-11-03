@@ -82,8 +82,8 @@ void main(){
     });
 
     testWidgets('point of interest created',(t) async {
-      final out=<({String name,String icon})?>[];
-      await _open(t,out,(c)=>showCreatePoiDialog(c,color:Colors.red,name:'Point 10:00'));
+      final out=<PoiDraft?>[];
+      await _open(t,out,(c)=>showPoiDialog(c,pinColor:0xFF1E88E5,name:'Point 10:00'));
       await t.enterText(find.byKey(const ValueKey('poi-create-name')),'Gué');
       await _closeWith(t,find.byKey(const ValueKey('poi-create-ok')));
       expect(out.single?.name,'Gué');

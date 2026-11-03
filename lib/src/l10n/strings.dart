@@ -75,6 +75,9 @@ const Texts _fr={
   'poi.icon.pin':'Épingle','poi.icon.gathering':'Rassemblement','poi.icon.command_post':'PC','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Eau',
   'poi.icon.helipad':'Hélisurface','poi.icon.vehicle':'Véhicule','poi.icon.viewpoint':'Point de vue','poi.icon.medical':'Secours','poi.icon.radio':'Radio','poi.icon.shelter':'Abri','poi.icon.flag':'Repère',
   'poi.seeList':'Voir la liste','poi.search':'Rechercher un point','poi.sort.date':'Date','poi.sort.name':'Nom','poi.sort.distance':'Distance','poi.filterIcon':'Icône','poi.filterAuthor':'Auteur','poi.all':'Tous','poi.none':'Aucun point',
+  // Lot 25 · points d'intérêt : fenêtre unique (nom, icône, couleur), déplacement, sélection (features/poi/).
+  'poi.editTitle':'Modifier le point d’intérêt','poi.edit':'Modifier','poi.colorTitle':'Couleur','poi.move':'Déplacer',
+  'poi.moveHint':'Glissez le point, puis Valider','poi.moveOk':'Valider','poi.moved':'Point déplacé de {d}',
   'routes.movePoint':'Déplacer','routes.moveHint':'Touchez la carte à la nouvelle place du point','routes.open':'Ouvrir l’itinéraire',
   'order.remove':'Retirer de la carte','order.removed':'Ordre retiré de la carte','order.layer':'Ordres','order.none':'Aucun ordre','order.inProgress':'En cours','order.done':'Terminés',
   // Lot 25 · Web, MeshCore : bandeau de reconnexion (features/meshcore/meshcore_banner.dart) ; mesh.state.* suit le nom de l’état.
@@ -632,6 +635,9 @@ const Texts _en={
   'poi.icon.pin':'Pin','poi.icon.gathering':'Gathering','poi.icon.command_post':'Command post','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Water',
   'poi.icon.helipad':'Helipad','poi.icon.vehicle':'Vehicle','poi.icon.viewpoint':'Viewpoint','poi.icon.medical':'Medical','poi.icon.radio':'Radio','poi.icon.shelter':'Shelter','poi.icon.flag':'Marker',
   'poi.seeList':'See the list','poi.search':'Search a point','poi.sort.date':'Date','poi.sort.name':'Name','poi.sort.distance':'Distance','poi.filterIcon':'Icon','poi.filterAuthor':'Author','poi.all':'All','poi.none':'No point',
+  // Lot 25 · points of interest: one window (name, icon, colour), move, selection (features/poi/).
+  'poi.editTitle':'Edit the point of interest','poi.edit':'Edit','poi.colorTitle':'Colour','poi.move':'Move',
+  'poi.moveHint':'Drag the point, then Confirm','poi.moveOk':'Confirm','poi.moved':'Point moved by {d}',
   'routes.movePoint':'Move','routes.moveHint':'Tap the map at the new place of the point','routes.open':'Open the route',
   'order.remove':'Remove from the map','order.removed':'Order removed from the map','order.layer':'Orders','order.none':'No order','order.inProgress':'In progress','order.done':'Done',
   // Lot 25 · Web, MeshCore: reconnection bar (features/meshcore/meshcore_banner.dart); mesh.state.* follows the name of the state.
