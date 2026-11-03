@@ -5,7 +5,6 @@
 #include "splash_window.h"
 
 #include <dwmapi.h>
-#include <flutter_windows.h>
 #include <objbase.h>
 #include <objidl.h>
 
@@ -108,6 +107,31 @@ void AppendLog(const char* text) {
     WriteFile(file, line, static_cast<DWORD>(size), &written, nullptr);
   }
   CloseHandle(file);
+}
+
+// DPI of the start window without the Flutter engine: flutter_windows.dll
+// is delay-loaded (tool/patch_windows.py, lot 25) and must not be loaded by
+// this thread before the window shows. GetDpiForWindow (Windows 10 1607 and
+// later, per-monitor aware runner), else the DPI of the screen.
+UINT WindowDpi(HWND hwnd) {
+  using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
+  HMODULE user32 = GetModuleHandleW(L"user32.dll");
+  if (user32 != nullptr) {
+    auto get_dpi = reinterpret_cast<GetDpiForWindowFn>(
+        GetProcAddress(user32, "GetDpiForWindow"));
+    if (get_dpi != nullptr) {
+      const UINT dpi = get_dpi(hwnd);
+      if (dpi != 0) {
+        return dpi;
+      }
+    }
+  }
+  HDC screen = GetDC(nullptr);
+  const int dpi = screen == nullptr ? 0 : GetDeviceCaps(screen, LOGPIXELSX);
+  if (screen != nullptr) {
+    ReleaseDC(nullptr, screen);
+  }
+  return dpi > 0 ? static_cast<UINT>(dpi) : 96;
 }
 
 // Same rule as the window of the application: dark unless Windows is in
@@ -285,10 +309,8 @@ DWORD WINAPI Run(LPVOID) {
                               kWidth, kHeight, nullptr, nullptr, g_instance,
                               nullptr);
   if (hwnd != nullptr) {
-    // Same DPI helper as the window of the application (win32_window.cpp).
     HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
-    const UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
-    const int scale_dpi = dpi == 0 ? 96 : static_cast<int>(dpi);
+    const int scale_dpi = static_cast<int>(WindowDpi(hwnd));
     g_scale = static_cast<float>(scale_dpi) / 96.0f;
     const int w = MulDiv(kWidth, scale_dpi, 96);
     const int h = MulDiv(kHeight, scale_dpi, 96);

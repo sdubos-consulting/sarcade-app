@@ -75,6 +75,11 @@ const Texts _fr={
   'poi.icon.pin':'Épingle','poi.icon.gathering':'Rassemblement','poi.icon.command_post':'PC','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Eau',
   'poi.icon.helipad':'Hélisurface','poi.icon.vehicle':'Véhicule','poi.icon.viewpoint':'Point de vue','poi.icon.medical':'Secours','poi.icon.radio':'Radio','poi.icon.shelter':'Abri','poi.icon.flag':'Repère',
   'poi.seeList':'Voir la liste','poi.search':'Rechercher un point','poi.sort.date':'Date','poi.sort.name':'Nom','poi.sort.distance':'Distance','poi.filterIcon':'Icône','poi.filterAuthor':'Auteur','poi.all':'Tous','poi.none':'Aucun point',
+  // Lot 25 · points d'intérêt : fenêtre unique (nom, icône, couleur), déplacement, sélection (features/poi/).
+  'poi.editTitle':'Modifier le point d’intérêt','poi.edit':'Modifier','poi.colorTitle':'Couleur','poi.move':'Déplacer',
+  'poi.moveHint':'Glissez le point, puis Valider','poi.moveOk':'Valider','poi.moved':'Point déplacé de {d}',
+  'poi.selDrawings':'{n## dessin|# dessins}','poi.selPoints':'{n## point|# points}','poi.drawingLine':'{kind}{name} : {pos}',
+  'poi.deleteSel':'Supprimer {what} ?','poi.deleteSelHelp':'Supprimés pour tous les participants. Les points d’intérêt ne reviennent pas avec Annuler',
   'routes.movePoint':'Déplacer','routes.moveHint':'Touchez la carte à la nouvelle place du point','routes.open':'Ouvrir l’itinéraire',
   'order.remove':'Retirer de la carte','order.removed':'Ordre retiré de la carte','order.layer':'Ordres','order.none':'Aucun ordre','order.inProgress':'En cours','order.done':'Terminés',
   // Lot 25 · Web, MeshCore : bandeau de reconnexion (features/meshcore/meshcore_banner.dart) ; mesh.state.* suit le nom de l’état.
@@ -199,6 +204,15 @@ const Texts _fr={
   'update.required':'Mise à jour obligatoire','update.requiredDetail':'Cette version ({current}) n’est plus acceptée par le serveur. Installez la version {version} pour vous reconnecter.',
   'update.download':'Télécharger la mise à jour','update.downloaded':'Mise à jour téléchargée',
   'update.downloadFailed':'Téléchargement impossible','update.store':'Mettez l’application à jour depuis le magasin d’applications ou demandez le fichier au PCO.',
+  // Lot 25 · Windows : encadré « Mise à jour » de Paramètres › À propos (settings/windows_update.dart).
+  'update.win.title':'Mise à jour','update.win.installed':'Version installée : {version}','update.win.latest':'Dernière publiée : {version} ({source})',
+  'update.win.source.server':'serveur SARCADE','update.win.source.github':'GitHub',
+  'update.win.checking':'Vérification…','update.win.upToDate':'À jour','update.win.available':'Nouvelle version disponible',
+  'update.win.unknown':'Dernière version inconnue : serveur et GitHub injoignables',
+  'update.win.downloading':'Téléchargement…','update.win.verifying':'Contrôle de l’empreinte…','update.win.installing':'Installation : SARCADE se ferme puis se relance',
+  'update.win.failed':'Mise à jour impossible','update.win.badHash':'Empreinte différente : installation annulée','update.win.noHash':'Empreinte inconnue : utilisez Télécharger',
+  'update.win.check':'Vérifier','update.win.install':'Mettre à jour','update.win.download':'Télécharger','update.win.portable':'Version portable : mise à jour à la main',
+  'update.win.confirmTitle':'Mettre à jour maintenant ?','update.win.confirmSos':'Un SOS est en cours. SARCADE sera fermé pendant l’installation.','update.win.confirmMission':'Un événement est en cours. SARCADE sera fermé pendant l’installation.',
   // Messages
   'aprs.title':'APRS de l’événement','aprs.reload':'Recharger','aprs.offline':'Serveur injoignable : connexion nécessaire','aprs.ended':'Événement terminé : il ne suit plus aucune station.','aprs.refused':'Refusé par le serveur : {error}','aprs.invalid':'Indicatifs non valides : {list}','aprs.nameRequired':'Nom du groupe obligatoire','aprs.links':'Liaisons','aprs.is':'APRS-IS (Internet, lecture seule)','aprs.radio':'Radio (Gateway)','aprs.link.connected':'connectée','aprs.link.waiting':'activée, non connectée','aprs.link.off':'désactivée','aprs.packets':'{n## paquet|# paquets}','aprs.followedNone':'Aucune station suivie : cocher un groupe ou ajouter un indicatif','aprs.groups':'Groupes d’indicatifs suivis','aprs.groupsNone':'Aucun groupe','aprs.groupNew':'Nouveau groupe','aprs.groupEdit':'Modifier le groupe','aprs.groupName':'Nom du groupe','aprs.groupCallsigns':'Indicatifs (séparés par des espaces)','aprs.groupDelete':'Supprimer','aprs.groupDeleteConfirm':'Supprimer le groupe « {name} » pour tous les événements ?','aprs.ssidHelp':'F4JPO : tous ses SSID · F4JPO-7 : cette station seulement','aprs.added':'Indicatifs ajoutés pour cet événement','aprs.addCallsign':'Ajouter un indicatif','aprs.add':'Ajouter','aprs.txRf':'Émettre les positions en radio locale','aprs.txRfHelp':'Opérateurs consentants, par la station radio du serveur, sous l’indicatif choisi par le PCO, jamais vers Internet',
   'settings.drawColor':'Couleur de dessin','settings.drawColorHelp':'Pour les nouveaux objets ; les existants gardent la leur','color.4293212469':'Rouge','color.4294675456':'Orange','color.4294826037':'Jaune','color.4282622023':'Vert','color.4280191205':'Bleu','color.4287505578':'Violet','color.4280361249':'Noir','color.4294967295':'Blanc',
@@ -639,6 +653,11 @@ const Texts _en={
   'poi.icon.pin':'Pin','poi.icon.gathering':'Gathering','poi.icon.command_post':'Command post','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Water',
   'poi.icon.helipad':'Helipad','poi.icon.vehicle':'Vehicle','poi.icon.viewpoint':'Viewpoint','poi.icon.medical':'Medical','poi.icon.radio':'Radio','poi.icon.shelter':'Shelter','poi.icon.flag':'Marker',
   'poi.seeList':'See the list','poi.search':'Search a point','poi.sort.date':'Date','poi.sort.name':'Name','poi.sort.distance':'Distance','poi.filterIcon':'Icon','poi.filterAuthor':'Author','poi.all':'All','poi.none':'No point',
+  // Lot 25 · points of interest: one window (name, icon, colour), move, selection (features/poi/).
+  'poi.editTitle':'Edit the point of interest','poi.edit':'Edit','poi.colorTitle':'Colour','poi.move':'Move',
+  'poi.moveHint':'Drag the point, then Confirm','poi.moveOk':'Confirm','poi.moved':'Point moved by {d}',
+  'poi.selDrawings':'{n## drawing|# drawings}','poi.selPoints':'{n## point|# points}','poi.drawingLine':'{kind}{name}: {pos}',
+  'poi.deleteSel':'Delete {what}?','poi.deleteSelHelp':'Deleted for every participant. Points of interest do not come back with Undo',
   'routes.movePoint':'Move','routes.moveHint':'Tap the map at the new place of the point','routes.open':'Open the route',
   'order.remove':'Remove from the map','order.removed':'Order removed from the map','order.layer':'Orders','order.none':'No order','order.inProgress':'In progress','order.done':'Done',
   // Lot 25 · Web, MeshCore: reconnection bar (features/meshcore/meshcore_banner.dart); mesh.state.* follows the name of the state.
@@ -757,6 +776,15 @@ const Texts _en={
   'update.required':'Update required','update.requiredDetail':'This version ({current}) is no longer accepted by the server. Install version {version} to reconnect.',
   'update.download':'Download the update','update.downloaded':'Update downloaded',
   'update.downloadFailed':'Download failed','update.store':'Update the application from the app store or ask the command post for the file.',
+  // Lot 25 · Windows: « Update » box of Settings › About (settings/windows_update.dart).
+  'update.win.title':'Update','update.win.installed':'Installed version: {version}','update.win.latest':'Latest published: {version} ({source})',
+  'update.win.source.server':'SARCADE server','update.win.source.github':'GitHub',
+  'update.win.checking':'Checking…','update.win.upToDate':'Up to date','update.win.available':'New version available',
+  'update.win.unknown':'Latest version unknown: server and GitHub out of reach',
+  'update.win.downloading':'Downloading…','update.win.verifying':'Checking the fingerprint…','update.win.installing':'Installing: SARCADE closes then starts again',
+  'update.win.failed':'Update failed','update.win.badHash':'Fingerprint mismatch: installation cancelled','update.win.noHash':'Fingerprint unknown: use Download',
+  'update.win.check':'Check','update.win.install':'Update','update.win.download':'Download','update.win.portable':'Portable version: update by hand',
+  'update.win.confirmTitle':'Update now?','update.win.confirmSos':'A SOS is in progress. SARCADE will be closed during the installation.','update.win.confirmMission':'An event is in progress. SARCADE will be closed during the installation.',
   'aprs.title':'Event APRS','aprs.reload':'Reload','aprs.offline':'Server unreachable: connection needed','aprs.ended':'Event ended: it no longer follows any station.','aprs.refused':'Refused by the server: {error}','aprs.invalid':'Invalid callsigns: {list}','aprs.nameRequired':'Group name required','aprs.links':'Links','aprs.is':'APRS-IS (Internet, read only)','aprs.radio':'Radio (Gateway)','aprs.link.connected':'connected','aprs.link.waiting':'enabled, not connected','aprs.link.off':'disabled','aprs.packets':'{n## packet|# packets}','aprs.followedNone':'No station followed: tick a group or add a callsign','aprs.groups':'Followed callsign groups','aprs.groupsNone':'No group','aprs.groupNew':'New group','aprs.groupEdit':'Edit the group','aprs.groupName':'Group name','aprs.groupCallsigns':'Callsigns (separated by spaces)','aprs.groupDelete':'Delete','aprs.groupDeleteConfirm':'Delete the group « {name} » for every event?','aprs.ssidHelp':'F4JPO: all its SSIDs · F4JPO-7: that station only','aprs.added':'Callsigns added for this event','aprs.addCallsign':'Add a callsign','aprs.add':'Add','aprs.txRf':'Transmit positions on local radio','aprs.txRfHelp':'Consenting operators, through the server radio station, under the callsign chosen by the PCO, never to the Internet',
   'settings.drawColor':'Drawing colour','settings.drawColorHelp':'For new objects; existing ones keep theirs','color.4293212469':'Red','color.4294675456':'Orange','color.4294826037':'Yellow','color.4282622023':'Green','color.4280191205':'Blue','color.4287505578':'Purple','color.4280361249':'Black','color.4294967295':'White',
   'servers.saved':'Remembered servers','servers.newHelp':'New address: remembered at the first successful connection','servers.rename':'Rename the server','servers.label':'Label','servers.remove':'Forget this server','servers.removeBody':'Forget « {label} » ({url}) on this device? The sign-in session of this server is deleted.','servers.removeWaiting':'Warning: {n} items are still waiting to be sent to this server; they will go if you come back to it.','servers.removeConfirm':'Forget',
