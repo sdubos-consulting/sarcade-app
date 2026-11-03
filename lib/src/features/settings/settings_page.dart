@@ -12,6 +12,7 @@ import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
 import '../../config/version.dart';
 import 'about_page.dart';
+import 'windows_update.dart' show WindowsUpdates, windowsUpdateAlert;
 import 'notifications_panel.dart';
 import '../map/drawing/drawing_controller.dart' show defaultDrawColor;
 import '../../ui/color_palette.dart';
@@ -641,11 +642,14 @@ class _SettingsPageState extends State<SettingsPage> {
           DefaultTabController(key:ValueKey(_tabs.length),length:_tabs.length,initialIndex:_tab,child:Builder(builder:(context){
             final c=DefaultTabController.of(context);
             if(c.index!=_tab)c.animateTo(_tab);
-            return TabBar(isScrollable:true,tabAlignment:TabAlignment.start,
+            // Dot on À propos when a Windows version is available (lot 25).
+            return ListenableBuilder(listenable:WindowsUpdates.instance,builder:(context,_)=>TabBar(isScrollable:true,tabAlignment:TabAlignment.start,
               onTap:(i)=>setState(()=>_tab=i),
               tabs:[for(final id in _tabs)id=='diagnostics'&&diagnosticsAlert()
                 ?Tab(child:Badge(key:const ValueKey('diag-tab-alert'),smallSize:8,offset:const Offset(8,-2),child:Text(settingsTabLabel(id))))
-                :Tab(text:settingsTabLabel(id))]);
+                :id=='about'&&windowsUpdateAlert()
+                ?Tab(child:Badge(key:const ValueKey('about-tab-update'),smallSize:8,offset:const Offset(8,-2),child:Text(settingsTabLabel(id))))
+                :Tab(text:settingsTabLabel(id))]));
           })),
           const Divider(height:1),
           Expanded(child:IndexedStack(index:_tab,children:[for(final id in _tabs)ListView(

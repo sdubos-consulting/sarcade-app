@@ -15,6 +15,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../l10n/strings.dart';
 import '../../models/poi.dart';
+import '../map/drawing/drawing_controller.dart';
 import '../map/drawing/geometry.dart' show distanceM, formatDistance;
 import 'poi_icons.dart';
 import 'poi_sheet.dart';
@@ -46,19 +47,26 @@ List<List<SarcadePoi>> clusterPois(List<SarcadePoi> pois,Offset Function(LatLng)
 }
 
 /// Points on the map, grouped when they overlap; from [clusterUntilZoom]
-/// every point alone. A bubble zooms in on its group.
+/// every point alone. A bubble zooms in on its group. Points selected in
+/// [selection] (lot 25) stay alone, ringed, at the place where a drag takes
+/// them, and are dragged directly ([toLatLng] converts a global position).
 class PoiClusterLayer extends StatelessWidget {
   final List<SarcadePoi> pois; final void Function(SarcadePoi) onTap; final double clusterUntilZoom;
   /// Double click or double touch on a point alone (lot 19).
   final void Function(SarcadePoi)? onDoubleTap;
-  const PoiClusterLayer({super.key,required this.pois,required this.onTap,this.onDoubleTap,this.clusterUntilZoom=17});
+  final DrawingController? selection; final LatLng Function(Offset global)? toLatLng;
+  const PoiClusterLayer({super.key,required this.pois,required this.onTap,this.onDoubleTap,this.clusterUntilZoom=17,this.selection,this.toLatLng});
   @override Widget build(BuildContext context){
     final camera=MapCamera.of(context);
-    final groups=camera.zoom>=clusterUntilZoom?[for(final p in pois)[p]]:clusterPois(pois,(l)=>camera.projectAtZoom(l));
+    final sel=selection;
+    final rest=sel==null?pois:[for(final p in pois)if(!sel.isPoiSelected(p.id))p];
+    final picked=sel==null?const <SarcadePoi>[]:[for(final p in pois)if(sel.isPoiSelected(p.id))p];
+    final groups=camera.zoom>=clusterUntilZoom?[for(final p in rest)[p]]:clusterPois(rest,(l)=>camera.projectAtZoom(l));
     final s=Theme.of(context).colorScheme;
     return MarkerLayer(markers:[for(final g in groups)
       if(g.length==1)poiMarker(g.first,()=>onTap(g.first),onDoubleTap:onDoubleTap==null?null:()=>onDoubleTap!(g.first))
-      else _bubble(context,camera,g,s)]);
+      else _bubble(context,camera,g,s),
+      for(final p in picked)selectedPoiMarker(p,sel!,onTap:()=>onTap(p),toLatLng:toLatLng)]);
   }
   Marker _bubble(BuildContext context,MapCamera camera,List<SarcadePoi> g,ColorScheme s){
     final lat=g.map((p)=>p.lat).reduce((a,b)=>a+b)/g.length, lon=g.map((p)=>p.lon).reduce((a,b)=>a+b)/g.length;
@@ -73,6 +81,22 @@ class PoiClusterLayer extends StatelessWidget {
         border:Border.all(color:Color(poiColor(g.first)),width:3),boxShadow:const [BoxShadow(blurRadius:3,color:Colors.black38)]),
         child:Text('${g.length}',style:TextStyle(fontWeight:FontWeight.w800,color:s.onSurface))))));
   }
+}
+
+/// A selected point (lot 25): ringed, at its place during a drag; a drag
+/// moves the whole selection (drawings and points), as the move handle.
+Marker selectedPoiMarker(SarcadePoi p,DrawingController c,{required VoidCallback onTap,LatLng Function(Offset global)? toLatLng}){
+  final at=c.poiPlace(p.id)??LatLng(p.lat,p.lon);
+  // The map does not move during the drag: the step is read from the
+  // pointer delta, so a rebuild of the marker loses nothing.
+  return Marker(point:at,width:52,height:52,child:MouseRegion(cursor:toLatLng==null?MouseCursor.defer:SystemMouseCursors.move,child:GestureDetector(
+    key:ValueKey('poi-selected-${p.id}'),behavior:HitTestBehavior.opaque,onTap:onTap,
+    onPanStart:toLatLng==null?null:(_){c.holdHandle(true);c.beginEdit();},
+    onPanUpdate:toLatLng==null?null:(d){final to=toLatLng(d.globalPosition), from=toLatLng(d.globalPosition-d.delta);
+      c.moveSelected(to.latitude-from.latitude,to.longitude-from.longitude);},
+    onPanEnd:toLatLng==null?null:(_){c.endEdit();c.holdHandle(false);},
+    child:Center(child:Container(width:48,height:48,alignment:Alignment.center,decoration:BoxDecoration(shape:BoxShape.circle,
+      color:Colors.white.withValues(alpha:0.45),border:Border.all(color:const Color(0xFF1E88E5),width:2.5)),child:poiSymbol(p,size:36))))));
 }
 
 /// The list of the points, with its search, sort and filters.

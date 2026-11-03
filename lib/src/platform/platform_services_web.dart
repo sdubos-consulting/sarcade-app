@@ -21,6 +21,11 @@ Future<bool> acquireSingleInstance() async=>true;
 /// A browser tab cannot end itself; nothing to do.
 void quitApp(){}
 
+/// Windows updates (lot 25): the web has its own (web_update.dart).
+bool windowsUpdateSupported()=>false;
+bool windowsInstalledCopy()=>false;
+Future<bool> startWindowsInstaller(String path,List<String> arguments) async=>false;
+
 /// Data lives in the browser's IndexedDB, kept when offline.
 Future<void> initHiveStorage()=>Hive.initFlutter('sarcade');
 

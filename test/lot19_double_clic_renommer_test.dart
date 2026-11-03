@@ -76,15 +76,15 @@ void main() {
     testWidgets('double click: rename window, name changed, no zoom; simple click: the sheet', (t) async {
       final m=MapController();
       final renamed=<String>[]; var sheets=0;
-      await t.pumpWidget(map(m:m,onTap:(_)=>sheets++,onDouble:(c,p)=>doubleTapPoi(c,p,actor:'T1',rename:(n) async=>renamed.add(n),openSheet:()=>sheets++)));
+      await t.pumpWidget(map(m:m,onTap:(_)=>sheets++,onDouble:(c,p)=>doubleTapPoi(c,p,actor:'T1',save:(d) async=>renamed.add(d.name),openSheet:()=>sheets++)));
       await t.pump();
       final zoom=m.camera.zoom;
       final pin=t.getCenter(find.byKey(const ValueKey('poi-p1')));
       await _doubleTap(t,pin);
-      expect(find.text(S.t('poi.rename')), findsOneWidget, reason:'the rename window opens');
+      expect(find.text(S.t('poi.editTitle')), findsOneWidget, reason:'the window of the point opens (lot 25)');
       expect(sheets, 0);
       expect(m.camera.zoom, zoom, reason:'a double click on a point does not zoom');
-      await t.enterText(find.byKey(const ValueKey('poi-name')),'Parc du château');
+      await t.enterText(find.byKey(const ValueKey('poi-create-name')),'Parc du château');
       await t.testTextInput.receiveAction(TextInputAction.done);
       await t.pumpAndSettle();
       expect(renamed, ['Parc du château']);
@@ -97,7 +97,7 @@ void main() {
 
     testWidgets('neither PCO nor author: the usual sheet', (t) async {
       final renamed=<String>[]; var sheets=0;
-      await t.pumpWidget(map(m:MapController(),onTap:(_)=>sheets++,onDouble:(c,p)=>doubleTapPoi(c,p,actor:'T9',rename:(n) async=>renamed.add(n),openSheet:()=>sheets++)));
+      await t.pumpWidget(map(m:MapController(),onTap:(_)=>sheets++,onDouble:(c,p)=>doubleTapPoi(c,p,actor:'T9',save:(d) async=>renamed.add(d.name),openSheet:()=>sheets++)));
       await t.pump();
       await _doubleTap(t,t.getCenter(find.byKey(const ValueKey('poi-p1'))));
       expect(find.byType(AlertDialog), findsNothing);
