@@ -2376,7 +2376,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Listening points SATER (lot 24): sheet, deletion by the PCO.
   late final ListeningPoints _listening=ListeningPoints(initial:widget.store.mapFeatures(widget.eventId))..addListener((){if(mounted)setState((){});});
   void _openListening(ListeningPoint l)=>unawaited(showListeningSheet(context,l,canDelete:isPco(widget.deviceId),
-    onDelete:()=>unawaited(deleteListeningPoint(l,points:_listening,store:widget.store,sync:_sync,eventId:widget.eventId,actorId:widget.deviceId)))));
+    onDelete:()=>unawaited(deleteListeningPoint(l,points:_listening,store:widget.store,sync:_sync,eventId:widget.eventId,actorId:widget.deviceId))));
 
   Future<void> _showBearingSheet(Bearing b) async {
     final can=b.canEdit(widget.deviceId,isPco(widget.deviceId)), pco=isPco(widget.deviceId);
