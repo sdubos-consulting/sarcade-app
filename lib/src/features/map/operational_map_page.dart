@@ -45,6 +45,7 @@ import 'stations.dart';
 import 'cinematique_touch.dart';
 import 'layer_opacity.dart';
 import 'map_bottom_line.dart';
+import 'map_right_column.dart';
 import 'sos_placement.dart';
 import '../../modules/adrasec/bearings/bearing_aim.dart';
 import '../../ui/escape_stack.dart';
@@ -1617,20 +1618,21 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // position, SOS; the north arrow only while a navigation turns the map.
     return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.end,children:[
       // No dot « couche masquée » any more (decision of 30 Oct 2026, 12 h 48).
-      _fab('map-layers',S.t('display.menu'),const Icon(Icons.tune),_chooseBasemap),
-      const SizedBox(height:10),
+      // Centres on one axis, regular gaps (lot 25, map_right_column.dart).
+      mapColumnSlot(_fab('map-layers',S.t('display.menu'),const Icon(Icons.tune),_chooseBasemap)),
+      const SizedBox(height:mapColumnGap),
       if(rotated&&_meMode!=MeMode.compass)...[
-        _fab('map-north',S.t('map.north'),Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined)),(){
-            _map.rotate(0);setState((){});}),
-        const SizedBox(height:10),
+        mapColumnSlot(_fab('map-north',S.t('map.north'),Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined)),(){
+            _map.rotate(0);setState((){});})),
+        const SizedBox(height:mapColumnGap),
       ],
-      LocateButton(mode:_locate,fab:(tip,icon,active)=>_fab('map-me',tip,icon,_myPosition,
-        background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null)),
+      LocateButton(mode:_locate,fab:(tip,icon,active)=>mapColumnSlot(_fab('map-me',tip,icon,_myPosition,
+        background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null))),
       // « Écrans » (lot 11): shown once a screen is allowed, blue while followed.
       TvScreensButton(controller:_tvScreens,onManage:_openTvScreens,
-        fab:(tip,icon,onPressed,active)=>Padding(padding:const EdgeInsets.only(top:10),child:_fab('map-screens',tip,icon,onPressed,
-          background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null))),
-      if(_sosVisible)...[const SizedBox(height:16),_sosButton()],
+        fab:(tip,icon,onPressed,active)=>Padding(padding:const EdgeInsets.only(top:mapColumnGap),child:mapColumnSlot(_fab('map-screens',tip,icon,onPressed,
+          background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null)))),
+      if(_sosVisible)...[const SizedBox(height:mapColumnSosGap),_sosButton()],
     ]);
   }
 
@@ -2936,7 +2938,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(routeEntry!=null)Positioned(left:12,right:12,bottom:12,child:RouteEntryBar(controller:_routes,route:routeEntry,
           onDone:()=>setState(()=>_drawingRouteId=null))),
         // Right column with SOS at its bottom (30 Oct 2026, 3 h 05).
-        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:mapColumnBottom(compact:compact),
+        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:mapColumnBottom,
           panel:_measure.target!=null||_nav.state!=NavState.idle||_nav.notice!=null,
           rightSheet:!compact&&_bearings.taking&&_aim!=null?bearingSheetWidth:0,child:_mapButtons()),
         // Phone: « Suivi actif » just above the tab bar, the scale on its right.
