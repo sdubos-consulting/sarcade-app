@@ -113,6 +113,7 @@ import '../tv/tv_nearby.dart';
 import '../tv/tv_screens_button.dart';
 import '../../modules/adrasec/fixed_stations.dart';
 import '../orders/move_orders.dart';
+import '../../modules/adrasec/listening/listening_points.dart';
 import '../orders/move_order_eta.dart';
 import '../../modules/adrasec/bearings/signals.dart';
 import '../settings/diagnostics_panel.dart' show diagnosticsAlert, showDiagnosticsSheet;
@@ -1390,7 +1391,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _applyRemoteFeature(Map<String,dynamic> p,{bool persist=false}){
     final id=p['id'];
     if(id is! String||p['event_id']!=widget.eventId||_sync.isPending(id))return;
-    if(p['deleted']==true)_bearings.remove(id);
+    if(p['deleted']==true){_bearings.remove(id);_listening.remove(id);}
+    // Listening points SATER, lot 24 (listening_points.dart).
+    if(p['deleted']!=true&&isListening(p)){if(_listening.apply(p)&&persist)widget.store.saveMapFeature(p);return;}
     if(p['deleted']!=true&&Bearing.isBearing(p)){
       try{_bearings.applyRemote(Bearing.fromJson(p));if(persist)widget.store.saveMapFeature(p);}catch(_){}
       return;
@@ -2385,6 +2388,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Future<bool> _setZoneMode(String search,String mode)=>saveZoneMode(context,api:widget.api,ops:_ops,eventId:widget.eventId,actorId:widget.deviceId,search:search,mode:mode);
 
   /// Details of a bearing; change or delete for its author or the PCO.
+  /// Listening points SATER (lot 24): sheet, deletion by the PCO.
+  late final ListeningPoints _listening=ListeningPoints(initial:widget.store.mapFeatures(widget.eventId))..addListener((){if(mounted)setState((){});});
+  void _openListening(ListeningPoint l)=>unawaited(showListeningSheet(context,l,canDelete:isPco(widget.deviceId),
+    onDelete:()=>unawaited(deleteListeningPoint(l,points:_listening,store:widget.store,sync:_sync,eventId:widget.eventId,actorId:widget.deviceId))));
+
   Future<void> _showBearingSheet(Bearing b) async {
     final can=b.canEdit(widget.deviceId,isPco(widget.deviceId)), pco=isPco(widget.deviceId);
     final zone=bearingZoneStatus(b,_bearings.all,mode:zoneModeOf(_zoneModes,b.search));
@@ -2772,6 +2780,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showDrawings)DrawingDoubleTapLayer(controller:_drawing,enabled:!_placingOnMap&&!_drawing.selectMode,radiusPx:_circleRadiusPx,onDoubleTap:(f)=>unawaited(renameDrawing(context,_drawing,f))),
           if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id&&b.id!=_aim?.editing?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
             zoneModes:_zoneModes,onTapBearing:_showBearingSheet,onTapZone:(t)=>unawaited(showZoneWindow(context,t,mode:zoneModeOf(_zoneModes,t.search),onMode:(m)=>_setZoneMode(t.search,m))))),
+          if(_showBearings)..._fadedAll('brg',buildListeningLayers(_listening.all,onTap:_openListening)),
           if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
           ..._variantLayers(),
           if(_adsb.on&&_adrasec)...[aircraftRoutes(_adsb.routes),touchableMarkers(ignoring:_placingOnMap,child:AircraftMarkers(aircraft:_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),

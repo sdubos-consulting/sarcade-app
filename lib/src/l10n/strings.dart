@@ -120,6 +120,9 @@ const Texts _fr={
   'fixed.section':'Stations fixes (iGates, relais)','fixed.layer':'Stations fixes','fixed.kind':'Classement','fixed.fixed':'Fixe','fixed.mobile':'Mobile','fixed.autoFixed':'Auto (fixe)','fixed.autoMobile':'Auto (mobile)',
   'operators.none':'Aucun opérateur',
   'bearings.signal':'Signal recherché','bearings.signalNew':'Nouveau signal','bearings.colorBy':'Couleur des relevés','bearings.colorSignal':'Signal','bearings.colorOperator':'Opérateur',
+  // Lot 24, points d'écoute SATER (modules/adrasec/listening/listening_points.dart).
+  'listening.title':'Point d’écoute','listening.label':'Écoute {time}','listening.short':'Écoute','listening.ex':'EX',
+  'listening.by':'Signal entendu par {who} à {time}','listening.heading':'Cap du véhicule {deg}°','listening.delete':'Supprimer le point d’écoute',
   'settings.subtitle':'Connexion, profil, affichage et diagnostic de cet appareil','settings.subtitleFirst':'Serveur SARCADE et identifiant pour cet événement',
   'settings.statusEvent':'Événement : {v}','settings.statusDevice':'Terminal : {v}',
   'settings.tab.general':'Général','settings.tab.profile':'Profil','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostic','settings.tab.about':'À propos',
@@ -626,6 +629,9 @@ const Texts _en={
   'fixed.section':'Fixed stations (iGates, relays)','fixed.layer':'Fixed stations','fixed.kind':'Classification','fixed.fixed':'Fixed','fixed.mobile':'Mobile','fixed.autoFixed':'Auto (fixed)','fixed.autoMobile':'Auto (mobile)',
   'operators.none':'No operator',
   'bearings.signal':'Signal searched','bearings.signalNew':'New signal','bearings.colorBy':'Bearing colour','bearings.colorSignal':'Signal','bearings.colorOperator':'Operator',
+  // Lot 24, listening points SATER (modules/adrasec/listening/listening_points.dart).
+  'listening.title':'Listening point','listening.label':'Heard {time}','listening.short':'Heard','listening.ex':'EX',
+  'listening.by':'Signal heard by {who} at {time}','listening.heading':'Vehicle heading {deg}°','listening.delete':'Delete the listening point',
   'settings.subtitle':'Connection, profile, display and diagnostics of this device','settings.subtitleFirst':'SARCADE server and identifier for this event',
   'settings.statusEvent':'Event: {v}','settings.statusDevice':'Terminal: {v}',
   'settings.tab.general':'General','settings.tab.profile':'Profile','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostics','settings.tab.about':'About',
