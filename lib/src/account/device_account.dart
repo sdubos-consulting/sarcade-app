@@ -40,8 +40,10 @@ class DeviceSession {
 /// Device tokens of the servers, one per server (scheme, host, port), and
 /// the servers whose token was just refused (« Se connecter » offered).
 class AccountManager extends ChangeNotifier {
-  AccountManager();
+  /// [persistent] false: kept for this run only (tests).
+  AccountManager({this.persistent=true});
   static final instance=AccountManager();
+  final bool persistent;
 
   static const _prefix='sarcade.account.';
   final _storage=const FlutterSecureStorage();
@@ -51,6 +53,7 @@ class AccountManager extends ChangeNotifier {
   /// Reads the stored tokens at start; a storage failure only means the
   /// person signs in again.
   Future<void> load() async {
+    if(!persistent)return;
     try{
       final all=await _storage.readAll();
       all.forEach((k,v){
@@ -79,7 +82,7 @@ class AccountManager extends ChangeNotifier {
     final origin=accessOrigin(server);
     _sessions[origin]=s;
     _refused.remove(origin);
-    try{await _storage.write(key:'$_prefix$origin',value:jsonEncode(s.toJson()));}catch(_){/* kept for this run */}
+    if(persistent){try{await _storage.write(key:'$_prefix$origin',value:jsonEncode(s.toJson()));}catch(_){/* kept for this run */}}
     notifyListeners();
   }
 
@@ -89,7 +92,7 @@ class AccountManager extends ChangeNotifier {
     final origin=accessOrigin(server);
     final had=_sessions.remove(origin)!=null;
     if(reason!=null)_refused[origin]=reason;
-    try{await _storage.delete(key:'$_prefix$origin');}catch(_){}
+    if(persistent){try{await _storage.delete(key:'$_prefix$origin');}catch(_){}}
     if(had||reason!=null)notifyListeners();
   }
 

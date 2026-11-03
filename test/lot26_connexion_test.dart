@@ -39,7 +39,7 @@ void main() {
   setUp(() => S.setLanguage('fr'));
 
   test('the token goes as Bearer to its server only', () async {
-    final account = AccountManager();
+    final account = AccountManager(persistent: false);
     await account.save(server, const DeviceSession(token: token, email: 'paul@adrasec78.fr', id: 'dev-1'));
     final seen = <String, String?>{};
     final client = AccessHttpClient(account: account, inner: MockClient((r) async {
@@ -54,7 +54,7 @@ void main() {
   });
 
   test('a revoked token is forgotten and the call sent again without it', () async {
-    final account = AccountManager();
+    final account = AccountManager(persistent: false);
     await account.save(server, const DeviceSession(token: token, email: 'paul@adrasec78.fr'));
     final sent = <String?>[];
     final client = AccessHttpClient(account: account, inner: MockClient((r) async {
@@ -72,7 +72,7 @@ void main() {
   });
 
   test('another 401 keeps the token and its answer', () async {
-    final account = AccountManager();
+    final account = AccountManager(persistent: false);
     await account.save(server, const DeviceSession(token: token, email: 'a@b.fr'));
     final client = AccessHttpClient(account: account, inner: MockClient((r) async => reply({'detail': 'account_required'}, 401)));
     final r = await client.get(Uri.parse('$server/api/v0.1/me/devices'));
@@ -82,7 +82,7 @@ void main() {
   });
 
   test('device.revoked: only the token of this enrolment', () async {
-    final account = AccountManager();
+    final account = AccountManager(persistent: false);
     await account.save(server, const DeviceSession(token: token, email: 'a@b.fr', id: 'dev-1', deviceId: 'TEL-01'));
     expect(await account.onDeviceRevoked(server, {'id': 'dev-2', 'device_id': 'TEL-01'}), isFalse);
     expect(account.sessionFor(server), isNotNull);
@@ -101,7 +101,7 @@ void main() {
   });
 
   testWidgets('Se connecter: email, code, then this device is enrolled', (tester) async {
-    final account = AccountManager();
+    final account = AccountManager(persistent: false);
     final bodies = <String, Map<String, dynamic>>{};
     final api = AccountApi(server, client: MockClient((r) async {
       if (r.method == 'POST') bodies[r.url.path] = Map<String, dynamic>.from(jsonDecode(r.body) as Map);
@@ -146,7 +146,7 @@ void main() {
   });
 
   testWidgets('Paramètres › Profil: Se connecter, then Mes appareils and Se déconnecter', (tester) async {
-    final account = AccountManager();
+    final account = AccountManager(persistent: false);
     Widget row(String label, {String? help, required Widget child}) => Column(children: [Text(label), if (help != null) Text(help), child]);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: AccountSection(server: server, deviceId: 'TEL-01', row: row, account: account))));
     expect(find.byKey(const ValueKey('auth-signin')), findsOneWidget);
@@ -162,7 +162,7 @@ void main() {
   });
 
   testWidgets('a refused token shows « Se connecter » above the map', (tester) async {
-    final account = AccountManager();
+    final account = AccountManager(persistent: false);
     await account.save(server, const DeviceSession(token: token, email: 'a@b.fr'));
     var changes = 0;
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: AccountBanner(server: server, deviceId: 'TEL-01', account: account, onChanged: () => changes++))));
