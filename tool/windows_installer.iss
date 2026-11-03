@@ -51,6 +51,10 @@ Name: "{autodesktop}\SARCADE"; Filename: "{app}\sarcade_app.exe"; Tasks: desktop
 ; notification plugin stops an elevated SARCADE (card « Client Windows :
 ; écran gris », 31 Oct 2026).
 Filename: "{app}\sarcade_app.exe"; Description: "{cm:LaunchProgram,SARCADE}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; Update from SARCADE (Paramètres > À propos > Mettre à jour, lot 25): the
+; installer is started with /SILENT /relaunch=1; SARCADE, closed for the
+; install, is started again at the end, with the rights of the person.
+Filename: "{app}\sarcade_app.exe"; Flags: nowait runasoriginaluser; Check: RelaunchAfterUpdate
 
 [Code]
 // Card « Installeur Windows : case encore coupée après #156 » (1 Nov 2026):
@@ -62,6 +66,12 @@ Filename: "{app}\sarcade_app.exe"; Description: "{cm:LaunchProgram,SARCADE}"; Fl
 // Independent of the Inno Setup version.
 const
   TasksListGap = 8;
+
+// /relaunch=1 given by SARCADE when it updates itself (lot 25).
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;
 
 procedure InitializeWizard;
 var

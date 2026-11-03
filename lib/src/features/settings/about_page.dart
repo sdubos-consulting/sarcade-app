@@ -6,6 +6,7 @@ import '../../l10n/strings.dart';
 import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart' show basemapNotices;
 import 'notifications_panel.dart' show VersionStatus;
+import 'windows_update_box.dart';
 import '../../ui/link_status.dart';
 
 class SarcadeAboutPage extends StatelessWidget {
@@ -46,6 +47,9 @@ class SarcadeAboutContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Windows: « Mise à jour » box first (card « Windows : menu Mise à
+        // jour », lot 25; SARCADE has no « Aide » menu bar).
+        if (WindowsUpdateBox.shown) const Padding(padding: EdgeInsets.only(bottom: 16), child: WindowsUpdateBox()),
         // SARCADE logo above the name, version and publisher, adapted to the
         // theme (card « Paramètres › À propos, logo SARCADE », 30 Oct 2026, 13 h 27).
         // Aligned on the left with the title and the text (revue n° 67).

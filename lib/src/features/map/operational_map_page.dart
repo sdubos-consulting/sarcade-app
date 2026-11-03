@@ -119,6 +119,7 @@ import '../orders/move_order_eta.dart';
 import '../../modules/adrasec/bearings/signals.dart';
 import '../settings/diagnostics_panel.dart' show diagnosticsAlert, showDiagnosticsSheet;
 import '../settings/settings_page.dart' show settingsRequestedTab;
+import '../settings/windows_update.dart' show attachWindowsUpdates, updateGuardFor, windowsUpdateAlert;
 import 'map_load_status.dart';
 import '../tools/tools_page.dart';
 import '../settings/settings_tools.dart';
@@ -1228,6 +1229,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _ops.addListener(_onOperationsChanged);
     _ops.start();
     if(prefs?.enabled==true&&!_ops.settings.eventEnded)_setTracking(true,_tracking.intervalS,silent:true);
+    // Windows updates (lot 25): checked now and every 6 h; SOS or mission asks first.
+    attachWindowsUpdates(baseUrl:widget.api.baseUrl,guard:()=>updateGuardFor(messages:widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId),
+      eventEnded:_ops.settings.eventEnded,lastContact:_ops.lastContact,now:DateTime.now().toUtc()));
   }
 
   /// Applies the PCO policy: tracking required during the event, stopped at
@@ -2676,7 +2680,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         selected:_deskId==id||(id=='routes'&&_showRoutesPanel)||(id=='resection'&&_showResection),id:id,pinned:true),
     ];
     final railBottom=(widget.onSettings!=null||widget.settingsBuilder!=null)
-      ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert(),id:'settings'):null;
+      ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert()||windowsUpdateAlert(),id:'settings'):null;
     // Blue while Messages is open, page or side panel (card « Bouton Messages
     // pas mis en évidence », 30 Oct 2026, 16 h 13): one button in blue.
     final messagesOn=messagesRailSelected(deskId:_deskId,chatPeer:_chatPeer);
