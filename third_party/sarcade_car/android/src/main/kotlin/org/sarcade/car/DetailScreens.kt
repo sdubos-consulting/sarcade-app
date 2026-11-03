@@ -4,6 +4,7 @@ import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarColor
+import androidx.car.app.model.CarText
 import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Pane
 import androidx.car.app.model.PaneTemplate
@@ -101,11 +102,14 @@ internal class ConversationScreen(
 /**
  * « Répondre » : dictation at once, then « Envoyer » or « Annuler »; no
  * keyboard (choice 5). The answer goes to [to] in a direct message.
+ * Lot 24: also « Écrire » of the card of an operator ([write]: a new
+ * direct message to [to], not an answer).
  */
 internal class ReplyScreen(
     carContext: CarContext,
     private val key: String,
     private val to: String,
+    private val write: Boolean = false,
 ) : LiveScreen(carContext) {
     private enum class State { LISTENING, HEARD, FAILED }
 
@@ -147,7 +151,7 @@ internal class ReplyScreen(
     override fun onGetTemplate(): Template {
         val s = snap
         drawn(s)
-        val title = s.label("replyTo").replace("{who}", to)
+        val title = s.label(if (write) "writeTo" else "replyTo").replace("{who}", to)
         return when (state) {
             State.LISTENING -> MessageTemplate.Builder(s.label("listening"))
                 .setTitle(title)
@@ -170,13 +174,58 @@ internal class ReplyScreen(
                 .addAction(
                     Action.Builder().setTitle(s.label("send")).setFlags(Action.FLAG_PRIMARY)
                         .setOnClickListener {
-                            CarUi.post(carContext, "reply") { put("conversation", key); put("text", text) }
+                            if (write) CarUi.post(carContext, "write") { put("to", to); put("text", text) }
+                            else CarUi.post(carContext, "reply") { put("conversation", key); put("text", text) }
                             CarUi.toast(carContext, s.label("sent"))
                             screenManager.pop()
                         }.build()
                 )
                 .build()
         }
+    }
+}
+
+/**
+ * Card of an operator (lot 24, card « Android Auto, onglet Équipe : fiche
+ * d'un opérateur avec actions », choices 2 and 3): name and role, distance
+ * and direction, age of the position, battery when known, last message
+ * received from him; « Y aller » (main button, in colour when the car
+ * allows it) and « Écrire » (dictated message), two buttons at most.
+ */
+internal class TeammateScreen(carContext: CarContext, private val id: String) : LiveScreen(carContext) {
+    override fun watched(s: Snapshot): String = "${s.lang}|${s.teammate(id)}"
+
+    override fun onGetTemplate(): Template {
+        val s = snap
+        drawn(s)
+        val t = s.item("team", id) ?: return gone()
+        val pane = Pane.Builder()
+        val first = Row.Builder().setTitle(t.optString("role").ifEmpty { s.label("operator") })
+            .setImage(CarUi.tile(carContext, CarUi.operatorIcon(t.optString("icon")), t.optInt("color", MainScreen.DEFAULT_COLOR)))
+        t.optString("battery").takeIf { it.isNotEmpty() }?.let { first.addText(it) }
+        pane.addRow(first.build())
+        val where = Row.Builder().setTitle(t.optString("away").ifEmpty { s.label("noPosition") })
+        t.optString("seen").takeIf { it.isNotEmpty() }?.let { where.addText(it) }
+        pane.addRow(where.build())
+        t.optString("last").takeIf { it.isNotEmpty() }?.let {
+            pane.addRow(Row.Builder().setTitle(s.label("lastMessage")).addText(it).build())
+        }
+        pane.addAction(
+            Action.Builder().setTitle(s.label("write"))
+                .setIcon(CarUi.icon(carContext, R.drawable.sarcade_car_mic))
+                .setOnClickListener { screenManager.push(ReplyScreen(carContext, "", id, write = true)) }
+                .build()
+        )
+        if (MainScreen.hasPosition(t)) {
+            pane.addAction(
+                Action.Builder(MainScreen.goToTeammate(carContext, s, id, t, CarText.create(s.label("go"))))
+                    .setBackgroundColor(CarColor.PRIMARY).build()
+            )
+        }
+        return PaneTemplate.Builder(pane.build())
+            .setTitle(t.optString("title"))
+            .setHeaderAction(Action.BACK)
+            .build()
     }
 }
 

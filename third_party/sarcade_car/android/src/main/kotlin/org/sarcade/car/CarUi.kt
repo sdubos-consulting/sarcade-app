@@ -47,16 +47,28 @@ internal class Snapshot(private val json: JSONObject) {
 
     /** Items of a tab as shown. Équipe (lot 23): the positions of the
      *  operators are not shown, only whether there is one (arrow
-     *  « Naviguer »): an operator who moves does not redraw the screen. */
+     *  « Naviguer »): an operator who moves does not redraw the screen;
+     *  lot 24: only what the row shows (the card of an operator follows
+     *  the rest, see [teammate]). */
     private fun shown(key: String): String {
         if (key != "team") return json.optJSONArray(key)?.toString() ?: ""
         return items(key).joinToString(",", "[", "]") { t ->
-            val copy = JSONObject(t.toString())
-            copy.remove("lat")
-            copy.remove("lon")
+            val copy = JSONObject()
+            for (k in TEAM_ROW) if (t.has(k)) copy.put(k, t.opt(k))
             copy.put("nav", MainScreen.hasPosition(t))
             copy.toString()
         }
+    }
+
+    /** What the card of operator [id] shows, as text: without his position
+     *  (only whether there is one), as the Équipe tab (lot 24). */
+    fun teammate(id: String): String {
+        val t = item("team", id) ?: return ""
+        val copy = JSONObject(t.toString())
+        copy.remove("lat")
+        copy.remove("lon")
+        copy.put("nav", MainScreen.hasPosition(t))
+        return copy.toString()
     }
 
     /** « Données de 10:42 : ouvrez SARCADE sur le téléphone » when the
@@ -69,6 +81,8 @@ internal class Snapshot(private val json: JSONObject) {
 
     companion object {
         const val STALE_MS = 120_000L
+        /** Fields of an operator shown in the row of the Équipe tab. */
+        val TEAM_ROW = listOf("id", "title", "text", "icon", "color")
     }
 }
 

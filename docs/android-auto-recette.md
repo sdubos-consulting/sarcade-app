@@ -77,6 +77,16 @@ Au lot 23, la voiture montrait **une rubrique à la fois** : bouton « Rubriques
 | 5.4 | Changer 6 fois de suite d'onglet | Aucun message d'erreur d'Android Auto, pas d'écran « trop d'étapes » |
 | 5.5 | Onglet Équipe | Flèche d'itinéraire à droite de chaque opérateur ; seulement les opérateurs vus depuis moins de 24 h (comme 4.3 à 4.5) |
 
+### Fiche d'un opérateur (onglet Équipe)
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 5.6 | Onglet Équipe, toucher la **ligne** d'un opérateur (pas la flèche) | Sa fiche s'ouvre : nom en titre ; rôle (PCO, équipe, indicatif) et batterie si connue ; distance et direction, âge de la position ; dernier message reçu de lui |
+| 5.7 | Revenir, toucher la **flèche** d'un opérateur | Google Maps ou Waze guidé vers lui, sans passer par la fiche |
+| 5.8 | Dans la fiche, toucher « Y aller » | Bouton principal (en couleur si la voiture le permet) ; Maps ou Waze guidé vers sa dernière position |
+| 5.9 | Dans la fiche, toucher « Écrire », dicter un message, « Envoyer » | L'opérateur reçoit un message direct (routine) avec le texte dicté |
+| 5.10 | Fiche d'un opérateur sans position | « Position inconnue », seulement « Écrire » |
+
 ## 6. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.

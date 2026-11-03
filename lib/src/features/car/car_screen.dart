@@ -240,8 +240,43 @@ List<Map<String,Object?>> carTeam(CarScreenInput i){
       'text':_join([carAway(here,LatLng(p.lat,p.lon)),carSeen(p.time,i.now)]),
       // No position, no « Naviguer » (lot 23, choice 4).
       if(p.lat.isFinite&&p.lon.isFinite)...{'lat':p.lat,'lon':p.lon},
+      ...carTeammateCard(p,i),
     },
   ];
+}
+
+/// Lot 24 (card « Android Auto, onglet Équipe : fiche d'un opérateur avec
+/// actions », choice 2): what the card of an operator shows besides his
+/// name: role, distance and direction, age of the position, battery when
+/// known, last message received from him.
+Map<String,Object?> carTeammateCard(SarcadePosition p,CarScreenInput i){
+  final here=i.here, battery=i.devices[p.deviceId]?['battery_pct'];
+  final last=carLastMessageFrom(p.deviceId,i);
+  return {
+    'role':carRole(p.deviceId,i),
+    'away':p.lat.isFinite&&p.lon.isFinite?carAway(here,LatLng(p.lat,p.lon)):'',
+    'seen':carSeen(p.time,i.now),
+    if(battery is num)'battery':S.t('car.battery',{'pct':battery.round()}),
+    if(last!=null)'last':_join([_hm(last.createdAt),_prioLabel(last.priority),_text(last)]),
+  };
+}
+
+/// « PCO », the teams he is a member of, his callsign; empty when nothing
+/// is known (the server keeps no other role of an operator).
+String carRole(String id,CarScreenInput i){
+  final teams=[for(final g in i.groups.values)if(g.kind=='team'&&!g.archived&&g.members.contains(id))g.name]..sort();
+  final callsign='${i.devices[id]?['callsign']??''}'.trim();
+  return _join([if(isPco(id))'PCO',...teams,if(callsign.isNotEmpty&&callsign!=id)callsign]);
+}
+
+/// Last message sent by [id] that this terminal sees, null when none.
+SarcadeMessage? carLastMessageFrom(String id,CarScreenInput i){
+  SarcadeMessage? last;
+  for(final m in i.messages){
+    if(m.eventId!=i.eventId||m.deleted||m.senderId!=id||!addressedTo(m.recipientIds,i.me,i.groups))continue;
+    if(last==null||m.createdAt.isAfter(last.createdAt))last=m;
+  }
+  return last;
 }
 
 /// Age of the position of an operator in the car (lot 23, card « Android
@@ -263,7 +298,9 @@ Map<String,String> carLabels()=>{
   for(final t in const ['messages','orders','points','team'])'empty.$t':S.t('car.empty.$t'),
   for(final k in const ['sos','sosTitle','sosAsk','sosSend','sosSent','sosOn','sosEnd','sosEnded','cancel','navigate','navigateCar','navigateCarShort','navigateFailed',
     'accept','refuse','arrived','read','reply','replyTo','listening','dictationFailed','retry','send','sent','stale','sections',
-    'gone','note','order','go','view','orderAlert'])k:S.t('car.$k'),
+    'gone','note','order','go','view','orderAlert',
+    // Lot 24: card of an operator.
+    'operator','write','writeTo','lastMessage','noPosition'])k:S.t('car.$k'),
 };
 
 /// Everything the car shows, as written to the plugin.
@@ -306,6 +343,8 @@ class CarAction {
   String get status=>'${data['status']??''}';
   String get conversation=>'${data['conversation']??''}';
   String get text=>'${data['text']??''}'.trim();
+  /// Operator a dictated message goes to (« Écrire », lot 24).
+  String get to=>'${data['to']??''}'.trim();
 }
 
 /// Actions read from the plugin (JSON list); damaged entries are skipped.
@@ -361,9 +400,19 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
       if(to==null)return;
       final answered=c.lastWhere((m)=>m.senderId==to,orElse:()=>c.last);
       await act.send(carReply(id:uuid.v4(),eventId:i.eventId,me:i.me,sender:to,messageId:answered.id,text:a.text,now:i.now));
+    case 'write':
+      // « Écrire » of the card of an operator (lot 24): a direct message.
+      if(a.to.isEmpty||a.to==i.me||a.text.isEmpty)return;
+      await act.send(carDirectMessage(id:uuid.v4(),eventId:i.eventId,me:i.me,to:a.to,text:a.text,now:i.now));
     case 'sos':
       if(!i.inDistress)await act.sos();
     case 'sosEnd':
       if(i.inDistress)await act.sosEnd();
   }
 }
+
+/// A message dictated in the car to one operator (« Écrire », lot 24):
+/// routine, direct, as a message written on the phone to that person.
+SarcadeMessage carDirectMessage({required String id,required String eventId,required String me,required String to,
+    required String text,required DateTime now,String priority='routine'})=>SarcadeMessage(
+  id:id,eventId:eventId,senderId:me,recipientIds:['user:$to'],priority:priority,body:text.trim(),createdAt:now.toUtc());

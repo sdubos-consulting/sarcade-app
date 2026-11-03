@@ -9,10 +9,12 @@ import androidx.car.app.OnDoneCallback
 import androidx.car.app.model.Action
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.ListTemplate
+import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.TabTemplate
 import androidx.car.app.testing.TestAppManager
 import androidx.car.app.testing.TestCarContext
+import androidx.car.app.testing.TestScreenManager
 import androidx.test.core.app.ApplicationProvider
 import org.json.JSONArray
 import org.json.JSONObject
@@ -67,6 +69,8 @@ class CarScreensTest {
             "accept" to "Accepter", "refuse" to "Refuser", "arrived" to "Je suis arrivé", "sent" to "Envoyé",
             "go" to "Y aller", "view" to "Voir", "orderAlert" to "Ordre de déplacement", "order" to "Ordre",
             "note" to "Consigne", "gone" to "Plus disponible", "stale" to "Données de {time}",
+            "operator" to "Opérateur", "write" to "Écrire", "writeTo" to "Message à {who}",
+            "lastMessage" to "Dernier message", "noPosition" to "Position inconnue",
         ).forEach { (k, v) -> labels.put(k, v) }
         val points = JSONArray()
             .put(JSONObject().put("id", "poi1").put("kind", "poi").put("icon", "gathering").put("color", 0xFF1E88E5.toInt())
@@ -195,9 +199,10 @@ class CarScreensTest {
     }
 
     @Test
-    fun teamTab_arrowAndRow_guideToTheLastPosition_noArrowWithoutPosition() {
+    fun teamTab_arrowGuidesToTheLastPosition_rowOpensTheCard_noArrowWithoutPosition() {
         // Lot 23 (card « Android Auto, onglet Équipe : naviguer vers un
-        // opérateur »).
+        // opérateur ») and lot 24 (card « fiche d'un opérateur avec
+        // actions », choice 1: the row opens the card, the arrow navigates).
         write(snapshot(team = JSONArray()
             .put(mate("TEL-2", "3 km au nord · vu il y a moins de 5 min"))
             .put(mate("TEL-3", "position de 20 h 05", lat = null))))
@@ -209,15 +214,48 @@ class CarScreensTest {
         click(go)
         assertEquals(CarContext.ACTION_NAVIGATE, car.startCarAppIntents.last().action)
         assertEquals("geo:48.830000,1.950000", car.startCarAppIntents.last().dataString)
-        // No position: no arrow, the row does nothing.
+        // No position: no arrow.
         assertTrue(r[1].actions.isEmpty())
-        assertTrue(r[1].onClickDelegate == null)
-        // The person moved: touching the row again, without a new drawing,
+        // The person moved: touching the arrow again, without a new drawing,
         // guides to the new position.
         write(snapshot(team = JSONArray().put(mate("TEL-2", "3 km au nord · vu il y a moins de 5 min", lat = 48.85))))
+        click(go)
+        assertEquals("geo:48.850000,1.950000", car.startCarAppIntents.last().dataString)
+        // Touching the row opens the card, it does not navigate.
+        val before = car.startCarAppIntents.size
         r[0].onClickDelegate!!.sendClick(object : OnDoneCallback {})
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals("geo:48.850000,1.950000", car.startCarAppIntents.last().dataString)
+        assertEquals(before, car.startCarAppIntents.size)
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is TeammateScreen)
+    }
+
+    @Test
+    fun teammateCard_nameRoleDistanceAgeBatteryLastMessage_goAndWrite() {
+        write(snapshot(team = JSONArray()
+            .put(mate("TEL-2", "3 km au nord · vu il y a moins de 5 min")
+                .put("role", "Équipe 1 · F4ABC").put("away", "3 km au nord").put("seen", "vu il y a moins de 5 min")
+                .put("battery", "Batterie 80 %").put("last", "20:05 · J'arrive"))
+            .put(mate("TEL-3", "position de 20 h 05", lat = null).put("seen", "position de 20 h 05"))))
+        val t = TeammateScreen(car, "TEL-2").onGetTemplate() as PaneTemplate
+        assertEquals("TEL-2", t.title.toString())
+        val r = t.pane.rows
+        assertEquals(listOf("Équipe 1 · F4ABC", "3 km au nord", "Dernier message"), r.map { it.title.toString() })
+        assertEquals("Batterie 80 %", r[0].texts[0].toString())
+        assertEquals("vu il y a moins de 5 min", r[1].texts[0].toString())
+        assertEquals("20:05 · J'arrive", r[2].texts[0].toString())
+        // Two buttons at most: « Écrire », « Y aller » (main one).
+        val actions = t.pane.actions
+        assertEquals(listOf("Écrire", "Y aller"), actions.map { it.title.toString() })
+        assertTrue(actions[1].flags and Action.FLAG_PRIMARY != 0)
+        click(actions[1])
+        assertEquals("geo:48.830000,1.950000", car.startCarAppIntents.last().dataString)
+        // « Écrire »: dictation screen, the message goes to the operator.
+        click(actions[0])
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is ReplyScreen)
+        // No position: « Position inconnue », no « Y aller ».
+        val n = TeammateScreen(car, "TEL-3").onGetTemplate() as PaneTemplate
+        assertEquals("Position inconnue", n.pane.rows[1].title.toString())
+        assertEquals(listOf("Écrire"), n.pane.actions.map { it.title.toString() })
     }
 
     @Test

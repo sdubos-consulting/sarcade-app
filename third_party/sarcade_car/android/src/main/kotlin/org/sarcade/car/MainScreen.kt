@@ -5,6 +5,7 @@ import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.CarColor
+import androidx.car.app.model.CarText
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.MessageTemplate
@@ -183,31 +184,23 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
     }
 
     /** Lot 23 (card « Android Auto, onglet Équipe : naviguer vers un
-     *  opérateur »): the itinerary arrow on the right, as in Points, and
-     *  the row itself, guide Maps or Waze to the last known position of
-     *  the operator, read when touched (the person moves: touching again
-     *  updates the destination; the screen is not drawn again for a move,
-     *  see [Snapshot.signature]). No position, no arrow. */
+     *  opérateur »): the itinerary arrow on the right, as in Points, guides
+     *  Maps or Waze to the last known position of the operator, read when
+     *  touched (the person moves: touching again updates the destination;
+     *  the screen is not drawn again for a move, see [Snapshot.signature]).
+     *  No position, no arrow.
+     *
+     *  Lot 24 (card « Android Auto, onglet Équipe : fiche d'un opérateur
+     *  avec actions », choice 1): touching the row opens the card of the
+     *  operator; only the arrow navigates directly. */
     private fun teammateRow(snap: Snapshot, t: JSONObject): Row {
+        val id = t.optString("id")
         val b = Row.Builder()
             .setTitle(t.optString("title"))
             .addText(t.optString("text"))
             .setImage(CarUi.tile(carContext, CarUi.operatorIcon(t.optString("icon")), t.optInt("color", DEFAULT_COLOR)))
-        if (!hasPosition(t)) return b.build()
-        val id = t.optString("id")
-        val go = {
-            val now = Snapshot(CarData.snapshot(carContext))
-            val last = now.item("team", id)?.takeIf { hasPosition(it) } ?: t
-            CarUi.navigate(carContext, now, last.optDouble("lat"), last.optDouble("lon"))
-        }
-        b.setOnClickListener { go() }
-        if (level >= TABS_LEVEL) {
-            b.addAction(
-                Action.Builder().setTitle(CarUi.navigateTitle(carContext, snap))
-                    .setIcon(CarUi.icon(carContext, R.drawable.sarcade_car_directions))
-                    .setFlags(Action.FLAG_PRIMARY).setOnClickListener { go() }.build()
-            )
-        }
+            .setOnClickListener { screenManager.push(TeammateScreen(carContext, id)) }
+        if (hasPosition(t) && level >= TABS_LEVEL) b.addAction(goToTeammate(carContext, snap, id, t))
         return b.build()
     }
 
@@ -226,6 +219,19 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
         const val TABS_LEVEL = 6
         /** Car API level from which a row shows 2 buttons (1 before). */
         const val TWO_ROW_ACTIONS_LEVEL = 8
+
+        /** « Naviguer » towards operator [id]: his last known position,
+         *  read when touched ([fallback]: the one drawn). */
+        fun goToTeammate(context: CarContext, snap: Snapshot, id: String, fallback: JSONObject, title: CarText? = null): Action {
+            val go = {
+                val now = Snapshot(CarData.snapshot(context))
+                val last = now.item("team", id)?.takeIf { hasPosition(it) } ?: fallback
+                CarUi.navigate(context, now, last.optDouble("lat"), last.optDouble("lon"))
+            }
+            return Action.Builder().setTitle(title ?: CarUi.navigateTitle(context, snap))
+                .setIcon(CarUi.icon(context, R.drawable.sarcade_car_directions))
+                .setFlags(Action.FLAG_PRIMARY).setOnClickListener { go() }.build()
+        }
 
         /** An operator with a known position (lot 23, choice 4). */
         fun hasPosition(t: JSONObject): Boolean =
