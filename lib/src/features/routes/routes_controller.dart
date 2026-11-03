@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
 import '../../services/sarcade_api.dart';
+import '../orders/move_orders.dart' show moveOrderFinished;
 import 'route_models.dart';
 
 /// Routes, waypoints, passages and road closures of the event: kept on the
@@ -175,8 +176,13 @@ class RoutesController extends ChangeNotifier {
     _save('move_order',{'id':_uuid.v4(),'target_id':targetId,'status':'sent',
       'destination':{'lat':destination.latitude,'lon':destination.longitude,'label':label},'note':note},isNew:true);
 
-  /// Answer of the operator (accepted, refused, arrived) or cancellation.
-  Future<void> setMoveOrderStatus(Map<String,dynamic> order,String status)=>_save('move_order',{...order,'status':status},isNew:false);
+  /// Answer of the operator (accepted, refused, arrived) or cancellation;
+  /// [moveOrderFinished]: « Terminé, disponible » of an arrived order (lot
+  /// 27), which stays arrived with `finished_at`. The server sets the status
+  /// of the operator from these changes (En route, Sur place, Disponible…).
+  Future<void> setMoveOrderStatus(Map<String,dynamic> order,String status)=>status==moveOrderFinished
+    ?_save('move_order',{...order,'status':'arrived','finished_at':_now()},isNew:false)
+    :_save('move_order',{...order,'status':status},isNew:false);
 
   /// « Retirer de la carte » (PCO or author): the order leaves every map;
   /// the logbook keeps it.

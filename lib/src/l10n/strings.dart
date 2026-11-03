@@ -86,6 +86,8 @@ const Texts _fr={
   'meshcore.banner.later':'Plus tard','mesh.state.unavailable':'module indisponible',
   // Lot 24, heure d'arrivée estimée d'un ordre (features/orders/move_order_eta.dart).
   'orders.eta.at':'arrivée estimée {time}','orders.eta.remaining':'encore {d}','orders.eta.label':'Arrivée {time}',
+  // Lot 27 · statut qui suit les ordres de déplacement (features/orders/move_orders.dart, car/car_screen.dart).
+  'orders.status.finish':'Terminé, disponible','orders.status.finished':'arrivé, terminé','car.finish':'Terminé, disponible',
   'traces.layer':'Toutes les traces','traces.aprs':'Traces APRS','traces.event':'Événement','traces.pinned':'Trace épinglée','traces.unpinned':'Trace retirée','traces.pin':'Épingler la trace','traces.unpin':'Retirer la trace',
   'locate.follow':'Suivi','locate.compass':'Boussole','locate.all':'Tous les opérateurs',
   'display.menu':'Fond et affichage','display.layers':'Affichage','layers.teams':'Équipes',
@@ -731,6 +733,8 @@ const Texts _en={
   'meshcore.banner.later':'Later','mesh.state.unavailable':'module unavailable',
   // Lot 24, estimated arrival of an order (features/orders/move_order_eta.dart).
   'orders.eta.at':'estimated arrival {time}','orders.eta.remaining':'{d} to go','orders.eta.label':'ETA {time}',
+  // Lot 27 · status following the move orders (features/orders/move_orders.dart, car/car_screen.dart).
+  'orders.status.finish':'Done, available','orders.status.finished':'arrived, done','car.finish':'Done, available',
   'traces.layer':'All traces','traces.aprs':'APRS traces','traces.event':'Event','traces.pinned':'Trace pinned','traces.unpinned':'Trace removed','traces.pin':'Pin the trace','traces.unpin':'Remove the trace',
   'locate.follow':'Follow','locate.compass':'Compass','locate.all':'All operators',
   'display.menu':'Base map and display','display.layers':'Display','layers.teams':'Teams',

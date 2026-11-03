@@ -4,7 +4,8 @@
 //   shown in the car, his status in the card of an operator;
 // - card « Android Auto : arrivée détectée près du point d'un ordre »:
 //   « near » within 100 m of the point of an accepted order, « Oui » sets
-//   the order to « Arrivé » and the status to « Sur place ».
+//   the order to « Arrivé » (the status « Sur place » follows on the
+//   server since lot 27).
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -110,13 +111,13 @@ void main(){
       expect(a,isNot(b));
     });
 
-    test('« Oui »: the order arrived, my status « Sur place »',() async {
+    test('« Oui »: the order arrived; « Sur place » set by the server (lot 27)',() async {
       final sent=Sent(), f=field(sent), done=<String>[];
       final act=CarScreenActions(order:(o,s) async=>done.add('${o.id} $s'),ack:(a,m) async {},send:(m) async {},sos:() async {},sosEnd:() async {});
       await applyCarAction(const CarAction('arrival',{'id':'o1'}),input(f:f,here:point,orders:[order('o1','accepted')]),act);
       await applyCarAction(const CarAction('arrival',{'id':'o2'}),input(f:f,here:point,orders:[order('o2','sent')]),act);
       expect(done,['o1 arrived']);
-      expect(jsonDecode(sent.requests.single.body)['status'],'sur_place');
+      expect(sent.requests,isEmpty,reason:'one rule for the phone, the PC and the car: on the server');
     });
 
     test('texts of the question',(){

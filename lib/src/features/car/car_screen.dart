@@ -202,6 +202,8 @@ Map<String,Object?> _order(MoveOrder o,CarScreenInput i)=>{
   if(carNearArrival(o,i))'near':true,
   // Lot 24: key of its weather (« weather » of the data).
   'wkey':carWeatherKey(o.destination.latitude,o.destination.longitude),
+  // Lot 27: « Terminé, disponible » touched (no more button in its card).
+  if(o.finished)'finished':true,
 };
 
 /// Distance to the point of an accepted order under which the car asks
@@ -336,6 +338,8 @@ Map<String,String> carLabels()=>{
     'point','onSite','writePco','pcoTitle',
     // Lot 24: status in one touch, arrival detected.
     'myStatus','noStatus','statusSent','statusCurrent','arrivalTitle','arrivalAsk','yes','later',
+    // Lot 27: « Terminé, disponible » in the card of an arrived order.
+    'finish',
     // Lot 24: quick messages.
     'quick',
     // Lot 24: « Signal entendu ici » (SATER).
@@ -385,7 +389,7 @@ String carUrgentKey(Map<String,Object?> snapshot){
   return jsonEncode({
     'distress':snapshot['distress'],'lang':snapshot['lang'],'labels':snapshot['labels'],
     'messages':[for(final m in list('messages'))if(m is Map)[m['id'],m['body'],m['unread'],m['prio']]],
-    'orders':[for(final o in list('orders'))if(o is Map)[o['id'],o['status'],o['title'],o['note'],o['near']]],
+    'orders':[for(final o in list('orders'))if(o is Map)[o['id'],o['status'],o['title'],o['note'],o['near'],o['finished']]],
     'me':snapshot['me'],'say':snapshot['say'],
   });
 }
@@ -431,10 +435,12 @@ class CarScreenActions {
   const CarScreenActions({required this.order,required this.ack,required this.send,required this.sos,required this.sosEnd});
 }
 
-/// Answers allowed from the car, as on the phone banner.
+/// Answers allowed from the car, as on the phone banner; « Terminé,
+/// disponible » ([moveOrderFinished], lot 27) on an arrived order.
 bool carOrderAnswerAllowed(String from,String to)=>switch(to){
   'accepted'||'refused'=>from=='sent',
   'arrived'=>from=='accepted',
+  moveOrderFinished=>from=='arrived',
   _=>false,
 };
 
@@ -444,7 +450,7 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
   switch(a.type){
     case 'order':
       final o=carOrders(i).where((x)=>x.id==a.id).firstOrNull;
-      if(o!=null&&carOrderAnswerAllowed(o.status,a.status))await act.order(o,a.status);
+      if(o!=null&&carOrderAnswerAllowed(o.status,a.status)&&!(a.status==moveOrderFinished&&o.finished))await act.order(o,a.status);
     case 'read':
       final c=carConversations(i)[a.conversation];
       if(c==null)return;
@@ -478,11 +484,12 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
       if(st==null||carStatuses.contains(st))await i.field?.setStatus(st);
     case 'arrival':
       // « Oui » to « Vous êtes arrivé à … » (lot 24, card « arrivée
-      // détectée », choice 3): the order arrived, my status « Sur place ».
+      // détectée », choice 3): the order arrived; my status « Sur place »
+      // is set by the server from the order since lot 27 (same rule as the
+      // phone and the PC).
       final o=carOrders(i).where((x)=>x.id==a.id).firstOrNull;
       if(o==null||!carOrderAnswerAllowed(o.status,'arrived'))return;
       await act.order(o,'arrived');
-      await i.field?.setStatus('sur_place');
     case 'quick':
       // Quick message in one touch (lot 24): in a conversation, to whom
       // « Répondre » answers; in the card of an order, to the PCO.

@@ -616,12 +616,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   // --- Move orders (PCO → operator, 29 Oct 2026) ------------------------------
 
   List<MoveOrder> get _moveOrders=>_routes.moveOrders.map(MoveOrder.new).toList();
-  /// The open order addressed to this device, the most recent first.
-  MoveOrder? get _myOrder{
-    final mine=_moveOrders.where((o)=>o.targetId==widget.deviceId&&o.open).toList()
-      ..sort((a,b)=>'${b.json['updated_at']}'.compareTo('${a.json['updated_at']}'));
-    return mine.isEmpty?null:mine.first;
-  }
+  /// The open order addressed to this device, else the arrived one to finish (lot 27).
+  MoveOrder? get _myOrder=>myMoveOrder(_moveOrders,widget.deviceId,DateTime.now());
   LatLng? _positionOf(String id){final p=_positions[id];return p==null?null:LatLng(p.lat,p.lon);}
 
   Future<void> _sendOperatorHere(LatLng point) async {
@@ -644,6 +640,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // « Ouvrir dans… » Waze, Google Maps… (31 Oct 2026).
       ListTile(key:const ValueKey('order-open-in'),leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),
         onTap:(){Navigator.pop(c);unawaited(_openElsewhere(o.destination,o.label));}),
+      // Lot 27: « Terminé, disponible » of my arrived order.
+      if(o.awaitingFinish&&o.targetId==widget.deviceId)ListTile(key:const ValueKey('order-finish'),leading:const Icon(Icons.task_alt),
+        title:Text(S.t('orders.status.finish')),onTap:(){Navigator.pop(c);unawaited(_routes.setMoveOrderStatus(o.json,moveOrderFinished));}),
       if(o.open&&(isPco(widget.deviceId)||o.createdBy==widget.deviceId))ListTile(leading:const Icon(Icons.cancel_outlined),
         title:Text(S.t('order.cancel')),onTap:(){Navigator.pop(c);unawaited(_routes.setMoveOrderStatus(o.json,'cancelled'));}),
       if(canRemoveMoveOrder(o,widget.deviceId,pco:isPco(widget.deviceId)))ListTile(key:const ValueKey('order-remove'),leading:const Icon(Icons.wrong_location_outlined),
@@ -665,7 +664,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       onAccept:() async {await _routes.setMoveOrderStatus(o.json,'accepted');if(mounted)await _navigateTo(o.destination,o.label);},
       onRefuse:()=>unawaited(_routes.setMoveOrderStatus(o.json,'refused')),
       onNavigate:()=>unawaited(_navigateTo(o.destination,o.label)),
-      onArrived:()=>unawaited(_routes.setMoveOrderStatus(o.json,'arrived'))));
+      onArrived:()=>unawaited(_routes.setMoveOrderStatus(o.json,'arrived')),
+      onFinished:()=>unawaited(_routes.setMoveOrderStatus(o.json,moveOrderFinished))));
   }
 
   /// « Itinéraire jusqu'ici » in one gesture: a route from my position to
@@ -817,7 +817,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       messages:widget.store.messages().map(SarcadeMessage.fromJson).toList(),
       groups:{for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)},
       acks:widget.store.acks().map(SarcadeAck.fromJson).toList(),orders:_moveOrders,pois:_pois.values.toList(),
-      references:_adrasec?[for(final r in _references.values)if(r.isHighPoint||r.isRelay)(id:r.id,name:r.name,relay:r.isRelay,lat:r.lat,lon:r.lon,mhz:r.txMhz,altM:r.altM)]:const [],positions:_positions.values.toList(),devices:_devices,
+      references:_adrasec?[for(final r in _references.values)if(r.isHighPoint||r.isRelay)(id:r.id,name:r.name,relay:r.isRelay,lat:r.lat,lon:r.lon,mhz:r.txMhz,altM:r.altM)]:const [],positions:_positions.values.toList(),devices:devicesWithStatuses(_devices,_statuses),
       here:_me??_positionOf(widget.deviceId),inDistress:_inDistress,now:DateTime.now(),field:_carField,settings:_ops.settings.raw),
     actions:CarScreenActions(
       order:(o,s)=>_routes.setMoveOrderStatus(o.json,s),

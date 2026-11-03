@@ -310,6 +310,16 @@ internal class OrderScreen(carContext: CarContext, private val id: String) : Liv
     class Card(val body: List<Action>, val strip: List<Action>)
 
     companion object {
+        /** « Terminé, disponible » (lot 27): the order stays arrived, the
+         *  server sets « Disponible ». */
+        fun finish(context: CarContext, s: Snapshot, o: JSONObject): Action =
+            Action.Builder().setTitle(s.label("finish")).setFlags(Action.FLAG_PRIMARY)
+                .setIcon(CarUi.icon(context, R.drawable.sarcade_car_check))
+                .setOnClickListener {
+                    CarUi.post(context, "order") { put("id", o.optString("id")); put("status", "finished") }
+                    CarUi.toast(context, s.label("sent"))
+                }.build()
+
         fun orderCard(context: CarContext, s: Snapshot, o: JSONObject, writePco: () -> Unit): Card {
             fun write(title: String) = Action.Builder().setTitle(s.label(title))
                 .setIcon(CarUi.icon(context, R.drawable.sarcade_car_mic))
@@ -324,6 +334,11 @@ internal class OrderScreen(carContext: CarContext, private val id: String) : Liv
                 "sent" -> Card(answers, listOf(write("writePco")))
                 // Écrire, Y aller; « Je suis arrivé » at the top.
                 "accepted" -> Card(listOf(write("write"), go), answers.take(1))
+                // Lot 27: arrived, mission not finished: Écrire au PCO,
+                // « Terminé, disponible » (main button, in place of Y aller:
+                // the driver is there; 2 buttons at most in a card).
+                "arrived" -> if (o.optBoolean("finished")) Card(listOf(write("writePco"), go), emptyList())
+                    else Card(listOf(write("writePco"), finish(context, s, o)), emptyList())
                 else -> Card(listOf(write("writePco"), go), emptyList())
             }
         }
@@ -435,7 +450,8 @@ internal class QuickScreen(
 /**
  * Status in one touch (lot 24, card « Android Auto : statut en un appui »,
  * choices 1 to 3): grid of 4 squares En route, Sur place, Disponible,
- * Pause; one touch sends it to the PCO; it stays until the next one.
+ * Pause, and « Aucun statut » (lot 27); one touch sends it to the PCO; it
+ * stays until the next one.
  */
 internal class StatusScreen(carContext: CarContext) : LiveScreen(carContext) {
     override fun watched(s: Snapshot): String = "${s.lang}|${s.myStatus}"
@@ -455,6 +471,17 @@ internal class StatusScreen(carContext: CarContext) : LiveScreen(carContext) {
             if (status == s.myStatus) b.setText(s.label("statusCurrent"))
             items.addItem(b.build())
         }
+        // Lot 27 (card « Disponible » par défaut, choice 3): « Aucun statut »
+        // stays a choice, for who does not want to show one.
+        val none = GridItem.Builder().setTitle(s.label("noStatus"))
+            .setImage(CarUi.tile(carContext, CarUi.statusIcon(null), CarUi.statusColor(null)), GridItem.IMAGE_TYPE_LARGE)
+            .setOnClickListener {
+                CarUi.post(carContext, "status") { put("status", "") }
+                CarUi.toast(carContext, s.label("statusSent"))
+                screenManager.pop()
+            }
+        if (s.myStatus == null) none.setText(s.label("statusCurrent"))
+        items.addItem(none.build())
         return GridTemplate.Builder().setSingleList(items.build())
             .setTitle(s.label("myStatus"))
             .setHeaderAction(Action.BACK)
