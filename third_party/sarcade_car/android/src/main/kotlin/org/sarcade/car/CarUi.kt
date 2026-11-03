@@ -203,41 +203,44 @@ internal object CarUi {
 
     /** Lot 20 (card « Android Auto, onglet Points : boutons ronds gris
      *  vides, SOS en disque blanc… », choice 2): where the SOS is.
-     *  - false (choice of the owner, tried first): round button of the
-     *    lists, the SOS icon alone tinted red, on a neutral background;
-     *  - true (fallback, if Android Auto still paints the icon): no round
-     *    button, the SOS in the action strip at the top (red icon and the
-     *    word « SOS »); the car then shows one section at a time (button
-     *    « Rubriques » of the strip) instead of the tabs, the strip not
-     *    existing in the tabs of the Car App Library 1.7.
+     *  - false: tabs Messages, Ordres, Points, Équipe, SOS in the round
+     *    button of the lists;
+     *  - true: no round button, the SOS in the action strip at the top; the
+     *    car then shows one section at a time (button « Rubriques »).
      *
-     *  Lot 23 (card « Android Auto : SOS dans la barre du haut… », choice
-     *  1, owner's photo of 2 Nov 2026, 20 h 17: « SOS » white on the blue
-     *  of Android Auto): the fallback is in force. No round button is left
-     *  in the car screens. */
-    const val SOS_IN_STRIP = true
+     *  Lot 23 tried true. Lot 24 (card « Android Auto : retour aux onglets,
+     *  SOS en bouton rond », decision of the owner, 3 Nov 2026, 7 h 35): red
+     *  is impossible in the strip as in the round button, the tabs had been
+     *  removed for nothing: back to false, « SOS » white on the colour of
+     *  Android Auto. */
+    const val SOS_IN_STRIP = false
 
-    /** Neutral background of the round SOS button: white by day, dark grey
-     *  by night. The Car App Library refuses a round button without a
-     *  background colour (IllegalArgumentException, found by the tests of
-     *  the car screens); a red background would hide the red icon. */
-    val SOS_BACKGROUND: CarColor = CarColor.createCustom(Color.WHITE, 0xFF303030.toInt())
+    /** Background of the round SOS button: red asked, Android Auto paints
+     *  its own colour over it (lot 17, photo of 2 Nov 2026); the Car App
+     *  Library refuses a round button without a background colour. */
+    val SOS_BACKGROUND: CarColor = CarColor.RED
 
-    /** Red SOS action (choice 3 of lot 17), always reachable; [floating]:
-     *  the round button of the lists (icon only: a round button cannot
-     *  carry a title), otherwise the action strip (« SOS » written; the
-     *  strip accepts no colour in its titles, the icon stays red).
+    /** White of the « SOS » letters of the round button (lot 24). */
+    val SOS_WHITE: CarColor = CarColor.createCustom(Color.WHITE, Color.WHITE)
+
+    /** SOS action (choice 3 of lot 17), always reachable; [floating]: the
+     *  round button of the lists, the « SOS » letters (Material icon) in
+     *  white, as Android Auto shows them on its colour (a round button
+     *  cannot carry a title); otherwise the action strip (« SOS » written,
+     *  red icon).
      *
      *  History: lot 17 asked a red background, which Android Auto replaced
      *  by its blue; lot 18 drew « SOS » in red on a white disc in the
-     *  picture, which Android Auto painted in one colour (white disc, photo
-     *  of 2 Nov 2026). Lot 20: the icon of the library, tinted CarColor.RED,
-     *  on a neutral background. */
+     *  picture, which Android Auto painted in one colour; lot 20 tinted the
+     *  icon red on a neutral background; lot 23 moved the SOS to the strip;
+     *  lot 24: round button again, white on the colour of Android Auto. */
     fun sosAction(context: CarContext, snap: Snapshot, floating: Boolean, onClick: () -> Unit): Action {
-        val b = Action.Builder()
-            .setIcon(icon(context, R.drawable.sarcade_car_sos, CarColor.RED))
-            .setOnClickListener { onClick() }
-        if (floating) b.setBackgroundColor(SOS_BACKGROUND) else b.setTitle(snap.label("sos"))
+        val b = Action.Builder().setOnClickListener { onClick() }
+        if (floating) {
+            b.setIcon(icon(context, R.drawable.sarcade_car_sos, SOS_WHITE)).setBackgroundColor(SOS_BACKGROUND)
+        } else {
+            b.setIcon(icon(context, R.drawable.sarcade_car_sos, CarColor.RED)).setTitle(snap.label("sos"))
+        }
         return b.build()
     }
 

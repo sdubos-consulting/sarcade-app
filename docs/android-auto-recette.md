@@ -1,4 +1,4 @@
-# Fiche de recette Android Auto (lots 20 et 23)
+# Fiche de recette Android Auto (lots 20, 23 et 24)
 
 À dérouler dans la voiture, téléphone Android branché (ou en sans-fil), avec un second terminal qui joue le PCO (iPhone, PC ou navigateur). Compter 20 minutes. Noter pour chaque étape : conforme, non conforme (photo de l'écran de la voiture), ou non testable.
 
@@ -49,7 +49,7 @@ Ce que la CI vérifie déjà sans voiture : les données envoyées à la voiture
 
 ## 4. Lot 23 : SOS en haut, Équipe, naviguer vers un opérateur
 
-Depuis le lot 23, la voiture montre **une rubrique à la fois** : bouton « Rubriques » (trois traits) et « SOS » en haut à droite, plus d'onglets ni de bouton rond.
+Au lot 23, la voiture montrait **une rubrique à la fois** : bouton « Rubriques » (trois traits) et « SOS » en haut à droite, plus d'onglets ni de bouton rond. **Le lot 24 revient aux onglets** (section 5) : les étapes 4.1, 4.2 et 4.11 sont remplacées par 5.1 à 5.4 ; les autres se font dans l'onglet Équipe.
 
 | # | Action | Résultat attendu |
 |---|--------|------------------|
@@ -65,7 +65,19 @@ Depuis le lot 23, la voiture montre **une rubrique à la fois** : bouton « Rubr
 | 4.10 | Opérateur dont la position a plus de 15 minutes | La ligne indique « position de 20 h 05 » (heure de sa dernière position) |
 | 4.11 | Changer 6 fois de suite de rubrique (Rubriques › Messages, Ordres, Points, Équipe…) | Aucun message d'erreur d'Android Auto ; noter si un écran « trop d'étapes » apparaît |
 
-## 5. Après la recette
+## 5. Lot 24
+
+### Retour aux onglets, SOS en bouton rond
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 5.1 | Ouvrir SARCADE dans la voiture | Onglets Messages, Ordres, Points, Équipe en haut ; plus de bouton « Rubriques » |
+| 5.2 | Regarder en bas à droite, dans chaque onglet | Un bouton rond avec « SOS » écrit en blanc (sur la couleur choisie par Android Auto) |
+| 5.3 | Toucher le bouton rond « SOS », puis Annuler | L'écran de confirmation de détresse s'ouvre, Annuler revient sans rien envoyer |
+| 5.4 | Changer 6 fois de suite d'onglet | Aucun message d'erreur d'Android Auto, pas d'écran « trop d'étapes » |
+| 5.5 | Onglet Équipe | Flèche d'itinéraire à droite de chaque opérateur ; seulement les opérateurs vus depuis moins de 24 h (comme 4.3 à 4.5) |
+
+## 6. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.
-- Pour le SOS (4.1) : le repli du lot 20 est en place (`CarUi.SOS_IN_STRIP = true`) ; revenir aux onglets avec bouton rond = remettre `false` (une ligne).
+- Pour le SOS (5.2) : depuis le lot 24, `CarUi.SOS_IN_STRIP = false` (onglets, bouton rond) ; revenir à une rubrique à la fois avec le SOS en haut = remettre `true` (une ligne).
