@@ -36,7 +36,8 @@ class LinkWeatherPill extends StatelessWidget {
     this.linkWord,this.weatherIcon,this.weatherText,this.alert,this.compact=false,this.mesh});
 
   /// 'off' (lot 19): disconnected on purpose, grey and not red.
-  static Color meshColor(String tone,ColorScheme s)=>switch(tone){'ok'=>Colors.green.shade600,'wait'=>Colors.orange.shade700,'off'=>Colors.grey.shade600,_=>s.error};
+  /// 'battery' (lot 25): the module linked has a low battery, orange.
+  static Color meshColor(String tone,ColorScheme s)=>switch(tone){'ok'=>Colors.green.shade600,'wait'||'battery'=>Colors.orange.shade700,'off'=>Colors.grey.shade600,_=>s.error};
 
   @override Widget build(BuildContext context){
     final s=Theme.of(context).colorScheme;
@@ -52,7 +53,7 @@ class LinkWeatherPill extends StatelessWidget {
           constraints:const BoxConstraints(minWidth:pillTouch,minHeight:pillTouch),
           child:Padding(padding:EdgeInsets.only(left:14,right:weather?6:14),child:Row(mainAxisSize:MainAxisSize.min,mainAxisAlignment:MainAxisAlignment.center,children:[
             Container(width:10,height:10,decoration:BoxDecoration(color:dot,shape:BoxShape.circle)),
-            if(mesh!=null)...[const SizedBox(width:6),Icon(Icons.settings_input_antenna,key:const ValueKey('pill-mesh'),size:15,color:meshColor(mesh!,s))],
+            if(mesh!=null)...[const SizedBox(width:6),Icon(mesh=='battery'?Icons.battery_alert:Icons.settings_input_antenna,key:const ValueKey('pill-mesh'),size:15,color:meshColor(mesh!,s))],
             if(linkWord!=null)...[const SizedBox(width:6),Text(linkWord!,style:TextStyle(fontSize:13,fontWeight:FontWeight.w600,color:s.onSurface))],
           ]))))),
         if(weather)InkWell(customBorder:shape,onTap:onWeather,child:SizedBox(height:pillTouch,child:Padding(padding:const EdgeInsets.only(left:6,right:14),
