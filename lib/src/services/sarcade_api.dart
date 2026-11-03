@@ -435,6 +435,14 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('devices',r.statusCode);
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
   }
+  /// Status of an operator (lot 24): body `{status, at, actor_id}`; answer
+  /// `{device_id, operator_status, operator_status_at, changed}`.
+  Future<Map<String,dynamic>> putOperatorStatus(String eventId,String deviceId,Map<String,dynamic> body) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/${Uri.encodeComponent(eventId)}/devices/${Uri.encodeComponent(deviceId)}/status'),
+      headers:_json,body:jsonEncode(body));
+    if(r.statusCode!=200) throw SarcadeHttpException('operator_status',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   Future<List<Map<String,dynamic>>> moveOrders(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/move-orders'));
     if(r.statusCode!=200) throw SarcadeHttpException('move_orders',r.statusCode);

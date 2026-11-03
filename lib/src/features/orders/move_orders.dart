@@ -5,6 +5,7 @@ import '../../l10n/strings.dart';
 import '../map/drawing/geometry.dart' show distanceM;
 import '../navigation/point_label.dart';
 import '../../ui/text_fields_dialog.dart';
+import 'move_order_eta.dart';
 
 /// Move order of the PCO to an operator (decision of the porteur of
 /// 29 October 2026): go to a point of the map. The server checks that only
@@ -135,7 +136,8 @@ List<Widget> moveOrderList(BuildContext c,List<MoveOrder> orders,{required Value
   Widget tile(MoveOrder o)=>ListTile(dense:true,visualDensity:VisualDensity.compact,key:ValueKey('order-row-${o.id}'),
     leading:Icon(Icons.flag,color:moveOrderColor(o.status).withValues(alpha:moveOrderOnMap(o,at)?1:0.4)),
     title:Text('${o.targetId} · « ${o.label} »',maxLines:1,overflow:TextOverflow.ellipsis),
-    subtitle:Text(S.t('order.status.${o.status}')),onTap:()=>onOpen(o));
+    // Estimated arrival sent by the car (lot 24, move_order_eta.dart).
+    subtitle:Text(moveOrderSubtitle(o)),onTap:()=>onOpen(o));
   final t=Theme.of(c).textTheme.labelLarge;
   return [
     // Subtitle of the « Ordres » line (revue n° 30).
