@@ -57,7 +57,7 @@ class _AdminGroupsPageState extends State<AdminGroupsPage> {
     if(wide){setState(()=>_selected=id);return;}
     unawaited(Navigator.of(context).push(MaterialPageRoute(builder:(_)=>AdminScaffold(title:S.t('admin.groups'),
       body:GroupPanel(api:widget.api,groupId:id,groups:_groups??const [],catalogue:_catalogue,rights:widget.rights,
-        onChanged:_load,onOpen:(other)=>_open(other,false),onDeleted:(){Navigator.of(context).maybePop();unawaited(_load());}))))));
+        onChanged:_load,onOpen:(other)=>_open(other,false),onDeleted:(){Navigator.of(context).maybePop();unawaited(_load());})))));
   }
 
   Widget _tree(bool wide){
