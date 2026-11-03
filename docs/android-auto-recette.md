@@ -142,6 +142,17 @@ Au lot 23, la voiture montrait **une rubrique à la fois** : bouton « Rubriques
 | 5.39 | S'arrêter quelques minutes (feu, bouchon) | L'heure estimée recule ; mise à jour dès qu'elle bouge de plus de 3 minutes |
 | 5.40 | Signaler l'arrivée (ou le PCO annule l'ordre) | Plus d'heure estimée chez le PCO |
 
+### Télécommandes depuis la voiture
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 5.41 | Une télécommande déclarée dans l'application (Outils › Télécommandes), onglet Points | Dernière ligne « Télécommandes » (toujours visible, même avec beaucoup de points) ; aucune ligne sans télécommande déclarée |
+| 5.42 | Toucher « Télécommandes » (première fois) | Le téléphone demande l'autorisation « vitesse du véhicule » : l'accepter |
+| 5.43 | Choisir une télécommande | Une ligne par relais, son état (« Allumé », « Éteint », « En attente »…) ; à droite, Éteindre (croix) et Allumer (bouton marche) |
+| 5.44 | Toucher Allumer | Confirmation « Allumer Relais 1 de <télécommande> ? » avec Annuler / Allumer |
+| 5.45 | Voiture en marche, confirmer | « À l'arrêt seulement », rien n'est envoyé |
+| 5.46 | Voiture à l'arrêt, confirmer (module MeshCore connecté) | « Commande envoyée » ; quelques secondes plus tard, la réponse du boîtier est lue à voix haute (« … allumé · confirmé. Réponse du boîtier : … ») ; sans réponse en 30 s : « pas de confirmation » lu |
+
 ## 6. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.

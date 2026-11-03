@@ -37,7 +37,9 @@ class SarcadeCarAppService : CarAppService() {
 /** One car screen: tabs, then the detail screens pushed over them. */
 internal class SarcadeSession : Session() {
     private var speaker: Speaker? = null
-    private val orders: () -> Unit = { announceOrders(); askArrivals() }
+    private val orders: () -> Unit = { announceOrders(); askArrivals(); sayNew() }
+    /** Last text of the application read aloud (lot 24). */
+    private var said: String? = null
     /** Dictation of the spoken answer to the arrival question (lot 24). */
     private var listening: Dictation? = null
 
@@ -45,6 +47,8 @@ internal class SarcadeSession : Session() {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onCreate(owner: LifecycleOwner) {
                 CarData.sessionChanged(1)
+                // A text already there at the opening is not read again.
+                said = Snapshot(CarData.snapshot(carContext)).say?.optString("id") ?: ""
                 CarData.addListener(orders)
             }
 
@@ -52,6 +56,7 @@ internal class SarcadeSession : Session() {
                 CarData.removeListener(orders)
                 listening?.cancel()
                 listening = null
+                CarMotion.stop(carContext)
                 CarData.sessionChanged(-1)
                 speaker?.shutdown()
                 speaker = null
@@ -127,6 +132,17 @@ internal class SarcadeSession : Session() {
                 listening = if (d.start()) d else null
             }
         }
+    }
+
+    /** Texts the application asks to read aloud (lot 24: answer of the
+     *  box of a remote), each once. */
+    private fun sayNew() {
+        val snap = Snapshot(CarData.snapshot(carContext))
+        val say = snap.say ?: return
+        val id = say.optString("id")
+        if (id.isEmpty() || id == said) return
+        said = id
+        runCatching { speaker().say(say.optString("text"), snap.lang) }
     }
 
     private fun orderOf(intent: Intent): String? =

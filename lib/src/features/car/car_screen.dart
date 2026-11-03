@@ -34,6 +34,7 @@ import '../orders/move_orders.dart';
 import '../poi/poi_icons.dart' show poiIconLabel;
 import '../poi/poi_sheet.dart' show poiColor;
 import 'car_field.dart';
+import 'car_remotes.dart';
 import 'car_messaging.dart' show carReply;
 
 /// Messages of a conversation kept for the car (text and reading aloud).
@@ -332,7 +333,9 @@ Map<String,String> carLabels()=>{
     // Lot 24: quick messages.
     'quick',
     // Lot 24: « Signal entendu ici » (SATER).
-    'heard','heardHelp','heardSent','heardCancelled'])k:S.t('car.$k'),
+    'heard','heardHelp','heardSent','heardCancelled',
+    // Lot 24: remotes of relays.
+    'remotes','remoteOn','remoteOff','remoteParked','remoteSent','remoteTitle'])k:S.t('car.$k'),
   for(final st in carStatuses)'status.$st':S.t('car.status.$st'),
 };
 
@@ -354,6 +357,11 @@ Map<String,Object?> carSnapshot(CarScreenInput i){
     // Lot 24 (card « Signal entendu ici »): button shown during a SATER
     // event only; usable with a position.
     if(carSater(i.settings))'sater':{'ready':i.here!=null},
+    // Lot 24: remotes declared on this device, the last text to read aloud
+    // (answer of a box), within a minute.
+    if(i.field!=null)'remotes':carRemotes(i.field!.remotes.remotes),
+    if(i.field?.said!=null&&i.now.toUtc().difference(i.field!.said!.at)<const Duration(minutes:1))
+      'say':{'id':i.field!.said!.id,'text':i.field!.said!.text},
     // Lot 24: quick messages of the event.
     'quick':[for(final q in carQuickMessages(i.settings))
       {'text':q.text,'priority':q.priority,'prioLabel':_prioLabel(q.priority)}],
@@ -370,7 +378,7 @@ String carUrgentKey(Map<String,Object?> snapshot){
     'distress':snapshot['distress'],'lang':snapshot['lang'],'labels':snapshot['labels'],
     'messages':[for(final m in list('messages'))if(m is Map)[m['id'],m['body'],m['unread'],m['prio']]],
     'orders':[for(final o in list('orders'))if(o is Map)[o['id'],o['status'],o['title'],o['note'],o['near']]],
-    'me':snapshot['me'],
+    'me':snapshot['me'],'say':snapshot['say'],
   });
 }
 
@@ -496,6 +504,12 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
       // « Y aller » towards the point of an order (lot 24, card « heure
       // d'arrivée estimée »): its ETA is followed and sent to the PCO.
       if(carOrders(i).any((o)=>o.id==a.id))i.field?.followEta(a.id);
+    case 'remote':
+      // Remote of relays (lot 24): confirmed in the car (and stopped when
+      // Android Auto tells the speed).
+      final relay=a.data['relay'], on=a.data['on'];
+      if(relay is! num||on is! bool)return;
+      await i.field?.remotes.command(a.id,relay.toInt(),on,now:i.now);
     case 'sos':
       if(!i.inDistress)await act.sos();
     case 'sosEnd':
@@ -568,6 +582,8 @@ bool carSater(Map<String,dynamic> settings)=>settings['sater']==true;
 Future<void> carFieldTick(CarScreenInput i) async {
   final f=i.field;
   if(f==null)return;
+  // Lot 24: answers of the boxes of the remotes, read aloud.
+  f.remotes.check();
   final id=f.etaOrder;
   final o=id==null?null:i.orders.where((x)=>x.id==id).firstOrNull;
   // Order gone: stop; orders not read yet: wait.

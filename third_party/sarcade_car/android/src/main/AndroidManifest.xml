@@ -6,6 +6,10 @@
            Points, Équipe, SOS), « points of interest » category of the Car
            App Library, <uses name="template"/>;
          - lot 18 (1 Nov 2026): colours of the car (androidx.car.app.theme). -->
+    <!-- Lot 24 (card « Android Auto : télécommandes de relais depuis la
+         voiture », choice 2): speed of the vehicle given by Android Auto,
+         remotes only while stopped when it is known. -->
+    <uses-permission android:name="com.google.android.gms.permission.CAR_SPEED" />
     <application>
         <meta-data
             android:name="com.google.android.gms.car.application"

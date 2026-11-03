@@ -8,7 +8,8 @@
 ///   (SATER) »): listening point, map_feature « listening » through /sync,
 ///   cancelled within 10 s;
 /// - estimated time of arrival (card « Android Auto : heure d'arrivée
-///   estimée envoyée au PCO »): PUT /events/{id}/move-orders/{order}/eta.
+///   estimée envoyée au PCO »): PUT /events/{id}/move-orders/{order}/eta;
+/// - texts read aloud by the car (answer of a remote, lot 24).
 ///
 /// The phone and PC side (status shown to the PCO…) is not here: this file
 /// only sends. Pure Dart; HTTP client of the application (Cloudflare Access),
@@ -21,6 +22,8 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../map/drawing/geometry.dart' show distanceM;
+import '../remotes/remote.dart' show Remotes;
+import 'car_remotes.dart';
 
 import '../../access/access_manager.dart' show AccessHttpClient;
 
@@ -46,10 +49,26 @@ class CarField {
   String? status;
   DateTime? statusAt;
 
-  /// [client]: the Cloudflare Access client of the application by default.
+  /// Remotes of relays used from the car (lot 24).
+  late final CarRemoteWatch remotes;
+
+  /// [client]: the Cloudflare Access client of the application by default;
+  /// [remotes]: those declared on this device.
   CarField({required this.baseUrl,required this.eventId,required this.me,required this.queue,
-      http.Client Function()? client,DateTime Function()? clock})
-    : _newClient=client??AccessHttpClient.new,clock=clock??DateTime.now;
+      http.Client Function()? client,DateTime Function()? clock,Remotes? remotes})
+    : _newClient=client??AccessHttpClient.new,clock=clock??DateTime.now{
+    this.remotes=CarRemoteWatch(remotes??Remotes.instance,say:say);
+  }
+
+  /// Last text to read aloud in the car, with an identifier new for each
+  /// one (the car reads each once).
+  ({String id,String text,DateTime at})? said;
+  int _said=0;
+
+  void say(String text){
+    final at=clock().toUtc();
+    said=(id:'${at.microsecondsSinceEpoch}-${_said++}',text:text,at:at);
+  }
 
   http.Client get client=>_client??=_newClient();
 
