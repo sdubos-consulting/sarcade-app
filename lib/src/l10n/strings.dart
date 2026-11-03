@@ -308,6 +308,10 @@ const Texts _fr={
   'car.go':'Y aller','car.view':'Voir','car.orderAlert':'Ordre de déplacement',
   // Android Auto, lot 23: age of the position of an operator (Équipe tab).
   'car.seenRecent':'vu il y a moins de 5 min','car.positionAt':'position de {h} h {m}',
+  // Lot 24 : Android Auto (sous-chantier car24), textes de la voiture.
+  // Lot 24 · fiche d'un opérateur (onglet Équipe)
+  'car.operator':'Opérateur','car.write':'Écrire','car.writeTo':'Message à {who}','car.lastMessage':'Dernier message',
+  'car.noPosition':'Position inconnue','car.battery':'Batterie {pct} %',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -794,6 +798,10 @@ const Texts _en={
   'car.go':'Go there','car.view':'View','car.orderAlert':'Move order',
   // Android Auto, lot 23: age of the position of an operator (Équipe tab).
   'car.seenRecent':'seen less than 5 min ago','car.positionAt':'position at {h}:{m}',
+  // Lot 24 : Android Auto (sous-chantier car24), textes de la voiture.
+  // Lot 24 · fiche d'un opérateur (onglet Équipe)
+  'car.operator':'Operator','car.write':'Write','car.writeTo':'Message to {who}','car.lastMessage':'Last message','car.noPosition':'Position unknown',
+  'car.battery':'Battery {pct} %',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',
