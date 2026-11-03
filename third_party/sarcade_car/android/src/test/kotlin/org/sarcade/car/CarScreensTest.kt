@@ -465,6 +465,57 @@ class CarScreensTest {
     }
 
     @Test
+    fun remotes_atTheBottomOfPoints_cardWithOnOff_confirmed_notWhileMoving() {
+        // Lot 24 (card « Android Auto : télécommandes de relais depuis la voiture »).
+        val json = snapshot()
+        json.getJSONObject("labels").put("remotes", "Télécommandes").put("remoteOn", "Allumer").put("remoteOff", "Éteindre")
+            .put("remoteParked", "À l’arrêt seulement").put("remoteSent", "Commande envoyée").put("remoteTitle", "Télécommande")
+            .put("cancel", "Annuler")
+        val relay = JSONObject().put("name", "Relais 1").put("state", "Éteint").put("detail", "Aucun état confirmé").put("on", false)
+            .put("ask.on", "Allumer Relais 1 de Maurepas ?").put("ask.off", "Éteindre Relais 1 de Maurepas ?")
+        json.put("remotes", JSONArray().put(JSONObject().put("id", "rc-1").put("title", "Maurepas").put("ready", true)
+            .put("text", "1 relais · MeshCore connecté").put("relays", JSONArray().put(relay))))
+        // Many points: « Télécommandes » stays the last row shown.
+        val points = json.getJSONArray("points")
+        for (k in 0 until 20) points.put(JSONObject().put("id", "p$k").put("title", "P$k").put("text", "1 km").put("lat", 48.8).put("lon", 1.9))
+        write(json)
+        val r = rows(tab(MainScreen.POINTS))
+        assertEquals("Télécommandes", r.last().title.toString())
+        assertTrue(r.size <= CarUi.listLimit(car))
+        val list = RemotesScreen(car).onGetTemplate() as ListTemplate
+        assertEquals(listOf("Maurepas"), rows(list).map { it.title.toString() })
+        val card = RemoteScreen(car, "rc-1").onGetTemplate() as ListTemplate
+        val row = rows(card).single()
+        assertEquals("Relais 1", row.title.toString())
+        assertEquals(listOf("Éteindre", "Allumer"), row.actions.map { it.title.toString() })
+        row.actions.forEach { assertNotNull(it.icon) }
+        click(row.actions[1])
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is RemoteConfirmScreen)
+        // Confirmation: the question, Annuler and Allumer.
+        val ask = RemoteConfirmScreen(car, "rc-1", 0, true, "Allumer Relais 1 de Maurepas ?").onGetTemplate() as MessageTemplate
+        assertEquals("Allumer Relais 1 de Maurepas ?", ask.message.toString())
+        assertEquals(listOf("Annuler", "Allumer"), ask.actions.map { it.title.toString() })
+        CarMotion.moving = true
+        click(ask.actions[1])
+        assertEquals("[]", CarData.takeActions(app))
+        CarMotion.moving = null
+        click(ask.actions[1])
+        val sent = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("remote", sent.getString("type"))
+        assertEquals("rc-1", sent.getString("id"))
+        assertEquals(0, sent.getInt("relay"))
+        assertTrue(sent.getBoolean("on"))
+        // The row opens the list (pushed last: the screens of the tests are
+        // never created, popping one of them would fail).
+        r.last().onClickDelegate!!.sendClick(object : OnDoneCallback {})
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is RemotesScreen)
+        // No remote declared: no row.
+        write(snapshot())
+        assertFalse(rows(tab(MainScreen.POINTS)).any { it.title.toString() == "Télécommandes" })
+    }
+
+    @Test
     fun teamTab_notRedrawn_whenAnOperatorOnlyMoves() {
         val t = System.currentTimeMillis()
         val a = Snapshot(snapshot(at = t, team = JSONArray().put(mate("TEL-2", "3 km au nord", lat = 48.83))))

@@ -339,6 +339,11 @@ const Texts _fr={
   // Lot 24 · « Signal entendu ici » (SATER)
   'car.heard':'Signal entendu ici','car.heardHelp':'Position, cap et heure au PCO','car.heardSent':'Point d’écoute envoyé',
   'car.heardCancelled':'Point d’écoute annulé',
+  // Lot 24 · télécommandes de relais
+  'car.remotes':'Télécommandes','car.remoteTitle':'Télécommande','car.remoteOn':'Allumer','car.remoteOff':'Éteindre',
+  'car.remoteParked':'À l’arrêt seulement','car.remoteSent':'Commande envoyée','car.remoteReady':'{via} connecté',
+  'car.remoteDown':'{via} non connecté','car.remoteAsk.on':'Allumer {relay} de {remote} ?','car.remoteAsk.off':'Éteindre {relay} de {remote} ?',
+  'car.remoteSay':'{remote} : {log}.','car.remoteReply':' Réponse du boîtier : {text}.',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -855,6 +860,11 @@ const Texts _en={
   // Lot 24 · « Signal entendu ici » (SATER)
   'car.heard':'Signal heard here','car.heardHelp':'Position, heading and time to the PCO','car.heardSent':'Listening point sent',
   'car.heardCancelled':'Listening point cancelled',
+  // Lot 24 · télécommandes de relais
+  'car.remotes':'Remotes','car.remoteTitle':'Remote','car.remoteOn':'Switch on','car.remoteOff':'Switch off','car.remoteParked':'Only when stopped',
+  'car.remoteSent':'Command sent','car.remoteReady':'{via} connected','car.remoteDown':'{via} not connected',
+  'car.remoteAsk.on':'Switch on {relay} of {remote}?','car.remoteAsk.off':'Switch off {relay} of {remote}?','car.remoteSay':'{remote}: {log}.',
+  'car.remoteReply':' Answer of the box: {text}.',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',

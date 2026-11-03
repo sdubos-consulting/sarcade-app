@@ -47,11 +47,15 @@ internal class Snapshot(private val json: JSONObject) {
             ready, lang, distress, staleText() ?: "", shown(key),
             if (key == "team") myStatus ?: "" else "",
             if (key == "points") sater?.toString() ?: "" else "",
+            if (key == "points") items("remotes").joinToString(",") { it.optString("title") } else "",
         ).joinToString("|")
 
     /** SATER event (lot 24, « Signal entendu ici »): {"ready": position
      *  known}; null outside a SATER event. */
     val sater: JSONObject? get() = json.optJSONObject("sater")
+
+    /** Text to read aloud (lot 24, answer of a remote): {"id", "text"}. */
+    val say: JSONObject? get() = json.optJSONObject("say")
 
     /** My status (lot 24, « Mon statut » of the Équipe tab), null: none. */
     val myStatus: String? get() = json.optJSONObject("me")?.optString("status")?.takeIf { it.isNotEmpty() && it != "null" }

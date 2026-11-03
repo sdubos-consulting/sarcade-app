@@ -143,8 +143,13 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
                 if (team.isEmpty()) all.add(Row.Builder().setTitle(snap.label("empty.$id")).build())
             }
         }
-        all.take(limit).forEach { items.addItem(it) }
-        if (all.isEmpty()) items.setNoItemsMessage(snap.label("empty.$id"))
+        // Lot 24 (card « télécommandes de relais depuis la voiture », choice
+        // 1): « Télécommandes » at the bottom of Points, always shown.
+        val remotes = if (id == POINTS && snap.items("remotes").isNotEmpty())
+            RemotesScreen.row(carContext, snap) { screenManager.push(RemotesScreen(carContext)) } else null
+        val shownRows = if (remotes == null) all.take(limit) else all.take((limit - 1).coerceAtLeast(0)) + remotes
+        shownRows.forEach { items.addItem(it) }
+        if (shownRows.isEmpty()) items.setNoItemsMessage(snap.label("empty.$id"))
         return items.build()
     }
 
