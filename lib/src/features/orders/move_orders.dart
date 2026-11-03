@@ -40,7 +40,7 @@ const moveOrderFinished='finished';
 /// else an arrived one not finished yet, while it stays on the map (lot 27:
 /// « Terminé, disponible » at hand).
 MoveOrder? myMoveOrder(List<MoveOrder> orders,String me,DateTime now){
-  String at(MoveOrder o)='${o.json['updated_at']}';
+  String at(MoveOrder o)=>'${o.json['updated_at']}';
   final mine=orders.where((o)=>o.targetId==me&&(o.open||(o.awaitingFinish&&moveOrderOnMap(o,now)))).toList()
     ..sort((a,b){if(a.open!=b.open)return a.open?-1:1;return at(b).compareTo(at(a));});
   return mine.isEmpty?null:mine.first;
