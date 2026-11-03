@@ -18,6 +18,7 @@ import '../../platform/platform_services.dart' show webBluetoothAvailable;
 import '../../offline/local_store.dart';
 import '../../l10n/strings.dart';
 import '../../services/notification_service.dart';
+import '../lora/lora_battery.dart';
 import '../remotes/remote_meshcore.dart';
 import 'meshcore_chat.dart';
 import 'meshcore_protocol.dart';
@@ -278,6 +279,10 @@ class MeshCoreLink extends ChangeNotifier {
       await _send(frame,what);
     };
     chats.notify??=(title,body)=>unawaited(NotificationService().message(title:title,body:body,priority:'routine'));
+    // Lot 25: thresholds kept on this device, alert notified.
+    final battery=LoraBatteryMonitor.instance;
+    battery.read??=store.preference; battery.save??=store.setPreference;
+    battery.notify??=(title,body)=>unawaited(NotificationService().message(title:title,body:body,priority:'urgent'));
     if(_wired)return;
     _wired=true;
     showOnMap=store.preference(meshCoreMapKey)=='1';
@@ -315,6 +320,10 @@ class MeshCoreLink extends ChangeNotifier {
         log('${_contacts.length} nœud(s) connu(s)');
       case 'advert':
         unawaited(_send(contactsQuery(),'GET_CONTACTS'));
+      // Lot 25: low battery of the module (lora_battery.dart).
+      case 'battery':
+        final mv=info.batteryMv, id=deviceId;
+        if(mv!=null&&id!=null)LoraBatteryMonitor.instance.report(id:id,name:info.name??deviceName??id,box:LoraBox.meshcore,millivolts:mv);
       // Private messages (lot 17).
       case 'sent':
         final sent=readMeshCoreSent(v); if(sent!=null)MeshCoreChats.instance.onSent(sent.ack,sent.timeout);
@@ -341,6 +350,7 @@ class MeshCoreLink extends ChangeNotifier {
     await _connSub?.cancel(); _connSub=null;
     final id=deviceId;
     if(id!=null&&!testMode){try{await UniversalBle.disconnect(id);}catch(_){}}
+    if(id!=null)LoraBatteryMonitor.instance.forget(id);
     connectedSince=null;
     _stopping=false;
   }
