@@ -323,6 +323,9 @@ const Texts _fr={
   // Lot 24 · messages types
   'car.quick':'Messages types','car.quick.received':'Bien reçu','car.quick.coming':'J’arrive','car.quick.help':'Besoin d’aide',
   'car.quick.late':'Retard',
+  // Lot 24 · « Signal entendu ici » (SATER)
+  'car.heard':'Signal entendu ici','car.heardHelp':'Position, cap et heure au PCO','car.heardSent':'Point d’écoute envoyé',
+  'car.heardCancelled':'Point d’écoute annulé',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -823,6 +826,9 @@ const Texts _en={
   'car.arrivalTitle':'You have arrived at {point}','car.arrivalAsk':'Report the arrival?','car.yes':'Yes','car.later':'Later',
   // Lot 24 · messages types
   'car.quick':'Quick messages','car.quick.received':'Received','car.quick.coming':'On my way','car.quick.help':'Need help','car.quick.late':'Delayed',
+  // Lot 24 · « Signal entendu ici » (SATER)
+  'car.heard':'Signal heard here','car.heardHelp':'Position, heading and time to the PCO','car.heardSent':'Listening point sent',
+  'car.heardCancelled':'Listening point cancelled',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',

@@ -123,6 +123,16 @@ Au lot 23, la voiture montrait **une rubrique à la fois** : bouton « Rubriques
 | 5.30 | Fiche d'un ordre : icône de bulle en haut à droite (ou « Messages types » s'il n'y a pas d'autre bouton en haut) | Même liste ; le message part au PCO |
 | 5.31 | Le PCO change la liste dans les paramètres de l'événement (4 messages au plus) | La voiture montre la nouvelle liste en moins d'une minute |
 
+### « Signal entendu ici » (SATER)
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 5.32 | Événement **sans** le réglage SATER, onglet Points | Pas de ligne « Signal entendu ici » |
+| 5.33 | Le PCO active le réglage SATER de l'événement (module ADRASEC) | En moins d'une minute, première ligne de l'onglet Points : « Signal entendu ici » (pastille orange) |
+| 5.34 | Toucher « Signal entendu ici » | Alerte « Point d'écoute envoyé » avec « Annuler » pendant 10 s ; chez le PCO, un point d'écoute (anneau orange, trait du cap du véhicule, « Écoute HH:MM ») et une ligne en main courante « Signal de balise entendu ici par … » |
+| 5.35 | Recommencer et toucher « Annuler » dans les 10 s | « Point d'écoute annulé » ; le point disparaît chez le PCO |
+| 5.36 | Téléphone sans position | La ligne indique « Position inconnue » ; un appui n'envoie rien |
+
 ## 6. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.

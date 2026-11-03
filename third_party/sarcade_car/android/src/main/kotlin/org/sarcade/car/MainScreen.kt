@@ -128,7 +128,12 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
         when (id) {
             MESSAGES -> snap.items("messages").forEach { all.add(conversationRow(snap, it)) }
             ORDERS -> snap.items("orders").forEach { all.add(orderRow(snap, it)) }
-            POINTS -> snap.items("points").forEach { all.add(pointRow(snap, it)) }
+            POINTS -> {
+                // Lot 24 (card « Signal entendu ici »): first row during a
+                // SATER event.
+                heardRow(snap)?.let { all.add(it) }
+                snap.items("points").forEach { all.add(pointRow(snap, it)) }
+            }
             else -> {
                 // Lot 24 (card « statut en un appui », choice 1): « Mon
                 // statut » first; « Personne d'autre en ligne » kept below.
@@ -213,6 +218,19 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
             .setOnClickListener { screenManager.push(TeammateScreen(carContext, id)) }
         if (hasPosition(t) && level >= TABS_LEVEL) b.addAction(goToTeammate(carContext, snap, id, t))
         return b.build()
+    }
+
+    private fun heardRow(snap: Snapshot): Row? {
+        val sater = snap.sater ?: return null
+        val ready = sater.optBoolean("ready", false)
+        return Row.Builder().setTitle(snap.label("heard"))
+            .addText(snap.label(if (ready) "heardHelp" else "noPosition"))
+            .setImage(CarUi.tile(carContext, R.drawable.sarcade_car_cell_tower, HeardAlert.COLOR))
+            .setOnClickListener {
+                if (ready) HeardAlert.send(carContext, Snapshot(CarData.snapshot(carContext)))
+                else CarUi.toast(carContext, snap.label("noPosition"))
+            }
+            .build()
     }
 
     private fun myStatusRow(snap: Snapshot): Row {
