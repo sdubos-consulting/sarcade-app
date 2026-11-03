@@ -41,6 +41,7 @@ import 'drawing/export_formats.dart';
 import 'cinematique_escape.dart';
 import '../../ui/theme.dart';
 import 'aprs_gateway.dart';
+import 'aprs_symbol_view.dart';
 import 'stations.dart';
 import 'cinematique_touch.dart';
 import 'layer_opacity.dart';
@@ -2012,11 +2013,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final initials=avatarInitials(p.label.trim().isEmpty?p.deviceId:p.label);
     return withStatusDot(Stack(clipBehavior:Clip.none,alignment:Alignment.center,children:[
       Container(width:size,height:size,alignment:Alignment.center,
-        decoration:BoxDecoration(color:s.surface,shape:sym?.overlay!=null?BoxShape.rectangle:BoxShape.circle,borderRadius:sym?.overlay!=null?BorderRadius.circular(8):null,
+        decoration:BoxDecoration(color:s.surface,shape:BoxShape.circle,
           border:Border.all(color:color,width:f==Freshness.stale?1.5:2.5)),
         child:sym==null?Text(initials,style:TextStyle(fontSize:size*0.3,fontWeight:FontWeight.w800,color:color))
-          :sym.overlay!=null?Text(sym.overlay!,style:TextStyle(fontSize:size*0.45,fontWeight:FontWeight.w800,color:color))
           :Icon(sym.icon,size:size*0.58,color:color)),
+      // Overlay letter in a small badge, the icon kept (lot 25).
+      if(sym?.overlay case final o?)aprsOverlayCorner(o,size:size,color:color,background:s.surface),
       // Heading of a moving station (aprs.fi).
       if(p.headingDeg!=null&&(p.speedMps??0)>0.5)Positioned.fill(child:Transform.rotate(angle:p.headingDeg!*3.141592653589793/180,
         child:Align(alignment:Alignment.topCenter,child:Transform.translate(offset:const Offset(0,-9),child:Icon(Icons.navigation,size:14,color:color))))),
@@ -2112,6 +2114,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         const SizedBox(height:8),
         Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:8),decoration:BoxDecoration(color:s.surfaceContainerHigh,borderRadius:BorderRadius.circular(10)),
           child:Text([_sourceLabel(p),if(p.aprsPath?.isNotEmpty==true)S.t('station.via',{'path':p.aprsPath})].join(' · '),style:const TextStyle(fontSize:12,fontFamily:'monospace'))),
+        if(p.isAprs&&aprsSymbolLine(p.aprsSymbol)!=null)Padding(padding:const EdgeInsets.only(top:6),
+          child:Text(aprsSymbolLine(p.aprsSymbol)!,key:const ValueKey('aprs-symbol-line'),style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
         const SizedBox(height:8),
         Row(children:[
           Text(S.t('station.trace'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
