@@ -72,15 +72,17 @@ bool showsSignInInvite({required MyRights? rights,required bool signedIn,DateTim
   rights!=null&&rights.directory&&!signedIn&&(later==null||now.difference(later)>=signInLaterFor);
 
 /// Above the map: the server refused the token of this device (revoked,
-/// unknown), « Se connecter » offered; without account, a discreet
-/// invitation. [onChanged] runs when the token of the server comes or goes
-/// (real-time channel and rights read again).
+/// unknown), « Se connecter » offered. With [invite] (top of Paramètres),
+/// also the discreet invitation of a device without account; not over the
+/// map, whose layout it would move. [onChanged] runs when the token of the
+/// server comes or goes (real-time channel and rights read again).
 class AccountBanner extends StatefulWidget {
   final String server, deviceId; final VoidCallback? onChanged;
   final AccountManager? account; final RightsState? rights;
   /// Keeps « Plus tard » of the invitation.
   final LocalStore? store;
-  const AccountBanner({super.key,required this.server,required this.deviceId,this.onChanged,this.account,this.rights,this.store});
+  final bool invite;
+  const AccountBanner({super.key,required this.server,required this.deviceId,this.onChanged,this.account,this.rights,this.store,this.invite=false});
   @override State<AccountBanner> createState()=>_AccountBannerState();
 }
 
@@ -115,7 +117,7 @@ class _AccountBannerState extends State<AccountBanner> {
   Widget build(BuildContext context){
     final refused=_token==null?_account.refusedFor(widget.server):null;
     final rights=_rights.of(widget.server);
-    final invite=refused==null&&showsSignInInvite(rights:rights,signedIn:_token!=null,later:_later,now:DateTime.now());
+    final invite=widget.invite&&refused==null&&showsSignInInvite(rights:rights,signedIn:_token!=null,later:_later,now:DateTime.now());
     if(refused==null&&!invite)return const SizedBox.shrink();
     final t=Theme.of(context);
     final until=rights?.transition.until;

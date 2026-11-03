@@ -112,10 +112,17 @@ void main() {
     expect(showsSignInInvite(rights: rights, signedIn: false, later: now.subtract(const Duration(days: 8)), now: now), isTrue);
   });
 
-  testWidgets('discreet invitation during the transition, gone after « Plus tard »', (tester) async {
+  testWidgets('no invitation over the map (its layout would move)', (tester) async {
+    final state = RightsState()..apply(server, me(transition: true));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: AccountBanner(server: server, deviceId: 'TEL-01',
+        account: AccountManager(persistent: false), rights: state))));
+    expect(find.byKey(const ValueKey('auth-invite')), findsNothing);
+  });
+
+  testWidgets('discreet invitation during the transition (Paramètres), gone after « Plus tard »', (tester) async {
     final account = AccountManager(persistent: false);
     final state = RightsState()..apply(server, me(transition: true));
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: AccountBanner(server: server, deviceId: 'TEL-01', account: account, rights: state))));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: AccountBanner(server: server, deviceId: 'TEL-01', account: account, rights: state, invite: true))));
     expect(find.byKey(const ValueKey('auth-invite')), findsOneWidget);
     expect(find.text('Connectez-vous pour garder vos droits après la transition'), findsOneWidget);
     await tester.tap(find.text('Plus tard'));

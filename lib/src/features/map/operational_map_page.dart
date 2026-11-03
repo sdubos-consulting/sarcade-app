@@ -2768,7 +2768,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ?graphBanner,
         const MeshCoreReconnectBanner(),
         const LoraBatteryBanner(), // lot 25
-        AccountBanner(server:widget.api.baseUrl,deviceId:widget.deviceId,onChanged:_accountChanged,store:widget.store),
+        AccountBanner(server:widget.api.baseUrl,deviceId:widget.deviceId,onChanged:_accountChanged),
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
         if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,
