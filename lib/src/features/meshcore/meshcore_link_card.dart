@@ -12,11 +12,12 @@ import 'package:flutter/services.dart';
 import 'package:universal_ble/universal_ble.dart';
 
 import '../../l10n/strings.dart';
+import 'meshcore_banner.dart';
 import 'meshcore_link.dart';
 import 'meshcore_protocol.dart';
 
 /// Text of the state line ('mesh.state.connected'…).
-String meshCoreStateText(MeshCoreState s)=>S.t('mesh.state.${s.name}');
+String meshCoreStateText(MeshCoreState s)=>s==MeshCoreState.unavailable?S.t('meshcore.banner.unavailable'):S.t('mesh.state.${s.name}');
 
 /// Web app (lot 17, card « Application web : se connecter à un module
 /// MeshCore », choices validated on 1 Nov 2026, 12 h 04): « Connecter un
@@ -45,12 +46,16 @@ class MeshCoreWebConnect extends StatelessWidget {
 /// click to join the remembered module again.
 class MeshCoreReconnectBar extends StatelessWidget {
   final VoidCallback onReconnect;
-  const MeshCoreReconnectBar({super.key,required this.onReconnect});
+  /// « Plus tard » (lot 25): hidden until the next opening of SARCADE.
+  final VoidCallback? onLater;
+  const MeshCoreReconnectBar({super.key,required this.onReconnect,this.onLater});
   @override Widget build(BuildContext context){
     final s=Theme.of(context).colorScheme;
     return Material(key:const ValueKey('meshcore-reconnect-bar'),color:s.tertiaryContainer,child:SafeArea(bottom:false,child:Padding(padding:const EdgeInsets.fromLTRB(14,6,8,6),child:Row(children:[
       Icon(Icons.bluetooth_disabled,color:s.onTertiaryContainer),const SizedBox(width:10),
       Expanded(child:Text(S.t('mesh.web.reconnectHelp'),style:TextStyle(color:s.onTertiaryContainer))),
+      if(onLater!=null)TextButton(key:const ValueKey('meshcore-later'),onPressed:onLater,
+        style:TextButton.styleFrom(foregroundColor:s.onTertiaryContainer),child:Text(S.t('meshcore.banner.later'))),
       FilledButton(key:const ValueKey('meshcore-reconnect'),onPressed:onReconnect,child:Text(S.t('mesh.web.reconnect'))),
     ]))));
   }
@@ -65,7 +70,7 @@ class MeshCoreConnectButton extends StatelessWidget {
   const MeshCoreConnectButton({super.key});
   @override Widget build(BuildContext context)=>ListenableBuilder(listenable:MeshCoreLink.instance,builder:(context,_){
     final link=MeshCoreLink.instance;
-    if(!link.remembered||link.state==MeshCoreState.waitingClick)return const SizedBox.shrink();
+    if(!link.remembered||link.state==MeshCoreState.waitingClick||link.state==MeshCoreState.unavailable)return const SizedBox.shrink();
     if(link.state==MeshCoreState.disconnected){
       return Column(key:const ValueKey('meshcore-off'),mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
         Text(S.t('mesh.off.help'),style:Theme.of(context).textTheme.bodySmall),
@@ -79,13 +84,16 @@ class MeshCoreConnectButton extends StatelessWidget {
   });
 }
 
-/// The bar above the map and in Outils › MeshCore, only when needed.
+/// The bar above the map and in Outils › MeshCore, only when needed; one
+/// bar only on the MeshCore screen, « Plus tard » (lot 25, meshcore_banner.dart).
 class MeshCoreReconnectBanner extends StatelessWidget {
-  const MeshCoreReconnectBanner({super.key});
-  @override Widget build(BuildContext context)=>ListenableBuilder(listenable:MeshCoreLink.instance,builder:(context,_){
+  /// The bar of the MeshCore screen (the one above the map hides meanwhile).
+  final bool inScreen;
+  const MeshCoreReconnectBanner({super.key,this.inScreen=false});
+  @override Widget build(BuildContext context)=>ListenableBuilder(listenable:Listenable.merge([MeshCoreLink.instance,meshCoreBannerLater,meshCoreScreensOpen]),builder:(context,_){
     final link=MeshCoreLink.instance;
-    if(link.state!=MeshCoreState.waitingClick)return const SizedBox.shrink();
-    return MeshCoreReconnectBar(onReconnect:()=>unawaited(link.chooseInBrowser()));
+    if(!meshCoreBannerShown(state:link.state,later:meshCoreBannerLater.value,inScreen:inScreen,screensOpen:meshCoreScreensOpen.value))return const SizedBox.shrink();
+    return MeshCoreReconnectBar(onReconnect:()=>unawaited(link.reconnectInBrowser()),onLater:()=>meshCoreBannerLater.value=true);
   });
 }
 
@@ -157,8 +165,8 @@ class _MeshCoreLinkCardState extends State<MeshCoreLinkCard> {
       Padding(padding:const EdgeInsets.only(top:4,bottom:8),child:Text(S.t('mesh.help'),style:small)),
       if(link.remembered)...[
         Text('${link.deviceName??link.deviceId} · ${meshCoreStateText(link.state)}',key:const ValueKey('meshcore-state')),
-        if(link.state==MeshCoreState.waitingClick)Padding(padding:const EdgeInsets.only(top:8),child:FilledButton.icon(key:const ValueKey('meshcore-web-reconnect'),
-          onPressed:()=>unawaited(link.chooseInBrowser()),icon:const Icon(Icons.bluetooth_searching),label:Text(S.t('mesh.web.reconnect')))),
+        if(link.state==MeshCoreState.waitingClick||link.state==MeshCoreState.unavailable)Padding(padding:const EdgeInsets.only(top:8),child:FilledButton.icon(key:const ValueKey('meshcore-web-reconnect'),
+          onPressed:()=>unawaited(link.reconnectInBrowser()),icon:const Icon(Icons.bluetooth_searching),label:Text(S.t('mesh.web.reconnect')))),
         if(problem!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text(problem,key:const ValueKey('meshcore-problem'),style:small?.copyWith(color:s.error))),
         const SizedBox(height:8),
         Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
