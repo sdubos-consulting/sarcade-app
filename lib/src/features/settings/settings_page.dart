@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
 import '../../access/access_session.dart';
+import '../../account/account_section.dart' show AccountSection;
 import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
 import '../../config/version.dart';
@@ -476,6 +477,8 @@ class _SettingsPageState extends State<SettingsPage> {
   ]);
 
   Widget _profileTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    // Account of the person (lot 26): « Se connecter », Mes appareils.
+    if(!widget.firstRun)AccountSection(server:widget.initial.serverUrl,deviceId:widget.initial.deviceId,row:_row),
     _row(S.t('settings.callsignRow'),help:S.t('settings.callsignHelp'),child:_compact(TextFormField(
       controller:_callsign,decoration:_field(hint:'F4ABC-7'),
       autocorrect:false,textCapitalization:TextCapitalization.characters,validator:_callsignCheck))),

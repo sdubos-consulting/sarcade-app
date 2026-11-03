@@ -52,6 +52,7 @@ Future<void> _start() async {
     PowerState.instance.init(store);
     StartupReport.note('accès');
     await AccessManager.instance.load();
+    await AccountManager.instance.load();
   }catch(e,s){
     StartupReport.error('démarrage',e,s);
     StartupReport.watchFirstFrame();

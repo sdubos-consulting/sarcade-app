@@ -84,6 +84,7 @@ import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
+import '../../account/account_section.dart' show AccountBanner;
 import '../../platform/platform_services.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart';
@@ -349,6 +350,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       debugPrint('SARCADE rights not read: $e');
     }
   }
+  /// Device token came or went (lot 26): real-time channel and rights again.
+  void _accountChanged(){if(_started)_realtime.connect(widget.api.websocketUri(widget.eventId),headers:widget.api.realtimeHeaders);unawaited(_loadRoles());}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -495,6 +498,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       }
     }
     if(e.type=='group.deleted'){widget.store.deleteGroup('${e.data['id']}');}
+    if(e.type=='device.revoked'){unawaited(AccountManager.instance.onDeviceRevoked(widget.api.baseUrl,e.data));}
     // PCO settings changed or event closed: the heartbeat brings the new state.
     if(e.type=='event.settings.updated'||e.type=='event.closed'){unawaited(_ops.beat());}
   }
@@ -2789,6 +2793,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ?graphBanner,
         const MeshCoreReconnectBanner(),
         const LoraBatteryBanner(), // lot 25
+        AccountBanner(server:widget.api.baseUrl,deviceId:widget.deviceId,onChanged:_accountChanged),
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
         if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,
