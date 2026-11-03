@@ -331,6 +331,9 @@ const Texts _fr={
   'car.remoteParked':'À l’arrêt seulement','car.remoteSent':'Commande envoyée','car.remoteReady':'{via} connecté',
   'car.remoteDown':'{via} non connecté','car.remoteAsk.on':'Allumer {relay} de {remote} ?','car.remoteAsk.off':'Éteindre {relay} de {remote} ?',
   'car.remoteSay':'{remote} : {log}.','car.remoteReply':' Réponse du boîtier : {text}.',
+  // Lot 24 · météo et vigilance à destination
+  'car.wind':'vent {v} km/h {dir}','car.rain':'Pluie dans l’heure : {mm}','car.noRain':'Pas de pluie dans l’heure',
+  'car.vigilanceSay':'Attention : {level} à destination',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -839,6 +842,9 @@ const Texts _en={
   'car.remoteSent':'Command sent','car.remoteReady':'{via} connected','car.remoteDown':'{via} not connected',
   'car.remoteAsk.on':'Switch on {relay} of {remote}?','car.remoteAsk.off':'Switch off {relay} of {remote}?','car.remoteSay':'{remote}: {log}.',
   'car.remoteReply':' Answer of the box: {text}.',
+  // Lot 24 · météo et vigilance à destination
+  'car.wind':'wind {v} km/h {dir}','car.rain':'Rain within the hour: {mm}','car.noRain':'No rain within the hour',
+  'car.vigilanceSay':'Warning: {level} at the destination',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',

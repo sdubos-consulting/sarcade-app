@@ -9,7 +9,8 @@
 ///   cancelled within 10 s;
 /// - estimated time of arrival (card « Android Auto : heure d'arrivée
 ///   estimée envoyée au PCO »): PUT /events/{id}/move-orders/{order}/eta;
-/// - texts read aloud by the car (answer of a remote, lot 24).
+/// - texts read aloud by the car (answer of a remote, vigilance at the
+///   destination, lot 24); weather at the destination (car_weather.dart).
 ///
 /// The phone and PC side (status shown to the PCO…) is not here: this file
 /// only sends. Pure Dart; HTTP client of the application (Cloudflare Access),
@@ -24,6 +25,7 @@ import 'package:latlong2/latlong.dart';
 import '../map/drawing/geometry.dart' show distanceM;
 import '../remotes/remote.dart' show Remotes;
 import 'car_remotes.dart';
+import 'car_weather.dart';
 
 import '../../access/access_manager.dart' show AccessHttpClient;
 
@@ -52,12 +54,17 @@ class CarField {
   /// Remotes of relays used from the car (lot 24).
   late final CarRemoteWatch remotes;
 
+  /// Weather and vigilance at the destination (lot 24).
+  late final CarWeather weather;
+
   /// [client]: the Cloudflare Access client of the application by default;
-  /// [remotes]: those declared on this device.
+  /// [remotes]: those declared on this device; [pointWeather]: forecast of
+  /// a place (SarcadeApi.pointWeather).
   CarField({required this.baseUrl,required this.eventId,required this.me,required this.queue,
-      http.Client Function()? client,DateTime Function()? clock,Remotes? remotes})
+      http.Client Function()? client,DateTime Function()? clock,Remotes? remotes,CarFetchWeather? pointWeather})
     : _newClient=client??AccessHttpClient.new,clock=clock??DateTime.now{
     this.remotes=CarRemoteWatch(remotes??Remotes.instance,say:say);
+    weather=CarWeather(fetch:pointWeather,say:say);
   }
 
   /// Last text to read aloud in the car, with an identifier new for each

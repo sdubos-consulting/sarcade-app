@@ -777,7 +777,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       sos:_sendDistress,sosEnd:_endDistress),
     onActive:()=>unawaited(_routes.refresh()));
   // Android Auto, lot 24: what the car sends for the field (car_field.dart).
-  late final _carField=CarField(baseUrl:widget.api.baseUrl,eventId:widget.eventId,me:widget.deviceId,queue:_sync.queue);
+  late final _carField=CarField(baseUrl:widget.api.baseUrl,eventId:widget.eventId,me:widget.deviceId,queue:_sync.queue,
+    pointWeather:widget.api.pointWeather);
   // Firebase wake-up seen by the application (lot 20): synchronised at once.
   void Function()? _stopWakeups;
   void _onWakeup(){unawaited(_sync.syncNow());unawaited(_routes.refresh());}
