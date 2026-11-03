@@ -33,8 +33,11 @@ String toolHint(FeatureKind k)=>switch(k){
 
 /// Tools of the drawing toolbar: no « Mesure » (card « Barre de dessin,
 /// retirer Mesure », 30 Oct 2026, 13 h 28: « Mesurer jusqu'ici » of the
-/// point menu does it; the measures already saved stay editable).
-final drawingToolbarKinds=[for(final k in FeatureKind.values)if(k!=FeatureKind.measure)k];
+/// point menu does it; the measures already saved stay editable). No
+/// « Point » either (lot 25, card « un seul moyen de créer un point »): a
+/// point is created by a long press, « Point d'intérêt »; the points
+/// already drawn stay shown, selectable and deletable.
+final drawingToolbarKinds=[for(final k in FeatureKind.values)if(k!=FeatureKind.measure&&k!=FeatureKind.point)k];
 
 /// Same width for every tool button, fitted to the longest label on one line
 /// (card « Barre de dessin iPhone, libellé Rectangle coupé », 13 h 21).

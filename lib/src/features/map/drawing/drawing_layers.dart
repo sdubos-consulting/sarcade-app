@@ -223,25 +223,27 @@ List<(int,LatLng)> sideMiddles(MapFeature f){
 /// global pointer position to map coordinates. Sizes follow the last
 /// pointer used ([fingerHandles]).
 Widget buildHandleLayer(DrawingController c,LatLng Function(Offset global) toLatLng){
-  if(c.selection.isEmpty)return const SizedBox.shrink();
+  if(!c.hasSelection)return const SizedBox.shrink();
   _watchPointers();
   return ValueListenableBuilder<bool>(valueListenable:fingerHandles,
     builder:(_,finger,_)=>_handleLayer(c,toLatLng,finger?fingerHandleSizes:mouseHandleSizes));
 }
 
 Widget _handleLayer(DrawingController c,LatLng Function(Offset global) toLatLng,HandleSizes size){
-  final all=c.selection;
-  if(all.isEmpty)return const SizedBox.shrink();
-  final f=all.first;
+  // Points of interest selected too (lot 25): they move with the handle;
+  // a point alone is dragged by itself (poi_selection.dart).
+  final all=c.selection, pois=c.selectedPoiPlaces;
+  if(all.isEmpty&&pois.length<2)return const SizedBox.shrink();
+  final f=all.isEmpty?null:all.first;
   final markers=<Marker>[];
   Marker handle(LatLng p,Widget look,{required void Function(LatLng from,LatLng to) onDrag,VoidCallback? onStart,String? key,MouseCursor cursor=SystemMouseCursors.move})=>Marker(
     point:p,width:size.touch,height:size.touch,
     child:_Handle(key:key==null?null:ValueKey(key),look:look,size:size.touch,cursor:cursor,toLatLng:toLatLng,onStart:onStart??c.beginEdit,onDrag:onDrag,onEnd:c.endEdit,onHold:c.holdHandle),
   );
-  final anchor=f.anchor;
-  final colour=_c(f.color);
+  final colour=f==null?const Color(0xFF1E88E5):_c(f.color);
   final dot=_vertexDot(colour,size.vertex);
-  if(all.length==1){
+  if(f!=null&&all.length==1&&pois.isEmpty){
+    final anchor=f.anchor;
     switch(f.kind){
       case FeatureKind.circle:
         final center=f.points[0];
@@ -268,7 +270,7 @@ Widget _handleLayer(DrawingController c,LatLng Function(Offset global) toLatLng,
     }
   }
   // Move handle last so it stays on top of the others.
-  final anchors=[for(final x in all)x.anchor];
+  final anchors=[for(final x in all)x.anchor,...pois];
   final centre=LatLng(anchors.map((a)=>a.latitude).reduce((a,b)=>a+b)/anchors.length,anchors.map((a)=>a.longitude).reduce((a,b)=>a+b)/anchors.length);
   final cross=Icon(Icons.open_with,size:size.move,color:colour,shadows:const [Shadow(blurRadius:3,color:Colors.white),Shadow(blurRadius:2,color:Colors.black54)]);
   // Finger: the cross sits in a semi-transparent circle (lot 19, choice 1).
