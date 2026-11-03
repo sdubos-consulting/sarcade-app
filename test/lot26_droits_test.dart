@@ -80,7 +80,7 @@ void main() {
 
   test('Cloudflare Access without device token: enrolled once, without code', () async {
     const access = 'https://access.example.org';
-    final account = AccountManager();
+    final account = AccountManager(persistent: false);
     final state = RightsState();
     var enrolled = 0;
     http.Response reply(Object body) => http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'});
@@ -113,7 +113,7 @@ void main() {
   });
 
   testWidgets('discreet invitation during the transition, gone after « Plus tard »', (tester) async {
-    final account = AccountManager();
+    final account = AccountManager(persistent: false);
     final state = RightsState()..apply(server, me(transition: true));
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: AccountBanner(server: server, deviceId: 'TEL-01', account: account, rights: state))));
     expect(find.byKey(const ValueKey('auth-invite')), findsOneWidget);
