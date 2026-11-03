@@ -129,7 +129,14 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
             MESSAGES -> snap.items("messages").forEach { all.add(conversationRow(snap, it)) }
             ORDERS -> snap.items("orders").forEach { all.add(orderRow(snap, it)) }
             POINTS -> snap.items("points").forEach { all.add(pointRow(snap, it)) }
-            else -> snap.items("team").forEach { all.add(teammateRow(snap, it)) }
+            else -> {
+                // Lot 24 (card « statut en un appui », choice 1): « Mon
+                // statut » first; « Personne d'autre en ligne » kept below.
+                all.add(myStatusRow(snap))
+                val team = snap.items("team")
+                team.forEach { all.add(teammateRow(snap, it)) }
+                if (team.isEmpty()) all.add(Row.Builder().setTitle(snap.label("empty.$id")).build())
+            }
         }
         all.take(limit).forEach { items.addItem(it) }
         if (all.isEmpty()) items.setNoItemsMessage(snap.label("empty.$id"))
@@ -206,6 +213,15 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
             .setOnClickListener { screenManager.push(TeammateScreen(carContext, id)) }
         if (hasPosition(t) && level >= TABS_LEVEL) b.addAction(goToTeammate(carContext, snap, id, t))
         return b.build()
+    }
+
+    private fun myStatusRow(snap: Snapshot): Row {
+        val status = snap.myStatus
+        return Row.Builder().setTitle(snap.label("myStatus"))
+            .addText(status?.let { snap.label("status.$it") } ?: snap.label("noStatus"))
+            .setImage(CarUi.tile(carContext, CarUi.statusIcon(status), CarUi.statusColor(status)))
+            .setOnClickListener { screenManager.push(StatusScreen(carContext)) }
+            .build()
     }
 
     private fun openSos() {

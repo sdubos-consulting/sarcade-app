@@ -316,6 +316,10 @@ const Texts _fr={
   'car.point':'Point','car.createdBy':'Créé par {who}','car.altitude':'Altitude {m} m','car.onSite':'Je suis sur place',
   'car.onSiteBody':'Je suis sur place : {point} ({pos})','car.onSiteNoPos':'Je suis sur place : {point}','car.writePco':'Écrire au PCO',
   'car.pcoTitle':'Message au PCO',
+  // Lot 24 · statut en un appui, arrivée détectée
+  'car.myStatus':'Mon statut','car.noStatus':'Aucun statut','car.statusSent':'Statut envoyé','car.statusCurrent':'Actuel',
+  'car.status.en_route':'En route','car.status.sur_place':'Sur place','car.status.disponible':'Disponible','car.status.pause':'Pause',
+  'car.arrivalTitle':'Vous êtes arrivé à {point}','car.arrivalAsk':'Signaler l’arrivée ?','car.yes':'Oui','car.later':'Plus tard',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -810,6 +814,10 @@ const Texts _en={
   'car.point':'Point','car.createdBy':'Created by {who}','car.altitude':'Altitude {m} m','car.onSite':'I am on site',
   'car.onSiteBody':'I am on site: {point} ({pos})','car.onSiteNoPos':'I am on site: {point}','car.writePco':'Write to the PCO',
   'car.pcoTitle':'Message to the PCO',
+  // Lot 24 · statut en un appui, arrivée détectée
+  'car.myStatus':'My status','car.noStatus':'No status','car.statusSent':'Status sent','car.statusCurrent':'Current',
+  'car.status.en_route':'On the way','car.status.sur_place':'On site','car.status.disponible':'Available','car.status.pause':'Break',
+  'car.arrivalTitle':'You have arrived at {point}','car.arrivalAsk':'Report the arrival?','car.yes':'Yes','car.later':'Later',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',

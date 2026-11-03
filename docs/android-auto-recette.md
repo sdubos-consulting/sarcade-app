@@ -99,6 +99,20 @@ Au lot 23, la voiture montrait **une rubrique à la fois** : bouton « Rubriques
 | 5.16 | Fiche d'un ordre **accepté** | Boutons « Écrire » et « Y aller » ; « Je suis arrivé » en haut à droite, et il passe l'ordre à « arrivé » chez le PCO |
 | 5.17 | « Écrire » (ou « Écrire au PCO »), dicter, « Envoyer » | Le PCO reçoit le message dans le canal PCO |
 
+### Statut en un appui et arrivée détectée
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 5.18 | Onglet Équipe | Première ligne « Mon statut » (« Aucun statut » au départ) |
+| 5.19 | Toucher « Mon statut » | Grille de 4 cases : En route, Sur place, Disponible, Pause (pastilles orange, verte, bleue, grise) |
+| 5.20 | Toucher « En route » | « Statut envoyé », retour à Équipe ; « Mon statut » indique « En route » ; chez le PCO, la pastille de l'opérateur passe à « En route » (selon la partie téléphone/PC du lot 24) |
+| 5.21 | Mode avion quelques secondes, choisir « Pause », couper le mode avion | Le statut « Pause » arrive chez le PCO une fois le réseau revenu |
+| 5.22 | Fiche d'un autre opérateur qui a choisi un statut | Son statut est affiché sous son rôle (« En route · Batterie 80 % ») |
+| 5.23 | Accepter un ordre, rouler vers son point ; à moins de 100 m | Alerte « Vous êtes arrivé à <point> », « Signaler l'arrivée ? », boutons **Oui** et **Plus tard** ; la question est lue à voix haute |
+| 5.24 | Répondre « oui » à voix haute après la question | L'alerte se ferme, « Envoyé » ; l'ordre passe à « arrivé » chez le PCO et « Mon statut » à « Sur place » |
+| 5.25 | Autre ordre : toucher « Plus tard », puis tourner autour du point | Aucune nouvelle alerte pour cet ordre ; « Je suis arrivé » reste dans sa fiche |
+| 5.26 | SARCADE pas au premier plan dans la voiture (Maps ouvert) en arrivant | Notification de la voiture « Vous êtes arrivé à … » avec « Oui » |
+
 ## 6. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.

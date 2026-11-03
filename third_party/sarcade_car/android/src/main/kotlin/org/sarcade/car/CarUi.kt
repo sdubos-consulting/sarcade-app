@@ -43,7 +43,10 @@ internal class Snapshot(private val json: JSONObject) {
      *  changes (lot 20, card « Android Auto : l'écran clignote… », choice
      *  4); the time of the write is not in it. */
     fun signature(key: String): String =
-        listOf(ready, lang, distress, staleText() ?: "", shown(key)).joinToString("|")
+        listOf(ready, lang, distress, staleText() ?: "", shown(key), if (key == "team") myStatus ?: "" else "").joinToString("|")
+
+    /** My status (lot 24, « Mon statut » of the Équipe tab), null: none. */
+    val myStatus: String? get() = json.optJSONObject("me")?.optString("status")?.takeIf { it.isNotEmpty() && it != "null" }
 
     /** Items of a tab as shown. Équipe (lot 23): the positions of the
      *  operators are not shown, only whether there is one (arrow
@@ -146,6 +149,26 @@ internal object CarUi {
         "relay" -> R.drawable.sarcade_car_cell_tower
         "pco" -> R.drawable.sarcade_car_flag
         "channel" -> R.drawable.sarcade_car_groups
+        else -> R.drawable.sarcade_car_person
+    }
+
+    /** Status of an operator (lot 24, card « Android Auto : statut en un
+     *  appui »), in the order of the grid; colours of the PCO map. */
+    val STATUSES = listOf("en_route", "sur_place", "disponible", "pause")
+
+    fun statusColor(status: String?): Int = when (status) {
+        "en_route" -> 0xFFFFB020.toInt()
+        "sur_place" -> 0xFF4ADE80.toInt()
+        "disponible" -> 0xFF3DD6F5.toInt()
+        "pause" -> 0xFF9AA3AD.toInt()
+        else -> 0xFF9AA3AD.toInt()
+    }
+
+    fun statusIcon(status: String?): Int = when (status) {
+        "en_route" -> R.drawable.sarcade_car_directions_car
+        "sur_place" -> R.drawable.sarcade_car_location_on
+        "disponible" -> R.drawable.sarcade_car_check
+        "pause" -> R.drawable.sarcade_car_pause
         else -> R.drawable.sarcade_car_person
     }
 
