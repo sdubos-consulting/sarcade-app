@@ -4,6 +4,7 @@ import '../../l10n/strings.dart';
 import '../../services/sarcade_api.dart';
 import '../../modules/adrasec/aprs/aprs_page.dart';
 import 'quick_messages_editor.dart';
+import 'car_quick_messages_editor.dart';
 import '../../services/event_names.dart';
 import '../../operations/event_settings.dart' show eventModules, eventModuleIds;
 
@@ -57,6 +58,13 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
     if(list!=null)await _patch({'quick_messages':list});
   }
 
+  /// Messages of the car (lot 24): 1 to 4, « Rétablir » = default list.
+  Future<void> _editCarQuick() async {
+    final r=await showOverlayPage<CarQuickMessagesResult>(context,(_)=>CarQuickMessagesEditor(initial:carQuickMessagesOf(_s)));
+    if(r==null)return;
+    await _patch({'car_quick_messages':r.reset?null:carQuickMessagesJson(r.messages!)});
+  }
+
   Widget _row(String label,{String? help,required Widget child}){
     final t=Theme.of(context);
     return Column(children:[
@@ -93,6 +101,8 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
         onChanged:(v){if(v!=null)_patch({'position_old_min':v});}))),
       _row(S.t('event.quick'),help:S.t('event.quickHelp',{'n':(s['quick_messages'] as List?)?.length??0}),
         child:SizedBox(width:eventActionWidth,child:OutlinedButton(onPressed:_editQuick,child:Text(S.t('event.edit'))))),
+      _row(S.t('eventSettings.quickCar.title'),help:carQuickMessagesOf(s).map((m)=>m.priority=='urgent'?'${m.text} (${S.t('eventSettings.quickCar.urgent').toLowerCase()})':m.text).join(' · '),
+        child:SizedBox(width:eventActionWidth,child:OutlinedButton(key:const ValueKey('car-quick-edit'),onPressed:_editCarQuick,child:Text(S.t('event.edit'))))),
       // Modules of the event (card « Séparer le Core et les modules », 31 Oct
       // 2026): the PCO turns them on or off; the server writes the logbook.
       Padding(padding:const EdgeInsets.only(top:16,bottom:4),child:Text(S.t('modules.title'),
@@ -103,6 +113,10 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
         onChanged:(on){final now=eventModules(s).toList();if(on){now.add(id);}else{now.remove(id);}
           _patch({'modules':[for(final m in eventModuleIds)if(now.contains(m))m]});}),
       const Divider(height:1),
+      // Mission or exercise SATER (lot 24): « Signal entendu ici » in the car; ADRASEC only.
+      if(eventModules(s).contains('adrasec'))...[SwitchListTile(key:const ValueKey('event-sater'),contentPadding:EdgeInsets.zero,
+        title:Text(S.t('eventSettings.quickSater')),subtitle:Text(S.t('eventSettings.quickSaterHelp')),
+        value:s['sater']==true,onChanged:(on)=>_patch({'sater':on})),const Divider(height:1)],
       if(eventModules(s).contains('adrasec'))_row(S.t('event.aprsFollowed'),help:[S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
           if(s['aprs_tx_rf']==true)S.t('event.aprsTxOn',{'call':'${s['aprs_tx_callsign']??'—'}'})].join(' · '),
         child:SizedBox(width:eventActionWidth,child:OutlinedButton(onPressed:()=>showOverlayPage<void>(context,(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId)).then((_)=>_load()),
