@@ -9,8 +9,6 @@
 /// le déplacer facilement », choice 3).
 library;
 
-import 'dart:ui' show Offset, Rect;
-
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
