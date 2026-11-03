@@ -93,8 +93,8 @@ class CarScreensTest {
         write(snapshot())
     }
 
-    /** List of a tab or a section, in the layout in force (one section at
-     *  a time since lot 23) or in the tabs of lot 20 ([inStrip] false). */
+    /** List of a tab, in the layout in force (tabs again since lot 24) or
+     *  one section at a time as in lot 23 ([inStrip] true). */
     private fun tab(id: String, inStrip: Boolean = CarUi.SOS_IN_STRIP): ListTemplate {
         val screen = MainScreen(car, SarcadeSession())
         screen.sosInStrip = inStrip
@@ -139,15 +139,27 @@ class CarScreensTest {
     }
 
     @Test
-    fun sos_inTheTopStrip_noRoundButtonLeft() {
-        // Lot 23 (card « Android Auto : SOS dans la barre du haut… », choice
-        // 1): the car of the owner (API level 8) shows one section at a
-        // time, « Rubriques » and a red « SOS » at the top, no round button.
-        assertTrue(CarUi.SOS_IN_STRIP)
+    fun tabs_withTheRoundSosButton_whiteOnTheColourOfAndroidAuto() {
+        // Lot 24 (card « Android Auto : retour aux onglets, SOS en bouton
+        // rond »): the car of the owner (API level 8) shows the tabs
+        // Messages, Ordres, Points, Équipe again, the SOS in the round button.
+        assertFalse(CarUi.SOS_IN_STRIP)
+        val screen = MainScreen(car, SarcadeSession())
+        val t = screen.onGetTemplate() as TabTemplate
+        assertEquals(listOf("Messages", "Ordres", "Points", "Équipe"), t.tabs.map { it.title.toString() })
+        assertEquals(MainScreen.TABS, t.tabs.map { it.contentId })
         for (id in MainScreen.TABS) {
-            val screen = MainScreen(car, SarcadeSession())
-            screen.tab = id
-            val list = screen.onGetTemplate() as ListTemplate
+            val sos = tab(id).actions.single()
+            assertEquals(CarUi.SOS_WHITE, sos.icon!!.tint)
+            assertTrue("a round button carries no title", sos.title == null)
+            assertEquals(CarUi.SOS_BACKGROUND, sos.backgroundColor)
+        }
+    }
+
+    @Test
+    fun sosInTheTopStrip_layoutOfLot23_stillAccepted() {
+        for (id in MainScreen.TABS) {
+            val list = tab(id, inStrip = true)
             assertTrue("round button left in $id", list.actions.isEmpty())
             assertEquals(Snapshot(CarData.snapshot(car)).label("tab.$id"), list.title.toString())
             val strip = list.actionStrip!!.actions
@@ -158,17 +170,9 @@ class CarScreensTest {
     }
 
     @Test
-    fun sos_redIconAlone_onANeutralBackground_inTheTabsOfLot20() {
-        val sos = tab(MainScreen.POINTS, inStrip = false).actions.single()
-        assertEquals(CarColor.RED, sos.icon!!.tint)
-        assertTrue(sos.title == null)
-        assertEquals(CarUi.SOS_BACKGROUND, sos.backgroundColor)
-    }
-
-    @Test
     fun sosInTheTopStrip_asOnOlderCars_isAccepted() {
-        // Layout of the fallback (CarUi.SOS_IN_STRIP) and of the cars below
-        // API level 6: one section, « Rubriques » and « SOS » at the top.
+        // Cars below API level 6: one section, « Rubriques » and « SOS » at
+        // the top, whatever CarUi.SOS_IN_STRIP says.
         car.updateHandshakeInfo(HandshakeInfo("com.google.android.projection.gearhead", 5))
         val screen = MainScreen(car, SarcadeSession())
         screen.tab = MainScreen.ORDERS
