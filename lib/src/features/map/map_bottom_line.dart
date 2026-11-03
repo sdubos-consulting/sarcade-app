@@ -6,7 +6,8 @@
 /// - the scale is on the line of « Suivi de position », just on its right;
 /// - the bottom of the SOS disc is level with the bottom of « Suivi de
 ///   position ».
-/// Computer and tablet keep their places.
+/// Computer and tablet keep their places, except the right column: since
+/// lot 25 its SOS disc ends on the same bottom line on every platform.
 library;
 
 import 'package:flutter/material.dart';
@@ -31,8 +32,10 @@ const double sosDiscInset=(56-46)/2;
 const double phoneColumnReserve=12+56+8;
 
 /// Bottom of the right column (« Fond et affichage », position, Écrans,
-/// SOS): on a phone the SOS disc ends on the line of « Suivi de position ».
-double mapColumnBottom({required bool compact})=>compact?phoneBottomGap-sosDiscInset:24;
+/// SOS): the SOS disc ends on the line of « Suivi de position », on every
+/// platform (card « Carte : aligner verticalement les boutons de la colonne
+/// de droite », point 7, lot 25; computer and tablet were 24 px before).
+const double mapColumnBottom=phoneBottomGap-sosDiscInset;
 
 /// Scale alone (computer, or phone while a card hides « Suivi de
 /// position »): on a phone, middle of the bottom line.
