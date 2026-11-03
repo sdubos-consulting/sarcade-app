@@ -270,7 +270,12 @@ internal class TeammateScreen(carContext: CarContext, private val id: String) : 
  * Library).
  */
 internal class OrderScreen(carContext: CarContext, private val id: String) : LiveScreen(carContext) {
-    override fun watched(s: Snapshot): String = "${s.lang}|${s.item("orders", id)}"
+    init {
+        // Lot 24: weather at the destination, fetched by the application.
+        snap.item("orders", id)?.let { o -> CarUi.post(carContext, "weather") { put("lat", o.optDouble("lat")); put("lon", o.optDouble("lon")) } }
+    }
+
+    override fun watched(s: Snapshot): String = "${s.lang}|${s.item("orders", id)}|${s.item("orders", id)?.let { s.weather(it) }}"
 
     override fun onGetTemplate(): Template {
         val s = snap
@@ -280,6 +285,7 @@ internal class OrderScreen(carContext: CarContext, private val id: String) : Liv
             .addRow(Row.Builder().setTitle(o.optString("title")).addText(o.optString("text")).build())
         val note = o.optString("note")
         if (note.isNotEmpty()) pane.addRow(Row.Builder().setTitle(s.label("note")).addText(note).build())
+        CarUi.weatherRows(carContext, s.weather(o)).forEach { pane.addRow(it) }
         val card = orderCard(carContext, s, o) { screenManager.push(ReplyScreen(carContext, id, o.optString("from"), ReplyScreen.PCO)) }
         // Lot 24 (card « messages types en un appui », choice 1): quick
         // messages to the PCO, in the strip (the only titled button there
@@ -331,7 +337,12 @@ internal class OrderScreen(carContext: CarContext, private val id: String) : Liv
  * to the PCO with my position) and « Y aller ».
  */
 internal class PointScreen(carContext: CarContext, private val id: String) : LiveScreen(carContext) {
-    override fun watched(s: Snapshot): String = "${s.lang}|${s.item("points", id)}"
+    init {
+        // Lot 24: weather at the point, fetched by the application.
+        snap.item("points", id)?.let { p -> CarUi.post(carContext, "weather") { put("lat", p.optDouble("lat")); put("lon", p.optDouble("lon")) } }
+    }
+
+    override fun watched(s: Snapshot): String = "${s.lang}|${s.item("points", id)}|${s.item("points", id)?.let { s.weather(it) }}"
 
     override fun onGetTemplate(): Template {
         val s = snap
@@ -345,6 +356,7 @@ internal class PointScreen(carContext: CarContext, private val id: String) : Liv
         val where = Row.Builder().setTitle(p.optString("away").ifEmpty { s.label("noPosition") })
         p.optString("alt").takeIf { it.isNotEmpty() }?.let { where.addText(it) }
         pane.addRow(where.build())
+        CarUi.weatherRows(carContext, s.weather(p)).forEach { pane.addRow(it) }
         pane.addAction(
             Action.Builder().setTitle(s.label("onSite"))
                 .setIcon(CarUi.icon(carContext, R.drawable.sarcade_car_location_on))

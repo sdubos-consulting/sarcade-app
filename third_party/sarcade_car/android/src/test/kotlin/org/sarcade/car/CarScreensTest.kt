@@ -227,6 +227,7 @@ class CarScreensTest {
         assertEquals(listOf("Je suis sur place", "Y aller"), actions.map { it.title.toString() })
         click(actions[1])
         assertEquals("geo:48.819100,1.921000", car.startCarAppIntents.last().dataString)
+        CarData.takeActions(app) // weather asked by the cards (lot 24)
         click(actions[0])
         val sent = JSONArray(CarData.takeActions(app)).getJSONObject(0)
         assertEquals("onSite", sent.getString("type"))
@@ -243,6 +244,7 @@ class CarScreensTest {
         val accepted = OrderScreen(car, "o1").onGetTemplate() as PaneTemplate
         assertEquals(listOf("Écrire", "Y aller"), accepted.pane.actions.map { it.title.toString() })
         assertEquals(listOf("Je suis arrivé"), accepted.actionStrip!!.actions.map { it.title.toString() })
+        CarData.takeActions(app) // weather asked by the cards (lot 24)
         click(accepted.actionStrip!!.actions[0])
         val answer = JSONArray(CarData.takeActions(app)).getJSONObject(0)
         assertEquals("order", answer.getString("type"))
@@ -513,6 +515,33 @@ class CarScreensTest {
         // No remote declared: no row.
         write(snapshot())
         assertFalse(rows(tab(MainScreen.POINTS)).any { it.title.toString() == "Télécommandes" })
+    }
+
+    @Test
+    fun weatherAndVigilance_inTheCardsOfAPointAndAnOrder() {
+        // Lot 24 (card « Android Auto : météo et vigilance à destination »).
+        val json = snapshot(JSONArray().put(order("o1", "accepted").put("wkey", "48.82,1.92")))
+        json.getJSONArray("points").getJSONObject(0).put("wkey", "48.82,1.92")
+        write(json)
+        // Opening a card asks the application for the weather of the place.
+        PointScreen(car, "poi1").onGetTemplate()
+        val ask = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("weather", ask.getString("type"))
+        assertEquals(48.8191, ask.getDouble("lat"), 1e-9)
+        // Not known yet: no weather row.
+        assertEquals(2, (PointScreen(car, "poi1").onGetTemplate() as PaneTemplate).pane.rows.size)
+        write(CarData.snapshot(car).put("weather", JSONObject().put("48.82,1.92", JSONObject()
+            .put("text", "12 °C · vent 20 km/h NO").put("rain", "Pas de pluie dans l’heure")
+            .put("vigilance", "Vigilance orange (78)").put("phenomena", "vent violent").put("vigColor", 0xFFFB8C00.toInt()))))
+        val p = (PointScreen(car, "poi1").onGetTemplate() as PaneTemplate).pane.rows
+        assertEquals(4, p.size)
+        assertEquals("12 °C · vent 20 km/h NO", p[2].title.toString())
+        assertEquals("Vigilance orange (78)", p[3].title.toString())
+        assertEquals("Pas de pluie dans l’heure", p[2].texts[0].toString())
+        assertEquals("vent violent", p[3].texts[0].toString())
+        assertNotNull("colour of the vigilance in the picture", p[3].image)
+        val o = (OrderScreen(car, "o1").onGetTemplate() as PaneTemplate).pane.rows
+        assertEquals("Vigilance orange (78)", o.last().title.toString())
     }
 
     @Test

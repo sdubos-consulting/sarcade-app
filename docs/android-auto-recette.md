@@ -153,6 +153,14 @@ Au lot 23, la voiture montrait **une rubrique à la fois** : bouton « Rubriques
 | 5.45 | Voiture en marche, confirmer | « À l'arrêt seulement », rien n'est envoyé |
 | 5.46 | Voiture à l'arrêt, confirmer (module MeshCore connecté) | « Commande envoyée » ; quelques secondes plus tard, la réponse du boîtier est lue à voix haute (« … allumé · confirmé. Réponse du boîtier : … ») ; sans réponse en 30 s : « pas de confirmation » lu |
 
+### Météo et vigilance à destination
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 5.47 | Ouvrir la fiche d'un point (ou d'un ordre), attendre quelques secondes | Une ligne météo : « 12 °C · vent 20 km/h NO », dessous « Pas de pluie dans l'heure » ou « Pluie dans l'heure : 0,4 mm » (mêmes chiffres que Météo dans l'application pour ce point) |
+| 5.48 | Même fiche | Une ligne « Vigilance jaune (78) » avec une pastille de la couleur de la vigilance et les phénomènes dessous |
+| 5.49 | Ordre accepté vers un département en vigilance orange ou rouge (ou attendre une vigilance orange) | Le téléphone lit « Attention : Vigilance orange (…) à destination : … » une fois ; à nouveau seulement si elle passe au rouge |
+
 ## 6. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.

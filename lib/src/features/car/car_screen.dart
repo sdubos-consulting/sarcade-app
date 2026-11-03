@@ -16,6 +16,7 @@
 /// Pure code, testable without Flutter widgets.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:latlong2/latlong.dart';
@@ -35,6 +36,7 @@ import '../poi/poi_icons.dart' show poiIconLabel;
 import '../poi/poi_sheet.dart' show poiColor;
 import 'car_field.dart';
 import 'car_remotes.dart';
+import 'car_weather.dart' show carWeatherKey;
 import 'car_messaging.dart' show carReply;
 
 /// Messages of a conversation kept for the car (text and reading aloud).
@@ -198,6 +200,8 @@ Map<String,Object?> _order(MoveOrder o,CarScreenInput i)=>{
   // Lot 24 (card « Android Auto : arrivée détectée près du point d'un
   // ordre », choice 1): within 100 m of the point of an accepted order.
   if(carNearArrival(o,i))'near':true,
+  // Lot 24: key of its weather (« weather » of the data).
+  'wkey':carWeatherKey(o.destination.latitude,o.destination.longitude),
 };
 
 /// Distance to the point of an accepted order under which the car asks
@@ -225,6 +229,7 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
       // Card of the point (lot 24): type, distance and direction, author.
       'type':poiIconLabel(p.icon),'away':carAway(here,LatLng(p.lat,p.lon)),
       if((p.createdBy??'').trim().isNotEmpty)'by':S.t('car.createdBy',{'who':p.createdBy!.trim()}),
+      'wkey':carWeatherKey(p.lat,p.lon),
     },
   ];
   if(here!=null){
@@ -238,6 +243,7 @@ List<Map<String,Object?>> carPoints(CarScreenInput i){
         'lat':r.lat,'lon':r.lon,
         'type':S.t('car.highPoint'),'away':carAway(here,LatLng(r.lat,r.lon)),
         if(r.altM!=null)'alt':S.t('car.altitude',{'m':r.altM!.round()}),
+        'wkey':carWeatherKey(r.lat,r.lon),
       });
     }
   }
@@ -362,6 +368,8 @@ Map<String,Object?> carSnapshot(CarScreenInput i){
     if(i.field!=null)'remotes':carRemotes(i.field!.remotes.remotes),
     if(i.field?.said!=null&&i.now.toUtc().difference(i.field!.said!.at)<const Duration(minutes:1))
       'say':{'id':i.field!.said!.id,'text':i.field!.said!.text},
+    // Lot 24: weather and vigilance at the destinations fetched.
+    if(i.field!=null)'weather':i.field!.weather.cards(i.now),
     // Lot 24: quick messages of the event.
     'quick':[for(final q in carQuickMessages(i.settings))
       {'text':q.text,'priority':q.priority,'prioLabel':_prioLabel(q.priority)}],
@@ -510,6 +518,11 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
       final relay=a.data['relay'], on=a.data['on'];
       if(relay is! num||on is! bool)return;
       await i.field?.remotes.command(a.id,relay.toInt(),on,now:i.now);
+    case 'weather':
+      // Card of a point or an order opened (lot 24): its forecast, fetched
+      // without waiting (the car redraws the card when it comes).
+      final lat=a.data['lat'], lon=a.data['lon'];
+      if(lat is num&&lon is num)unawaited(i.field?.weather.want(lat.toDouble(),lon.toDouble(),i.now));
     case 'sos':
       if(!i.inDistress)await act.sos();
     case 'sosEnd':
@@ -584,6 +597,9 @@ Future<void> carFieldTick(CarScreenInput i) async {
   if(f==null)return;
   // Lot 24: answers of the boxes of the remotes, read aloud.
   f.remotes.check();
+  // Lot 24: vigilance at the destination of the accepted orders.
+  unawaited(f.weather.watch([for(final o in carOrders(i))if(o.status=='accepted')
+    (id:o.id,lat:o.destination.latitude,lon:o.destination.longitude)],i.now));
   final id=f.etaOrder;
   final o=id==null?null:i.orders.where((x)=>x.id==id).firstOrNull;
   // Order gone: stop; orders not read yet: wait.

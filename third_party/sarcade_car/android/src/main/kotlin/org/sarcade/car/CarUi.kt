@@ -16,6 +16,7 @@ import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.CarText
 import androidx.car.app.model.ForegroundCarColorSpan
+import androidx.car.app.model.Row
 import androidx.core.graphics.drawable.IconCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -53,6 +54,11 @@ internal class Snapshot(private val json: JSONObject) {
     /** SATER event (lot 24, « Signal entendu ici »): {"ready": position
      *  known}; null outside a SATER event. */
     val sater: JSONObject? get() = json.optJSONObject("sater")
+
+    /** Weather at a destination (lot 24), by the key « wkey » of a point
+     *  or an order: {"text", "rain", "vigilance", "phenomena", "vigColor"}. */
+    fun weather(item: JSONObject): JSONObject? =
+        item.optString("wkey").takeIf { it.isNotEmpty() }?.let { json.optJSONObject("weather")?.optJSONObject(it) }
 
     /** Text to read aloud (lot 24, answer of a remote): {"id", "text"}. */
     val say: JSONObject? get() = json.optJSONObject("say")
@@ -127,6 +133,26 @@ internal object CarUi {
         val text = SpannableString(label)
         text.setSpan(ForegroundCarColorSpan.create(color), 0, label.length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         return text
+    }
+
+    /** Rows of the weather at a destination (lot 24, card « météo et
+     *  vigilance à destination »): temperature, wind, rain within the hour;
+     *  vigilance of the department, its colour in the picture. */
+    fun weatherRows(context: CarContext, w: JSONObject?): List<Row> {
+        if (w == null) return emptyList()
+        val out = mutableListOf<Row>()
+        w.optString("text").takeIf { it.isNotEmpty() }?.let { t ->
+            val r = Row.Builder().setTitle(t)
+            w.optString("rain").takeIf { it.isNotEmpty() }?.let { r.addText(it) }
+            out.add(r.build())
+        }
+        w.optString("vigilance").takeIf { it.isNotEmpty() }?.let { v ->
+            val r = Row.Builder().setTitle(v)
+                .setImage(tile(context, R.drawable.sarcade_car_warning_amber, w.optInt("vigColor", 0xFF43A047.toInt())))
+            w.optString("phenomena").takeIf { it.isNotEmpty() }?.let { r.addText(it) }
+            out.add(r.build())
+        }
+        return out
     }
 
     fun icon(context: CarContext, res: Int, tint: CarColor? = CarColor.DEFAULT): CarIcon {
