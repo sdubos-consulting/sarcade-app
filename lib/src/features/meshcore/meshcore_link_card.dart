@@ -17,7 +17,7 @@ import 'meshcore_link.dart';
 import 'meshcore_protocol.dart';
 
 /// Text of the state line ('mesh.state.connected'…).
-String meshCoreStateText(MeshCoreState s)=>s==MeshCoreState.unavailable?S.t('meshcore.banner.unavailable'):S.t('mesh.state.${s.name}');
+String meshCoreStateText(MeshCoreState s)=>S.t('mesh.state.${s.name}');
 
 /// Web app (lot 17, card « Application web : se connecter à un module
 /// MeshCore », choices validated on 1 Nov 2026, 12 h 04): « Connecter un
