@@ -663,6 +663,16 @@ const Texts _fr={
   'admin.error.user_not_visible':'Compte hors de vos groupes','admin.error.admin_required':'Réservé aux administrateurs','admin.error.account_required':'Connectez-vous d’abord (Paramètres › Profil)',
   'admin.error.licence_refused':'Licence refusée ({reason})','admin.error.not_an_organization':'Une licence ne s’attache qu’à une organisation','admin.error.no_licence':'Aucune licence',
   'admin.error.licence_too_large':'Fichier de licence trop gros','admin.error.device_not_found':'Appareil introuvable','admin.error.admin_token_required':'Réservé aux administrateurs',
+  'access.section':'Accès','access.organizer':'Groupe organisateur','access.invited':'Groupes invités','access.invitedHelp':'Leurs membres voient l’événement ; Public l’ouvre à tous',
+  'access.public':'Public (tous)','access.none':'Aucun','access.noneInvited':'Aucun groupe invité','access.change':'Modifier','access.saved':'Accès enregistré',
+  'access.create':'Créer','access.fromDirectory':'Groupe de communication depuis un groupe d’organisation',
+  'access.fromDirectoryHelp':'Copie les appareils connectés des membres du moment ; les deux groupes restent indépendants ensuite',
+  'access.sourceGroup':'Groupe d’organisation','access.commName':'Nom du groupe de communication','access.mode.discussion':'Discussion','access.mode.listen_only':'Écoute seule',
+  'access.commCreated':'Groupe « {name} » créé : {n## appareil|# appareils}',
+  'access.error.offline':'Serveur injoignable : réessayez','access.error.other':'Refus du serveur ({e})','access.error.event_organizer_required':'Réservé aux organisateurs de l’événement',
+  'access.error.invalid_organizer_group':'Groupe organisateur non permis','access.error.group_not_found':'Groupe introuvable','access.error.event_closed':'Événement clos',
+  'access.error.invalid_group':'Choisissez un groupe d’organisation (pas Public)','access.error.invalid_mode':'Mode inconnu','access.error.account_required':'Connectez-vous d’abord (Paramètres › Profil)',
+  'access.error.pco_required':'Réservé au PCO','access.error.event_not_found':'Événement non visible pour ce compte',
 };
 
 const Texts _en={
@@ -1263,4 +1273,14 @@ const Texts _en={
   'admin.error.user_not_visible':'Account outside your groups','admin.error.admin_required':'Reserved to administrators','admin.error.account_required':'Sign in first (Settings › Profile)',
   'admin.error.licence_refused':'Licence refused ({reason})','admin.error.not_an_organization':'A licence only goes to an organisation','admin.error.no_licence':'No licence',
   'admin.error.licence_too_large':'Licence file too large','admin.error.device_not_found':'Device not found','admin.error.admin_token_required':'Reserved to administrators',
+  'access.section':'Access','access.organizer':'Organiser group','access.invited':'Invited groups','access.invitedHelp':'Their members see the event; Public opens it to everyone',
+  'access.public':'Public (everyone)','access.none':'None','access.noneInvited':'No invited group','access.change':'Change','access.saved':'Access saved',
+  'access.create':'Create','access.fromDirectory':'Communication group from a group of organisation',
+  'access.fromDirectoryHelp':'Copies the signed-in devices of the members of the moment; both groups stay independent afterwards',
+  'access.sourceGroup':'Group of organisation','access.commName':'Name of the communication group','access.mode.discussion':'Discussion','access.mode.listen_only':'Listen only',
+  'access.commCreated':'Group « {name} » created: {n## device|# devices}',
+  'access.error.offline':'Server unreachable: try again','access.error.other':'Refused by the server ({e})','access.error.event_organizer_required':'Reserved to the organisers of the event',
+  'access.error.invalid_organizer_group':'Organiser group not allowed','access.error.group_not_found':'Group not found','access.error.event_closed':'Event closed',
+  'access.error.invalid_group':'Choose a group of organisation (not Public)','access.error.invalid_mode':'Unknown mode','access.error.account_required':'Sign in first (Settings › Profile)',
+  'access.error.pco_required':'Reserved to the PCO','access.error.event_not_found':'Event not visible for this account',
 };

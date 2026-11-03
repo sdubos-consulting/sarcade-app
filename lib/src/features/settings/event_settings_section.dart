@@ -7,6 +7,7 @@ import 'quick_messages_editor.dart';
 import 'car_quick_messages_editor.dart';
 import '../../services/event_names.dart';
 import '../../operations/event_settings.dart' show eventModules, eventModuleIds;
+import '../events/event_access.dart' show EventAccessSection;
 
 /// Paramètres › Événement (PCO): settings of the active event kept by the
 /// server, applied at once and written in the logbook by the server —
@@ -121,6 +122,8 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
           if(s['aprs_tx_rf']==true)S.t('event.aprsTxOn',{'call':'${s['aprs_tx_callsign']??'—'}'})].join(' · '),
         child:SizedBox(width:eventActionWidth,child:OutlinedButton(onPressed:()=>showOverlayPage<void>(context,(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId)).then((_)=>_load()),
           child:Text(S.t('diagnostics.open'))))),
+      // Lot 26: organiser group, invited groups, communication group from a group of organisation.
+      EventAccessSection(server:widget.api.baseUrl,eventId:widget.eventId,row:_row),
     ]));
   }
 }

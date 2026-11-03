@@ -17,6 +17,7 @@ import '../../l10n/strings.dart';
 import '../../models/comm_group.dart' show isPco;
 import '../../operations/event_settings.dart' show eventKinds;
 import '../../services/sarcade_api.dart';
+import 'event_access.dart' show EventGroupsChoice, EventGroupsSelection, offersEventGroups;
 
 /// States of an open event (the server also hides the closed ones).
 const openEventStates={'draft','active'};
@@ -136,13 +137,15 @@ Future<Map<String,dynamic>?> showNoOpenEvent(BuildContext context,{required Sarc
 /// (said in a message).
 Future<Map<String,dynamic>?> createEventDialog(BuildContext context,SarcadeApi api) async {
   // No controller to dispose while the window closes: the field keeps its text.
-  var name=''; var kind=eventKinds.first;
-  final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('events.new')),
+  var name=''; var kind=eventKinds.first; final groups=EventGroupsSelection();
+  final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(scrollable:true,title:Text(S.t('events.new')),
     content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       TextField(key:const ValueKey('event-new-name'),autofocus:true,onChanged:(v)=>name=v,decoration:InputDecoration(labelText:S.t('events.name'))),
       const SizedBox(height:12),
       DropdownButtonFormField<String>(initialValue:kind,isExpanded:true,decoration:InputDecoration(labelText:S.t('events.model')),
         items:[for(final k in eventKinds)DropdownMenuItem(value:k,child:Text(S.t('events.kind.$k')))],onChanged:(v)=>set(()=>kind=v??kind)),
+      // Lot 26: organiser group and invited groups.
+      if(offersEventGroups(api.baseUrl))EventGroupsChoice(server:api.baseUrl,selection:groups),
     ]),
     actions:[
       TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
@@ -152,7 +155,7 @@ Future<Map<String,dynamic>?> createEventDialog(BuildContext context,SarcadeApi a
   if(ok!=true||n.isEmpty||!context.mounted)return null;
   final m=ScaffoldMessenger.maybeOf(context);
   try{
-    return await api.createEvent(n,kind);
+    return await api.createEvent(n,kind,organizerGroupId:groups.offered?groups.organizer:null,invitedGroupIds:groups.invited);
   }on SarcadeHttpException catch(e){
     m?.showSnackBar(SnackBar(content:Text(S.t(e.statusCode==403?'events.pcoOnly':'events.createFailed',{'e':'HTTP ${e.statusCode}'}))));
   }catch(_){
