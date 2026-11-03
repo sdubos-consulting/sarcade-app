@@ -45,6 +45,8 @@ void main(){
       expect(r.sha256,_sha);
       expect(r.url,'https://sarcade.example/api/v0.1/clients/windows/package');
       expect(r.source,WindowsUpdateSource.server);
+      expect(r.build,isNull);
+      expect(releaseFromServer({'windows':{'version':'0.1.0+960','build':'main@abc1234'}},'https://s')!.build,'main@abc1234');
       expect(releaseFromServer({'apk':{'version':'0.1.0'}},'https://s'),isNull);
       expect(releaseFromServer(const {},'https://s'),isNull);
       expect(releaseFromServer({'windows':{'version':'0.1.0','sha256':'not-a-hash'}},'https://s')!.sha256,isNull);

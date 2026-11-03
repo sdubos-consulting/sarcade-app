@@ -69,7 +69,9 @@ WindowsRelease? releaseFromServer(Object? latest,String baseUrl){
   final w=latest['windows'];
   if(w is! Map||w['version'] is! String||(w['version'] as String).trim().isEmpty)return null;
   final url=w['url'] is String?(w['url'] as String):serverWindowsPackagePath;
-  return WindowsRelease(version:(w['version'] as String).trim(),sha256:_sha(w['sha256']),size:(w['size'] as num?)?.toInt(),
+  final build=w['build'];
+  return WindowsRelease(version:(w['version'] as String).trim(),build:build is String&&build.trim().isNotEmpty?build.trim():null,
+    sha256:_sha(w['sha256']),size:(w['size'] as num?)?.toInt(),
     url:url.startsWith('http')?url:'${_trimSlash(baseUrl)}${url.startsWith('/')?url:'/$url'}',source:WindowsUpdateSource.server);
 }
 
