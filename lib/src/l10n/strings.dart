@@ -333,6 +333,9 @@ const Texts _fr={
   'car.myStatus':'Mon statut','car.noStatus':'Aucun statut','car.statusSent':'Statut envoyé','car.statusCurrent':'Actuel',
   'car.status.en_route':'En route','car.status.sur_place':'Sur place','car.status.disponible':'Disponible','car.status.pause':'Pause',
   'car.arrivalTitle':'Vous êtes arrivé à {point}','car.arrivalAsk':'Signaler l’arrivée ?','car.yes':'Oui','car.later':'Plus tard',
+  // Lot 24 · messages types
+  'car.quick':'Messages types','car.quick.received':'Bien reçu','car.quick.coming':'J’arrive','car.quick.help':'Besoin d’aide',
+  'car.quick.late':'Retard',
   'notif.reminder':'Rappel {n}/{total} · {title}',
   'settings.dndBypass':'Messages immédiats même en mode Ne pas déranger',
   'settings.dndBypassHelp':'Autorisation Android requise, pour les seuls messages immédiats',
@@ -844,6 +847,8 @@ const Texts _en={
   'car.myStatus':'My status','car.noStatus':'No status','car.statusSent':'Status sent','car.statusCurrent':'Current',
   'car.status.en_route':'On the way','car.status.sur_place':'On site','car.status.disponible':'Available','car.status.pause':'Break',
   'car.arrivalTitle':'You have arrived at {point}','car.arrivalAsk':'Report the arrival?','car.yes':'Yes','car.later':'Later',
+  // Lot 24 · messages types
+  'car.quick':'Quick messages','car.quick.received':'Received','car.quick.coming':'On my way','car.quick.help':'Need help','car.quick.late':'Delayed',
   'notif.reminder':'Reminder {n}/{total} · {title}',
   'settings.dndBypass':'Immediate messages even in Do Not Disturb mode',
   'settings.dndBypassHelp':'Needs an Android permission, for immediate messages only',

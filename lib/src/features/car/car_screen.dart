@@ -328,7 +328,9 @@ Map<String,String> carLabels()=>{
     // Lot 24: cards of a point and of an order.
     'point','onSite','writePco','pcoTitle',
     // Lot 24: status in one touch, arrival detected.
-    'myStatus','noStatus','statusSent','statusCurrent','arrivalTitle','arrivalAsk','yes','later'])k:S.t('car.$k'),
+    'myStatus','noStatus','statusSent','statusCurrent','arrivalTitle','arrivalAsk','yes','later',
+    // Lot 24: quick messages.
+    'quick'])k:S.t('car.$k'),
   for(final st in carStatuses)'status.$st':S.t('car.status.$st'),
 };
 
@@ -347,6 +349,9 @@ Map<String,Object?> carSnapshot(CarScreenInput i){
     'team':carTeam(i),
     // Lot 24: my status (first row of the Équipe tab).
     'me':{'status':i.field?.myStatus(i.devices[i.me])},
+    // Lot 24: quick messages of the event.
+    'quick':[for(final q in carQuickMessages(i.settings))
+      {'text':q.text,'priority':q.priority,'prioLabel':_prioLabel(q.priority)}],
   };
 }
 
@@ -457,6 +462,20 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
       if(o==null||!carOrderAnswerAllowed(o.status,'arrived'))return;
       await act.order(o,'arrived');
       await i.field?.setStatus('sur_place');
+    case 'quick':
+      // Quick message in one touch (lot 24): in a conversation, to whom
+      // « Répondre » answers; in the card of an order, to the PCO.
+      final q=carQuickOf(a.data);
+      if(q==null)return;
+      if(a.conversation.isNotEmpty){
+        final c=carConversations(i)[a.conversation];
+        if(c==null)return;
+        final to=carReplyTarget(a.conversation,c,i.me);
+        if(to==null)return;
+        await act.send(carDirectMessage(id:uuid.v4(),eventId:i.eventId,me:i.me,to:to,text:q.text,now:i.now,priority:q.priority));
+      }else{
+        await act.send(carPcoMessage(id:uuid.v4(),i:i,text:q.text,priority:q.priority));
+      }
     case 'sos':
       if(!i.inDistress)await act.sos();
     case 'sosEnd':
@@ -487,3 +506,35 @@ SarcadeMessage carPcoMessage({required String id,required CarScreenInput i,requi
 String carOnSiteText(String point,LatLng? here)=>here==null
   ?S.t('car.onSiteNoPos',{'point':point})
   :S.t('car.onSiteBody',{'point':point,'pos':'${here.latitude.toStringAsFixed(5)}, ${here.longitude.toStringAsFixed(5)}'});
+
+/// A quick message of the car (lot 24, card « Android Auto : messages
+/// types en un appui »).
+typedef CarQuick=({String text,String priority});
+
+/// Quick messages at most (setting `car_quick_messages`, server lot 24).
+const carQuickMax=4;
+
+/// « Bien reçu », « J'arrive », « Besoin d'aide » (urgent, not a
+/// distress), « Retard » when the PCO set nothing (choices 1 and 3).
+List<CarQuick> carQuickDefaults()=>[
+  (text:S.t('car.quick.received'),priority:'routine'),(text:S.t('car.quick.coming'),priority:'routine'),
+  (text:S.t('car.quick.help'),priority:'urgent'),(text:S.t('car.quick.late'),priority:'routine'),
+];
+
+/// One quick message read from the settings or an action of the car; null
+/// when damaged (1 to 40 characters, routine or urgent).
+CarQuick? carQuickOf(Object? j){
+  if(j is! Map)return null;
+  final text='${j['text']??''}'.trim(), priority='${j['priority']??'routine'}';
+  if(text.isEmpty||text.length>40||!const {'routine','urgent'}.contains(priority))return null;
+  return (text:text,priority:priority);
+}
+
+/// Quick messages of the event (choice 2: set by the PCO in the settings
+/// of the event, 4 at most), else the defaults.
+List<CarQuick> carQuickMessages(Map<String,dynamic> settings){
+  final raw=settings['car_quick_messages'];
+  if(raw is! List)return carQuickDefaults();
+  final list=[for(final j in raw)?carQuickOf(j)].take(carQuickMax).toList();
+  return list.isEmpty?carQuickDefaults():list;
+}

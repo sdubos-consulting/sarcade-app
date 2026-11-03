@@ -11,6 +11,7 @@ import androidx.car.app.model.CarColor
 import androidx.car.app.model.GridItem
 import androidx.car.app.model.GridTemplate
 import androidx.car.app.model.ListTemplate
+import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.TabTemplate
@@ -378,6 +379,46 @@ class CarScreensTest {
         assertEquals(true, ArrivalAlerts.spokenAnswer("yes"))
         assertEquals(null, ArrivalAlerts.spokenAnswer("euh"))
         assertEquals(null, ArrivalAlerts.spokenAnswer(null))
+    }
+
+    @Test
+    fun quickMessages_inTheConversationAndTheOrder_oneTouchSends() {
+        // Lot 24 (card « Android Auto : messages types en un appui »).
+        val json = snapshot(JSONArray().put(order("o1", "accepted")))
+        json.getJSONObject("labels").put("quick", "Messages types").put("read", "Lire").put("reply", "Répondre")
+        json.put("quick", JSONArray()
+            .put(JSONObject().put("text", "Bien reçu").put("priority", "routine").put("prioLabel", ""))
+            .put(JSONObject().put("text", "Besoin d’aide").put("priority", "urgent").put("prioLabel", "URGENT")))
+        json.put("messages", JSONArray().put(JSONObject().put("id", "u:PCO").put("title", "PCO").put("text", "PCO : Allez au P2")
+            .put("body", "09:00 · PCO : Allez au P2").put("speak", "PCO : Allez au P2.").put("canReply", true).put("replyTo", "PCO")))
+        write(json)
+        val c = ConversationScreen(car, SarcadeSession(), "u:PCO").onGetTemplate() as MessageTemplate
+        val quick = c.actionStrip!!.actions.single()
+        assertEquals("Messages types", quick.title.toString())
+        click(quick)
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is QuickScreen)
+        CarData.takeActions(app)
+        val list = QuickScreen(car, conversation = "u:PCO").onGetTemplate() as ListTemplate
+        val r = rows(list)
+        assertEquals(listOf("Bien reçu", "Besoin d’aide"), r.map { it.title.toString() })
+        assertEquals("URGENT", r[1].texts[0].toString())
+        assertTrue(r[0].texts.isEmpty())
+        r[1].onClickDelegate!!.sendClick(object : OnDoneCallback {})
+        shadowOf(Looper.getMainLooper()).idle()
+        val sent = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("quick", sent.getString("type"))
+        assertEquals("Besoin d’aide", sent.getString("text"))
+        assertEquals("urgent", sent.getString("priority"))
+        assertEquals("u:PCO", sent.getString("conversation"))
+        // Card of an accepted order: « Je suis arrivé » titled, the quick
+        // messages as an icon (one titled button in the strip).
+        val o = OrderScreen(car, "o1").onGetTemplate() as PaneTemplate
+        val strip = o.actionStrip!!.actions
+        assertEquals("Je suis arrivé", strip[0].title.toString())
+        assertTrue(strip[1].title == null)
+        assertNotNull(strip[1].icon)
+        click(strip[1])
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is QuickScreen)
     }
 
     @Test

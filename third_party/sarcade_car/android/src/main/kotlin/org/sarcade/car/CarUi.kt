@@ -108,6 +108,15 @@ internal object CarUi {
         return text
     }
 
+    /** « URGENT » alone, coloured (lot 24, quick messages); null for routine. */
+    fun priorityLabel(label: String, priority: String): CharSequence? {
+        val color = priorityColor(priority)
+        if (label.isEmpty() || color == null) return null
+        val text = SpannableString(label)
+        text.setSpan(ForegroundCarColorSpan.create(color), 0, label.length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+        return text
+    }
+
     fun icon(context: CarContext, res: Int, tint: CarColor? = CarColor.DEFAULT): CarIcon {
         val b = CarIcon.Builder(IconCompat.createWithResource(context, res))
         if (tint != null) b.setTint(tint)
