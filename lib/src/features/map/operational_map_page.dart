@@ -114,6 +114,7 @@ import '../tv/tv_screens_button.dart';
 import '../../modules/adrasec/fixed_stations.dart';
 import '../orders/move_orders.dart';
 import '../../modules/adrasec/listening/listening_points.dart';
+import '../orders/move_order_eta.dart';
 import '../../modules/adrasec/bearings/signals.dart';
 import '../settings/diagnostics_panel.dart' show diagnosticsAlert, showDiagnosticsSheet;
 import '../settings/settings_page.dart' show settingsRequestedTab;
@@ -147,6 +148,7 @@ import 'point_menu.dart';
 import 'map_objects.dart';
 import 'traces_layer.dart';
 import 'operator_icons.dart';
+import '../team/operator_status.dart';
 import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
 import '../routes/waypoint_sheet.dart';
@@ -410,11 +412,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   // --- Devices: platform, version, last contact (« Version de l'application
   // et connexions des opérateurs », 29 Oct 2026) ---
   final Map<String,Map<String,dynamic>> _devices={};
+  /// Status of each operator, lot 24 (team/operator_status.dart).
+  late final OperatorStatusBook _statuses=OperatorStatusBook(saved:widget.store.cachedJson('op_status:${widget.eventId}'),
+    save:(j)=>unawaited(widget.store.cacheJson('op_status:${widget.eventId}',j)))..addListener((){if(mounted)setState((){});});
+  void _setMyStatus(String? s)=>unawaited(chooseMyStatus(context,api:widget.api,eventId:widget.eventId,deviceId:widget.deviceId,status:s,book:_statuses,sync:_sync));
+  Widget _myStatus()=>MyStatusPicker(key:const ValueKey('my-status'),status:_statuses.statusOf(widget.deviceId),since:_statuses.sinceOf(widget.deviceId),onChanged:_setMyStatus);
   Future<void> _loadDevices() async {
     try{
       final list=await widget.api.devices(widget.eventId);
       if(!mounted)return;
       setState((){for(final d in list){_devices['${d['device_id']}']=d;}});
+      _statuses.applyAll(list);
     }catch(_){/* offline: the last list stays */}
     unawaited(_loadFixedClasses());
   }
@@ -432,6 +440,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _onRealtime(RealtimeEvent e){
     if(e.type.startsWith('adsb.')){_adsb.onRealtime(e.type,e.data);return;}
     if(e.type=='aprs.class.updated'){unawaited(_applyFixedClass(e.data));}
+    if(e.type=='operator.status'||e.type=='device.updated'){_statuses.applyJson(e.data);}
     if(e.type=='device.updated'){final id='${e.data['device_id']??''}';if(id.isNotEmpty&&mounted)setState(()=>_devices[id]=Map<String,dynamic>.from(e.data));}
     if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());_traces.add(p);if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
@@ -590,7 +599,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _showMoveOrder(MoveOrder o){
     showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       ListTile(leading:Icon(Icons.flag,color:moveOrderColor(o.status)),title:Text('${S.t('order.title')} · ${o.targetId}'),
-        subtitle:Text('« ${o.label} » · ${S.t('order.status.${o.status}')}${o.note.isEmpty?'':'\n${o.note}'}')),
+        subtitle:Text('« ${o.label} » · ${moveOrderSubtitle(o)}${o.note.isEmpty?'':'\n${o.note}'}')),
       // « Ouvrir dans… » Waze, Google Maps… (31 Oct 2026).
       ListTile(key:const ValueKey('order-open-in'),leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),
         onTap:(){Navigator.pop(c);unawaited(_openElsewhere(o.destination,o.label));}),
@@ -1362,6 +1371,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // the foreground) get the same acknowledgement and notification.
     if(objectType=='message'&&payload['event_id']==widget.eventId)unawaited(_receiveMessage(payload));
     if(objectType=='map_feature')_applyRemoteFeature(payload);
+    if(objectType=='operator_status'&&payload['event_id']==widget.eventId)_statuses.applyJson(payload);
     if(routeObjectKinds.contains(objectType))_routes.applyRemote(objectType,payload);
     if(objectType=='position'){
       final p=SarcadePosition.fromJson(payload);
@@ -1815,6 +1825,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final silent=[...by[Section.silent]!]..sort((a,b)=>b.time.compareTo(a.time));
     final old=[...by[Section.old]!]..sort((a,b)=>b.time.compareTo(a.time));
     return ListView(children:[
+      Padding(padding:const EdgeInsets.fromLTRB(16,10,16,4),child:_myStatus()),
       if(shown.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t(_favouritesOnly?'favourites.none':'operators.none'))),
       if(active.isNotEmpty)...[head(S.t('teams.active'),active.length),...active.map(_stationTile)],
       if(silent.isNotEmpty)...[head(S.t('teams.silent'),silent.length),...silent.map(_stationTile)],
@@ -1995,7 +2006,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final sym=mine!=null?(icon:mine,overlay:null,kind:'operator'):p.isAprs?aprsSymbol(p.aprsSymbol):null;
     // Same letters as the avatars of the lists and Messages (revue n° 8).
     final initials=avatarInitials(p.label.trim().isEmpty?p.deviceId:p.label);
-    return Stack(clipBehavior:Clip.none,alignment:Alignment.center,children:[
+    return withStatusDot(Stack(clipBehavior:Clip.none,alignment:Alignment.center,children:[
       Container(width:size,height:size,alignment:Alignment.center,
         decoration:BoxDecoration(color:s.surface,shape:sym?.overlay!=null?BoxShape.rectangle:BoxShape.circle,borderRadius:sym?.overlay!=null?BorderRadius.circular(8):null,
           border:Border.all(color:color,width:f==Freshness.stale?1.5:2.5)),
@@ -2005,7 +2016,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // Heading of a moving station (aprs.fi).
       if(p.headingDeg!=null&&(p.speedMps??0)>0.5)Positioned.fill(child:Transform.rotate(angle:p.headingDeg!*3.141592653589793/180,
         child:Align(alignment:Alignment.topCenter,child:Transform.translate(offset:const Offset(0,-9),child:Icon(Icons.navigation,size:14,color:color))))),
-    ]);
+    ]),_statuses.statusOf(p.deviceId),size:(size*0.38).clamp(10,16).toDouble());
   }
 
   /// Station markers, grouped with a number when they overlap (Tesla).
@@ -2043,10 +2054,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _stationTile(SarcadePosition p){
     final now=DateTime.now().toUtc(); final s=Theme.of(context).colorScheme;
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin); final fav=_favourites.contains(p.deviceId);
-    return ListTile(selected:_selectedDevice==p.deviceId,leading:p.isAprs?_stationIcon(p,size:32):operatorAvatar(p.deviceId,label:p.label,radius:16,stale:f==Freshness.stale),
+    final st=_statuses.statusOf(p.deviceId);
+    return ListTile(selected:_selectedDevice==p.deviceId,leading:p.isAprs?_stationIcon(p,size:32):withStatusDot(operatorAvatar(p.deviceId,label:p.label,radius:16,stale:f==Freshness.stale),st),
       title:Text(p.label,style:TextStyle(decoration:f==Freshness.stale?TextDecoration.lineThrough:null)),
       // Version in the sheet only, not in the list (revue n° 43).
-      subtitle:Text([_sourceLabel(p),ageLabel(p.time.toUtc(),now)].join(' · '),
+      subtitle:Text([if(st!=null)operatorStatusLabel(st),_sourceLabel(p),ageLabel(p.time.toUtc(),now)].join(' · '),
         style:TextStyle(color:f==Freshness.fresh?null:s.tertiary)),
       trailing:IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),
         visualDensity:VisualDensity.compact,iconSize:20,
@@ -2083,6 +2095,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>setState((){_chatPeer=p.deviceId;_deskPage=null;_deskId=null;}),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
+        if(p.deviceId==widget.deviceId)Padding(padding:const EdgeInsets.only(top:8),child:_myStatus())
+        else if(_statuses.statusOf(p.deviceId) case final st?)Padding(padding:const EdgeInsets.only(top:6),child:Row(children:[StatusDot(status:st),const SizedBox(width:6),
+          Flexible(child:Text(operatorStatusText(st,_statuses.sinceOf(p.deviceId)),key:const ValueKey('operator-status-line'),style:const TextStyle(fontWeight:FontWeight.w600)))])),
         if(sosTargetOf(_sosTargets(),p.deviceId) case final t?)SosGoButton(onPressed:()=>unawaited(_navigateTo(t.point??LatLng(p.lat,p.lon),S.t('sos.label',{'who':t.label})))),
         if(callsignAmong([p.callsign,p.label,_devices[p.deviceId]?['callsign']?.toString()]) case final call?)Padding(padding:const EdgeInsets.only(top:6),child:CallsignLinks(callsign:call)),
         if(p.isAprs)Padding(padding:const EdgeInsets.only(top:8),child:Row(children:[
@@ -2774,6 +2789,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             lineHits:_routeHits,onWaypointTap:(w)=>unawaited(_openWaypoint(w))),
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
+          if(_showOrders)...buildEtaLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
           if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)),
