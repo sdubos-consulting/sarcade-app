@@ -454,6 +454,17 @@ class CarScreensTest {
     }
 
     @Test
+    fun goToTheOrder_navigates_andTheApplicationFollowsTheEta() {
+        // Lot 24 (card « Android Auto : heure d'arrivée estimée envoyée au PCO », choice 1).
+        write(snapshot(JSONArray().put(order("o1", "accepted"))))
+        click(rows(tab(MainScreen.ORDERS)).single().actions.last())
+        assertEquals("geo:48.819100,1.921000", car.startCarAppIntents.last().dataString)
+        val go = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("go", go.getString("type"))
+        assertEquals("o1", go.getString("id"))
+    }
+
+    @Test
     fun teamTab_notRedrawn_whenAnOperatorOnlyMoves() {
         val t = System.currentTimeMillis()
         val a = Snapshot(snapshot(at = t, team = JSONArray().put(mate("TEL-2", "3 km au nord", lat = 48.83))))

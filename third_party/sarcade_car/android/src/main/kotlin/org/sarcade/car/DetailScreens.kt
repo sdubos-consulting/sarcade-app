@@ -310,7 +310,7 @@ internal class OrderScreen(carContext: CarContext, private val id: String) : Liv
                 .setOnClickListener { writePco() }.build()
             val go = Action.Builder().setTitle(s.label("go")).setFlags(Action.FLAG_PRIMARY)
                 .setIcon(CarUi.icon(context, R.drawable.sarcade_car_directions))
-                .setOnClickListener { CarUi.navigate(context, s, o.optDouble("lat"), o.optDouble("lon")) }
+                .setOnClickListener { MainScreen.goToOrder(context, s, o) }
                 .build()
             val answers = MainScreen.orderActions(context, s, o)
             return when (o.optString("status")) {

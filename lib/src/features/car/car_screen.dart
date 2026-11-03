@@ -492,6 +492,10 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
       await f.sendListening(id:a.id,at:here,heardAt:heardAt,headingDeg:mine?.headingDeg,speedMps:mine?.speedMps,accuracyM:mine?.accuracyM);
     case 'heardCancel':
       await i.field?.cancelListening(a.id);
+    case 'go':
+      // « Y aller » towards the point of an order (lot 24, card « heure
+      // d'arrivée estimée »): its ETA is followed and sent to the PCO.
+      if(carOrders(i).any((o)=>o.id==a.id))i.field?.followEta(a.id);
     case 'sos':
       if(!i.inDistress)await act.sos();
     case 'sosEnd':
@@ -558,3 +562,15 @@ List<CarQuick> carQuickMessages(Map<String,dynamic> settings){
 /// SATER event (setting `sater`, server lot 24): the car shows « Signal
 /// entendu ici ».
 bool carSater(Map<String,dynamic> settings)=>settings['sater']==true;
+
+/// Every few seconds while the car shows SARCADE (lot 24): the estimated
+/// time of arrival of the order followed since « Y aller ».
+Future<void> carFieldTick(CarScreenInput i) async {
+  final f=i.field;
+  if(f==null)return;
+  final id=f.etaOrder;
+  final o=id==null?null:i.orders.where((x)=>x.id==id).firstOrNull;
+  // Order gone: stop; orders not read yet: wait.
+  final status=o?.status??(id!=null&&i.orders.isEmpty?'unknown':null);
+  await f.etaTick(status:status,destination:o?.destination,here:i.here);
+}

@@ -101,6 +101,8 @@ class CarScreenBridge {
     if(!enabled)return;
     final input=read();
     if(input==null)return;
+    // Lot 24: estimated time of arrival of the followed order.
+    unawaited(carFieldTick(input));
     final snap=carSnapshot(input);
     final body=jsonEncode({...snap}..remove('at'));
     final key=carUrgentKey(snap);
