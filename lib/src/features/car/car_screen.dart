@@ -330,7 +330,9 @@ Map<String,String> carLabels()=>{
     // Lot 24: status in one touch, arrival detected.
     'myStatus','noStatus','statusSent','statusCurrent','arrivalTitle','arrivalAsk','yes','later',
     // Lot 24: quick messages.
-    'quick'])k:S.t('car.$k'),
+    'quick',
+    // Lot 24: « Signal entendu ici » (SATER).
+    'heard','heardHelp','heardSent','heardCancelled'])k:S.t('car.$k'),
   for(final st in carStatuses)'status.$st':S.t('car.status.$st'),
 };
 
@@ -349,6 +351,9 @@ Map<String,Object?> carSnapshot(CarScreenInput i){
     'team':carTeam(i),
     // Lot 24: my status (first row of the Équipe tab).
     'me':{'status':i.field?.myStatus(i.devices[i.me])},
+    // Lot 24 (card « Signal entendu ici »): button shown during a SATER
+    // event only; usable with a position.
+    if(carSater(i.settings))'sater':{'ready':i.here!=null},
     // Lot 24: quick messages of the event.
     'quick':[for(final q in carQuickMessages(i.settings))
       {'text':q.text,'priority':q.priority,'prioLabel':_prioLabel(q.priority)}],
@@ -476,6 +481,17 @@ Future<void> applyCarAction(CarAction a,CarScreenInput i,CarScreenActions act,{U
       }else{
         await act.send(carPcoMessage(id:uuid.v4(),i:i,text:q.text,priority:q.priority));
       }
+    case 'heard':
+      // « Signal entendu ici » (lot 24): position, heading, time; nothing
+      // to type. Sent even if the PCO turned the setting off meanwhile:
+      // a signal heard is never lost (server rule).
+      final here=i.here, f=i.field;
+      if(here==null||f==null)return;
+      final mine=i.positions.where((p)=>p.deviceId==i.me&&!p.isAprs).fold<SarcadePosition?>(null,(best,p)=>best==null||p.time.isAfter(best.time)?p:best);
+      final heardAt=a.data['at'] is num?DateTime.fromMillisecondsSinceEpoch((a.data['at'] as num).toInt(),isUtc:true):i.now;
+      await f.sendListening(id:a.id,at:here,heardAt:heardAt,headingDeg:mine?.headingDeg,speedMps:mine?.speedMps,accuracyM:mine?.accuracyM);
+    case 'heardCancel':
+      await i.field?.cancelListening(a.id);
     case 'sos':
       if(!i.inDistress)await act.sos();
     case 'sosEnd':
@@ -538,3 +554,7 @@ List<CarQuick> carQuickMessages(Map<String,dynamic> settings){
   final list=[for(final j in raw)?carQuickOf(j)].take(carQuickMax).toList();
   return list.isEmpty?carQuickDefaults():list;
 }
+
+/// SATER event (setting `sater`, server lot 24): the car shows « Signal
+/// entendu ici ».
+bool carSater(Map<String,dynamic> settings)=>settings['sater']==true;

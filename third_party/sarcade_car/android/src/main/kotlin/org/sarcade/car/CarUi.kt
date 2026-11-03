@@ -43,7 +43,15 @@ internal class Snapshot(private val json: JSONObject) {
      *  changes (lot 20, card « Android Auto : l'écran clignote… », choice
      *  4); the time of the write is not in it. */
     fun signature(key: String): String =
-        listOf(ready, lang, distress, staleText() ?: "", shown(key), if (key == "team") myStatus ?: "" else "").joinToString("|")
+        listOf(
+            ready, lang, distress, staleText() ?: "", shown(key),
+            if (key == "team") myStatus ?: "" else "",
+            if (key == "points") sater?.toString() ?: "" else "",
+        ).joinToString("|")
+
+    /** SATER event (lot 24, « Signal entendu ici »): {"ready": position
+     *  known}; null outside a SATER event. */
+    val sater: JSONObject? get() = json.optJSONObject("sater")
 
     /** My status (lot 24, « Mon statut » of the Équipe tab), null: none. */
     val myStatus: String? get() = json.optJSONObject("me")?.optString("status")?.takeIf { it.isNotEmpty() && it != "null" }

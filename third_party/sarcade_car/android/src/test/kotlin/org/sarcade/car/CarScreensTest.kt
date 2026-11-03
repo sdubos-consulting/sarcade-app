@@ -422,6 +422,38 @@ class CarScreensTest {
     }
 
     @Test
+    fun heardHere_firstRowOfPoints_duringSaterOnly_cancelWithin10s() {
+        // Lot 24 (card « Android Auto : « Signal entendu ici » (SATER) »).
+        assertEquals(listOf("PC", "Butte"), rows(tab(MainScreen.POINTS)).map { it.title.toString() })
+        val json = snapshot().put("sater", JSONObject().put("ready", true))
+        json.getJSONObject("labels").put("heard", "Signal entendu ici").put("heardHelp", "Position, cap et heure au PCO")
+            .put("heardSent", "Point d’écoute envoyé").put("heardCancelled", "Point d’écoute annulé").put("cancel", "Annuler")
+        write(json)
+        val r = rows(tab(MainScreen.POINTS))
+        assertEquals(listOf("Signal entendu ici", "PC", "Butte"), r.map { it.title.toString() })
+        assertTrue(r[0].actions.isEmpty())
+        r[0].onClickDelegate!!.sendClick(object : OnDoneCallback {})
+        shadowOf(Looper.getMainLooper()).idle()
+        val heard = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("heard", heard.getString("type"))
+        assertTrue(heard.getString("id").isNotEmpty())
+        assertTrue(heard.getLong("at") > 0)
+        val alert = HeardAlert.alert(car, Snapshot(CarData.snapshot(car)), heard.getString("id"))
+        assertEquals("Point d’écoute envoyé", alert.title.toString())
+        assertEquals(HeardAlert.CANCEL_MS, alert.durationMillis)
+        click(alert.actions.single())
+        val cancel = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("heardCancel", cancel.getString("type"))
+        assertEquals(heard.getString("id"), cancel.getString("id"))
+        // No position: nothing sent, the reason shown.
+        write(CarData.snapshot(car).put("sater", JSONObject().put("ready", false)))
+        val none = rows(tab(MainScreen.POINTS))[0]
+        none.onClickDelegate!!.sendClick(object : OnDoneCallback {})
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("[]", CarData.takeActions(app))
+    }
+
+    @Test
     fun teamTab_notRedrawn_whenAnOperatorOnlyMoves() {
         val t = System.currentTimeMillis()
         val a = Snapshot(snapshot(at = t, team = JSONArray().put(mate("TEL-2", "3 km au nord", lat = 48.83))))
