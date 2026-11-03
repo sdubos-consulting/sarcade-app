@@ -589,7 +589,7 @@ const Texts _fr={
   'diag.refresh':'Actualiser',
   'diag.serverForbidden':'Réservé au PCO et aux administrateurs',
   'diag.serverOld':'Serveur trop ancien pour ce bloc',
-  'diag.accessBrowser':'par le navigateur','diag.accessBrowserRefused':'sans réponse, reconnectez-vous'
+  'diag.accessBrowser':'par le navigateur','diag.accessBrowserRefused':'sans réponse, reconnectez-vous',
   // Lot 26 · habilitations : connexion (auth.), administration (admin.), accès aux événements (access.).
   'auth.account':'Compte','auth.signIn':'Se connecter','auth.signOut':'Se déconnecter','auth.signedOut':'Non connecté','auth.signedAs':'Connecté : {email}',
   'auth.signInHelp':'Un code vous est envoyé par e-mail, puis cet appareil reste connecté','auth.title':'Se connecter','auth.email':'Adresse e-mail',
@@ -1132,7 +1132,7 @@ const Texts _en={
   'diag.refresh':'Refresh',
   'diag.serverForbidden':'PCO and administrators only',
   'diag.serverOld':'Server too old for this block',
-  'diag.accessBrowser':'through the browser','diag.accessBrowserRefused':'no answer, sign in again'
+  'diag.accessBrowser':'through the browser','diag.accessBrowserRefused':'no answer, sign in again',
   // Lot 26 · rights: sign-in (auth.), administration (admin.), event access (access.).
   'auth.account':'Account','auth.signIn':'Sign in','auth.signOut':'Sign out','auth.signedOut':'Not signed in','auth.signedAs':'Signed in: {email}',
   'auth.signInHelp':'A code is sent to you by email, then this device stays signed in','auth.title':'Sign in','auth.email':'Email address',
