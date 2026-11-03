@@ -56,6 +56,32 @@ Future<void> _quit(int code) async {
   exit(code);
 }
 
+/// Windows client updated from SARCADE (card « Windows : menu Mise à
+/// jour », lot 25).
+bool windowsUpdateSupported()=>Platform.isWindows;
+
+/// Copy installed by the installer: Inno Setup leaves unins000.exe next to
+/// the program; false for the portable copy (zip).
+bool windowsInstalledCopy(){
+  if(!Platform.isWindows)return false;
+  try{
+    return File('${File(Platform.resolvedExecutable).parent.path}\\unins000.exe').existsSync();
+  }catch(_){
+    return false;
+  }
+}
+
+/// Starts the installer on its own (it outlives SARCADE, which it closes).
+Future<bool> startWindowsInstaller(String path,List<String> arguments) async {
+  if(!Platform.isWindows)return false;
+  try{
+    await Process.start(path,arguments,mode:ProcessStartMode.detached);
+    return true;
+  }catch(_){
+    return false;
+  }
+}
+
 /// Windows keeps data under %LOCALAPPDATA%\SARCADE\data, outside OneDrive.
 Future<void> initHiveStorage() async {
   if(Platform.isWindows){

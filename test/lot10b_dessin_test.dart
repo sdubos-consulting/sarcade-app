@@ -42,7 +42,8 @@ void main() {
 
   test('drawing toolbar without « Mesure »', () {
     expect(drawingToolbarKinds, isNot(contains(FeatureKind.measure)));
-    expect(drawingToolbarKinds.length, FeatureKind.values.length - 1);
+    expect(drawingToolbarKinds, isNot(contains(FeatureKind.point)));
+    expect(drawingToolbarKinds.length, FeatureKind.values.length - 2);
   });
 
   test('palette: 4 × 4, chosen colour added once', () {
@@ -70,7 +71,8 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: DrawingToolbar(controller: c, onClose: () {}))));
     final w = tester.getSize(find.byKey(const ValueKey('draw-tool-rectangle'))).width;
-    expect(tester.getSize(find.byKey(const ValueKey('draw-tool-point'))).width, w);
+    expect(tester.getSize(find.byKey(const ValueKey('draw-tool-line'))).width, w);
+    expect(find.byKey(const ValueKey('draw-tool-point')), findsNothing);
     expect(find.byKey(const ValueKey('draw-tool-measure')), findsNothing);
     final label = tester.widget<Text>(find.text(FeatureKind.rectangle.label));
     expect(label.maxLines, 1);

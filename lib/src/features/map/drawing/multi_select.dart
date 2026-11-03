@@ -61,28 +61,38 @@ List<MapFeature> featuresInRect(Iterable<MapFeature> features,Rect r,Projector p
 /// GeoJSON of the selected objects (proposal 3, « exporter en GeoJSON »).
 List<int> selectionGeoJson(Iterable<MapFeature> features)=>utf8.encode(const JsonEncoder.withIndent('  ').convert(featureCollection(features)));
 
+/// Count of drawings and points: « 3 dessins · 2 points » (lot 25).
+String selectionCountText(int drawings,int points)=>[
+  if(drawings>0)S.t('poi.selDrawings',{'n':drawings}),
+  if(points>0)S.t('poi.selPoints',{'n':points}),
+].join(' · ');
+
 /// Common action bar of a multiple selection (proposal 3): number of
 /// objects, colour, width, duplicate, delete (one confirmation), export.
 /// Moving together uses the move handle at the centre of the selection.
 class MultiSelectionBar extends StatelessWidget {
   /// « Exporter », format chosen (card of 30 Oct 2026, 17 h 41).
   final DrawingController controller; final ValueChanged<ExportFormat> onExport;
-  const MultiSelectionBar({super.key,required this.controller,required this.onExport});
+  /// « Envoyer en message » with the text of the selection (lot 25).
+  final ValueChanged<String>? onSend;
+  const MultiSelectionBar({super.key,required this.controller,required this.onExport,this.onSend});
 
   @override Widget build(BuildContext context){
-    final c=controller, all=c.selection;
-    if(all.length<2)return const SizedBox.shrink();
-    final first=all.first;
+    final c=controller, all=c.selection, pois=c.selectedPois;
+    if(!c.showsCommonBar)return const SizedBox.shrink();
+    // Points of interest selected too (lot 25): « 3 dessins · 2 points ».
+    final count=pois.isEmpty?S.t('draw.selectedN',{'n':all.length}):selectionCountText(all.length,pois.length);
     return Material(key:const ValueKey('multi-selection-bar'),elevation:4,borderRadius:BorderRadius.circular(14),color:Theme.of(context).colorScheme.surface,
       child:SingleChildScrollView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),child:Row(mainAxisSize:MainAxisSize.min,children:[
-        Padding(padding:const EdgeInsets.symmetric(horizontal:8),child:Text(S.t('draw.selectedN',{'n':all.length}),style:Theme.of(context).textTheme.labelLarge)),
-        ColorPaletteButton(color:first.color,onSelected:c.setColor),
-        PopupMenuButton<double>(
+        Padding(padding:const EdgeInsets.symmetric(horizontal:8),child:Text(count,key:const ValueKey('multi-count'),style:Theme.of(context).textTheme.labelLarge)),
+        ColorPaletteButton(color:all.isEmpty?c.color:all.first.color,onSelected:c.setColor),
+        if(all.isNotEmpty)PopupMenuButton<double>(
           tooltip:S.t('draw.width'),onSelected:c.setStrokeWidth,
           itemBuilder:(_)=>[for(final w in drawingWidths)PopupMenuItem(value:w,child:SizedBox(width:48,child:Divider(thickness:w,color:Colors.black87)))],
           child:const Padding(padding:EdgeInsets.all(10),child:Icon(Icons.line_weight)),
         ),
-        IconButton(tooltip:S.t('draw.duplicate'),onPressed:c.duplicateSelected,icon:const Icon(Icons.copy_all_outlined)),
+        if(all.isNotEmpty)IconButton(tooltip:S.t('draw.duplicate'),onPressed:c.duplicateSelected,icon:const Icon(Icons.copy_all_outlined)),
+        if(onSend!=null)IconButton(key:const ValueKey('multi-send'),tooltip:S.t('measure.send'),onPressed:()=>onSend!(c.selectionMessage),icon:const Icon(Icons.send_outlined)),
         // « Exporter » under the icon, then GeoJSON, KML or GPX; for everyone.
         PopupMenuButton<ExportFormat>(key:const ValueKey('multi-export'),tooltip:S.t('draw.export'),onSelected:onExport,
           itemBuilder:(_)=>[for(final f in ExportFormat.values)PopupMenuItem(value:f,child:Text(f.label))],
@@ -106,10 +116,12 @@ Widget fontSizeButton(DrawingController c,MapFeature f)=>PopupMenuButton<double>
 /// Delete of a multiple selection: one confirmation for all (proposal 3);
 /// a single object is deleted at once, as before.
 Future<void> deleteSelection(BuildContext context,DrawingController c) async {
-  if(!c.isMulti){c.deleteSelected();return;}
-  final n=c.selection.length;
+  if(!c.isMulti&&c.selectedPois.isEmpty){c.deleteSelected();return;}
+  final n=c.selection.length, pois=c.selectedPois.length;
+  // Points of interest too (lot 25): their count, and they do not come back.
   final ok=await showDialog<bool>(context:context,builder:(d)=>AlertDialog(
-    title:Text(S.t('draw.deleteN',{'n':n})),content:Text(S.t('draw.deleteNHelp')),
+    title:Text(pois==0?S.t('draw.deleteN',{'n':n}):S.t('poi.deleteSel',{'what':selectionCountText(n,pois)})),
+    content:Text(S.t(pois==0?'draw.deleteNHelp':'poi.deleteSelHelp')),
     actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:Text(S.t('common.cancel'))),
       FilledButton(onPressed:()=>Navigator.pop(d,true),child:Text(S.t('routes.delete')))]));
   if(ok==true)c.deleteSelected();
