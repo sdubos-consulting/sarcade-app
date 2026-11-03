@@ -45,6 +45,7 @@ import 'stations.dart';
 import 'cinematique_touch.dart';
 import 'layer_opacity.dart';
 import 'map_bottom_line.dart';
+import 'side_panels.dart';
 import 'sos_placement.dart';
 import '../../modules/adrasec/bearings/bearing_aim.dart';
 import '../../ui/escape_stack.dart';
@@ -203,7 +204,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   int _tab=0; final Set<int> _builtTabs={0};
   bool get _isCompact=>MediaQuery.sizeOf(context).width<_compactWidth;
   void _goTab(int t){if(_tab==t)return;setState((){_tab=t;_builtTabs.add(t);});}
-  @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
+  @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;_restoreSidePanel();}}
 
   StreamSubscription<String>? _opensSub; StreamSubscription<void>? _answersSub; bool _drainingAnswers=false;
 
@@ -245,12 +246,37 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// the list; from the list Messages closes (phone: back to the map).
   final _messagesNav=MessagesNavigator();
   void _openMessages({bool fromButton=false}){
-    final shown=_isCompact?_tab==1:_deskId=='messages';
+    final shown=_isCompact?_tab==1:_showMessagesPanel;
     if(fromButton&&shown&&_messagesNav.backToList())return;
     if(_isCompact){_goTab(fromButton&&shown?0:1);return;}
     if(shown&&!fromButton)return;
-    _openDesk('messages',()=>MessagesPage(key:const ValueKey('desk-messages'),api:widget.api,eventId:widget.eventId,
-      actorId:widget.deviceId,sync:_sync,store:widget.store,navigator:_messagesNav));
+    // Computer: a panel beside the map, closed by a new click (lot 25).
+    _setSidePanel(shown?null:SidePanel.messages);
+  }
+  /// Wide screen: « Opérateurs » or « Messages » beside the map (lot 25,
+  /// side_panels.dart), one at a time, kept from one start to the next.
+  bool _showMessagesPanel=false;
+  SidePanel? get _sidePanel=>_showPanel?SidePanel.teams:_showMessagesPanel?SidePanel.messages:null;
+  void _setSidePanel(SidePanel? open){
+    if(_drawing.selectMode)_drawing.endSelection();
+    setState((){
+      _showPanel=open==SidePanel.teams;_showMessagesPanel=open==SidePanel.messages;
+      if(open!=null){_deskPage=null;_deskId=null;_showReferencePanel=false;_showResection=false;}
+      if(open==SidePanel.messages)_chatPeer=null;
+    });
+  }
+  void _restoreSidePanel(){
+    final open=sidePanelAtStart(widget.store.preference(sidePanelPreference),screenWidth:MediaQuery.sizeOf(context).width);
+    _showPanel=open==SidePanel.teams;_showMessagesPanel=open==SidePanel.messages;_savedSidePanel=sidePanelSaved(open);
+  }
+  String? _savedSidePanel;
+  /// Saves the open panel when it changes (wide screen only: phone unchanged).
+  void _saveSidePanel(bool compact){
+    if(compact)return;
+    final v=sidePanelSaved(_sidePanel);
+    if(v==_savedSidePanel)return;
+    _savedSidePanel=v;
+    unawaited(widget.store.setPreference(sidePanelPreference,v));
   }
   /// Chat with an operator opened from its sheet (lot 10C, 12 h 54): side
   /// panel, map visible; ✕ or Échap come back to the sheet.
@@ -264,7 +290,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(_)=>build()));return;}
     setState((){
       if(_deskId==id){_deskId=null;_deskPage=null;return;}
-      _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
+      _deskId=id;_deskPage=build();_showPanel=false;_showMessagesPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
   @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initAdsb();_initTvDiscovery();_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_carScreen.start();_stopWakeups=listenWakeups(_onWakeup);_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));}
@@ -1304,7 +1330,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _selectReference(ReferenceSite site){
     final pick=_pickPoint;
     if(pick!=null){setState((){_pickPoint=null;_pickHint=null;});pick(LatLng(site.lat,site.lon),site);return;}
-    setState((){_tab=0;_selectedReference=site;_showReferencePanel=true;_showPanel=false;});_map.move(LatLng(site.lat,site.lon),14);}
+    setState((){_tab=0;_selectedReference=site;_showReferencePanel=true;if(_isCompact)_showPanel=false;});_map.move(LatLng(site.lat,site.lon),14);} // wide: Opérateurs stays (lot 25)
   String _frequency(double? value)=>value==null?'-':'${value.toStringAsFixed(3)} MHz';
   List<List<SarcadePosition>> _traceSegments(){
     if(_trace.length<2)return _trace.isEmpty?<List<SarcadePosition>>[]:[List<SarcadePosition>.from(_trace)];
@@ -1495,7 +1521,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_selectedDevice!=null||_trace.isNotEmpty){_selectedDevice=null;_trace=[];closed=true;}
     if(_selectedReference!=null){_selectedReference=null;closed=true;}
     if(_adsb.selectedId!=null){_closeAircraft();closed=true;}
-    if(compact&&(_showPanel||_showReferencePanel||_showRoutesPanel)){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;closed=true;}
+    if(mapTapClosesSidePanels(compact:compact)&&(_showPanel||_showReferencePanel||_showRoutesPanel)){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;closed=true;}
     if(closed)setState((){});
     return closed;
   }
@@ -1666,9 +1692,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _map.move(cam.center,(cam.zoom-e.scrollDelta.dy/200).clamp(cam.minZoom??1.0,cam.maxZoom??20.0).toDouble());
   }
   void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null){_drawing.toggle(hit.id);}else{_drawing.endSelection();}}
-  void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
+  void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showMessagesPanel)'messages',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
   /// A window open over the map (side panel, page beside the rail).
-  bool get _mapPanelOpen=>mapPanelOpen(teams:_showPanel,reference:_showReferencePanel,routes:_showRoutesPanel,resection:_showResection,chat:_chatPeer!=null,desk:_deskId!=null);
+  bool get _mapPanelOpen=>mapPanelOpen(teams:_showPanel,reference:_showReferencePanel,routes:_showRoutesPanel,resection:_showResection,chat:_chatPeer!=null||_showMessagesPanel,desk:_deskId!=null);
 
   /// « Carte » (tab bar of a phone, rail of a computer; decision of the
   /// porteur, 31 Oct 2026, 1 h 14): every window closes and the map shows.
@@ -1685,14 +1711,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_pickPoint!=null){_pickPoint=null;_pickHint=null;_resectionCtl.pick(null);}
     setState((){
       _tab=0;_builtTabs.add(0);_deskPage=null;_deskId=null;_chatPeer=null;
-      _showPanel=false;_showReferencePanel=false;_selectedReference=null;
+      _showPanel=false;_showMessagesPanel=false;_showReferencePanel=false;_selectedReference=null;
       _showRoutesPanel=false;_drawingRouteId=null;
       _showResection=false;_resectionCtl.result=null;
     });
   }
 
   bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
-    case 'teams':_showPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
+    case 'teams':_showPanel=false; case 'messages':_showMessagesPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
     case 'reference':_showReferencePanel=false;_selectedReference=null; case 'chat':_chatPeer=null; case 'resection':_showResection=false;_resectionCtl.result=null;
     default:_deskId=null;_deskPage=null;}}));}
   final ResectionController _resectionCtl=ResectionController();
@@ -1855,7 +1881,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ]);
     final tabs=DefaultTabController(length:2,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       // Count of the stations above the two tabs (as the former panel).
-      Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(operatorsTitle(sorted.where((p)=>!_isFixed(p)).length,sorted.where(_isFixed).length),style:Theme.of(context).textTheme.titleMedium)),
+      Padding(padding:EdgeInsets.fromLTRB(14,screen?14:6,screen?14:4,4),child:Row(children:[
+        Expanded(child:Text(operatorsTitle(sorted.where((p)=>!_isFixed(p)).length,sorted.where(_isFixed).length),style:Theme.of(context).textTheme.titleMedium)),
+        // Computer: ✕ at the top of the panel (lot 25).
+        if(!screen)withId('team.panel.close',IconButton(tooltip:S.t('common.close'),onPressed:()=>_setSidePanel(null),icon:const Icon(Icons.close))),
+      ])),
       TabBar(tabs:[Tab(text:S.t('teams.list')),Tab(text:S.t('nearby.title'))]),
       Expanded(child:TabBarView(children:[list,_nearbyPanel(closable:false)])),
     ]));
@@ -2632,6 +2662,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final screenWidth=MediaQuery.sizeOf(context).width;
     final compact=screenWidth<_compactWidth;
     _syncEscapes();
+    _saveSidePanel(compact);
     // On a phone a panel takes most of the width, leaving a strip of map visible.
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
     // Phone (revue n° 52): Itinéraires and Résection on the whole screen,
@@ -2651,7 +2682,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         );
     // Over the map, not beside it: the map keeps its size underneath.
     Widget phonePanel(Widget child)=>Positioned.fill(child:Material(elevation:3,child:SafeArea(bottom:false,child:child)));
-    void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
+    void toggleOperators()=>_setSidePanel(_showPanel?null:SidePanel.teams);
     void openMessages()=>_openMessages(fromButton:true);
     void showMap()=>_showMapOnly();
     void openSettings(){
@@ -2679,7 +2710,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert(),id:'settings'):null;
     // Blue while Messages is open, page or side panel (card « Bouton Messages
     // pas mis en évidence », 30 Oct 2026, 16 h 13): one button in blue.
-    final messagesOn=messagesRailSelected(deskId:_deskId,chatPeer:_chatPeer);
+    final messagesOn=messagesRailSelected(deskId:_deskId,chatPeer:_chatPeer)||_showMessagesPanel;
     final railScheme=Theme.of(context).colorScheme;
     final messagesButton=IconButton(key:const ValueKey('rail-messages'),tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon(),isSelected:messagesOn,
       style:IconButton.styleFrom(fixedSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),
@@ -2725,7 +2756,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
         if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,
-          onUnpin:(id)=>_togglePin(id),onOrganize:_organizeRail,mapSelected:_deskPage==null&&_chatPeer==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
+          onUnpin:(id)=>_togglePin(id),onOrganize:_organizeRail,mapSelected:_deskPage==null&&_chatPeer==null&&!_showPanel&&!_showMessagesPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
         // Computer: Messages, Fichiers, APRS… open beside the rail, which
         // stays visible (« rail toujours visible », 28 Oct 2026).
         Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Stack(fit:StackFit.expand,children:[Row(children:[
@@ -2755,6 +2786,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ]));}))),
         // Computer: « Équipes » panel next to the map (list and nearby).
         if(_showPanel&&!compact)SizedBox(width:panelWidth(320),child:Material(elevation:3,child:_teams(sorted,screen:false))),
+        if(_showMessagesPanel&&!compact)withId('messages.panel',SizedBox(width:messagesPanelWidth(screenWidth-80-(!fullPanel&&_showResection&&_pickPoint==null?380:0)-(_chatPeer!=null?420:0)-(!fullPanel&&_showRoutesPanel?360:0)-(_showReferencePanel&&_selectedReference!=null?355:0)),child:Material(elevation:3,child:MessagesPage(key:const ValueKey('panel-messages'),
+          api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,navigator:_messagesNav,onClose:()=>_setSidePanel(null))))),
         Expanded(child:Stack(key:_mapKey,children:[mapBottomMargin(context,fullBleed:fullBleed,child:MouseRegion(onHover:_aimHover,opaque:false,child:FlutterMap(mapController:_map,options:MapOptions(
           initialCenter:_savedView==null?const LatLng(48.8566,2.3522):LatLng(_savedView.lat,_savedView.lon),initialZoom:_savedView?.zoom??11,maxZoom:20,onTap:_onMapTap,
           onPositionChanged:(camera,_)=>_onCameraChanged(camera),
