@@ -101,7 +101,7 @@ for (const size of SIZES) {
     });
     test.afterAll(async () => { await page?.close(); await api?.dispose(); });
 
-    test('bottom of the map: nothing under the tab bar, scale beside « Suivi de position » (lot 19)', async () => {
+    test('bottom of the map: nothing under the tab bar, scale beside « Suivi de position » (lot 19), right column aligned (lot 25)', async () => {
       // Card « Téléphone : boutons du bas de la carte cachés par la barre de
       // navigation »: ⓘ above the bar, scale on the line of « Suivi de
       // position », bottom of the SOS disc (46 in a 56 box) on that line.
@@ -111,9 +111,20 @@ for (const size of SIZES) {
       expect(layers, '« Fond et affichage » on screen').not.toBeNull();
       expect(info.bottom, 'ⓘ inside the window').toBeLessThanOrEqual(size.height);
       expect(info.right, 'ⓘ clear of the right column').toBeLessThan(layers.left);
+      // Lot 25: the buttons of the right column share one vertical axis.
+      const sosBox = await rectOf(page, 'map.sos');
+      const meBox = await rectOf(page, 'map.map-me');
+      if (sosBox) {
+        const axis = (sosBox.left + sosBox.right) / 2;
+        for (const [n, b] of [['« Fond et affichage »', layers], ['position', meBox]]) {
+          if (b) expect(Math.abs((b.left + b.right) / 2 - axis), `${n} centred on SOS`).toBeLessThanOrEqual(1);
+        }
+      }
       if (!compact) {
         const scale = await rectOf(page, 'map.scale');
         expect(scale, 'no scale beside « Suivi de position » on a large screen').toBeNull();
+        // Lot 25, point 7: the SOS disc ends on the same bottom line as on a phone (12 px).
+        if (sosBox) expect(Math.abs(sosBox.bottom - 5 - (size.height - 12)), 'bottom of SOS on the bottom line').toBeLessThanOrEqual(2);
         return;
       }
       const tab = await rectOf(page, 'nav.map');
