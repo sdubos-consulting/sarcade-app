@@ -45,6 +45,26 @@ class _Step {
   _Step(this.before,this.after,{this.undoExtra,this.redoExtra,this.tag});
 }
 
+/// What the selection needs from the points of interest (lot 25, card
+/// « Sélection : inclure les points d'intérêt »); given by the map page
+/// (features/poi/poi_selection.dart), so this file keeps no widget.
+class PoiSelectionHooks {
+  /// Place of a point, null when it is gone.
+  final LatLng? Function(String id) positionOf;
+  /// One's own points, every point for the PCO (choice 4).
+  final bool Function(String id) canSelect;
+  /// Points moved together (drag, undo, redo): their new places.
+  final void Function(Map<String,LatLng> to) onMoved;
+  final void Function(List<String> ids) onDelete;
+  final void Function(List<String> ids,int color) onColor;
+  /// The point as a drawn point, for « Exporter ».
+  final MapFeature? Function(String id) asFeature;
+  /// Text of « Envoyer en message ».
+  final String Function(List<MapFeature> drawings,List<String> pois) message;
+  const PoiSelectionHooks({required this.positionOf,required this.canSelect,required this.onMoved,required this.onDelete,
+    required this.onColor,required this.asFeature,required this.message});
+}
+
 /// State of the PowerPoint-like drawing tools: active tool, shape being drawn,
 /// selection, styles and undo/redo. Pure logic, no widgets, so it is unit tested.
 ///
@@ -85,16 +105,52 @@ class DrawingController extends ChangeNotifier {
   int color=drawingPalette.first;
   double strokeWidth=drawingWidths[1];
 
+  // --- Points of interest in the selection (lot 25) ---
+  PoiSelectionHooks? poiHooks;
+  final List<String> _pois=[];
+  /// Places of the selected points during a drag, before they are sent.
+  final Map<String,LatLng> _poiLive={};
+  Map<String,LatLng>? _poiEditBefore;
+  /// Selected points of interest, in the order of selection.
+  List<String> get selectedPois=>[for(final id in _pois)if(poiHooks?.positionOf(id)!=null)id];
+  bool isPoiSelected(String id)=>_pois.contains(id);
+  /// Place shown for a selected point (followed during a drag).
+  LatLng? poiPlace(String id)=>_poiLive[id]??poiHooks?.positionOf(id);
+  Map<String,LatLng> get poiLive=>Map.unmodifiable(_poiLive);
+  /// Places of the selected points (move handle).
+  List<LatLng> get selectedPoiPlaces=>[for(final id in _pois)?poiPlace(id)];
+  int get selectionCount=>_selection.length+selectedPois.length;
+  /// The common action bar: several objects, or any point of interest.
+  bool get showsCommonBar=>selectionCount>=2||selectedPois.isNotEmpty;
+  /// Drawings and points for « Exporter ».
+  List<MapFeature> get exportSelection=>[...selection,for(final id in selectedPois)?poiHooks?.asFeature(id)];
+  /// Text of « Envoyer en message ».
+  String get selectionMessage=>poiHooks?.message(selection,selectedPois)??'';
+
+  /// Ctrl / Maj + clic on a point, or a touch in « Sélection »: adds or
+  /// removes it (one's own, all for the PCO).
+  void togglePoi(String id){
+    if(_pois.contains(id)){_pois.remove(id);}
+    else if(poiHooks?.canSelect(id)==true){_pois.add(id);}
+    notifyListeners();
+  }
+
+  /// Points inside the selection rectangle join the selection.
+  void addPoisToSelection(Iterable<String> ids){
+    for(final id in ids){if(!_pois.contains(id)&&poiHooks?.canSelect(id)==true)_pois.add(id);}
+    notifyListeners();
+  }
+
   FeatureKind? get tool=>_tool;
   List<LatLng> get draft=>List.unmodifiable(_draft);
   List<MapFeature> get features=>_features.values.toList()..sort((a,b)=>a.updatedAt.compareTo(b.updatedAt));
   MapFeature? feature(String id)=>_features[id];
   /// The selected object when exactly one is selected.
-  MapFeature? get selected=>_selection.length==1?_features[_selection.first]:null;
+  MapFeature? get selected=>_selection.length==1&&_pois.isEmpty?_features[_selection.first]:null;
   /// Every selected object.
   List<MapFeature> get selection=>[for(final id in _selection)?_features[id]];
-  bool get hasSelection=>_selection.isNotEmpty;
-  bool get isMulti=>_selection.length>1;
+  bool get hasSelection=>_selection.isNotEmpty||_pois.isNotEmpty;
+  bool get isMulti=>_selection.length+_pois.length>1;
   bool isSelected(String id)=>_selection.contains(id);
   bool get canUndo=>_undo.isNotEmpty;
   bool get canRedo=>_redo.isNotEmpty;
@@ -102,7 +158,7 @@ class DrawingController extends ChangeNotifier {
 
   /// The map should not pan while a shape is selected or freehand is active,
   /// so handle drags and freehand strokes are not stolen by the map.
-  bool get locksMapDrag=>_selection.isNotEmpty||selectMode||_tool==FeatureKind.freehand;
+  bool get locksMapDrag=>hasSelection||selectMode||_tool==FeatureKind.freehand;
 
   /// Length or area of the shape being drawn, for the live status line.
   String? get draftMeasure{
@@ -116,7 +172,7 @@ class DrawingController extends ChangeNotifier {
   bool get canFinish=>_tool!=null&&_tool!.isMultiVertex&&_draft.length>=_tool!.minPoints;
 
   void selectTool(FeatureKind? kind){
-    _tool=kind;_draft.clear();_selection.clear();if(kind!=null)selectMode=false;
+    _tool=kind;_draft.clear();_selection.clear();_pois.clear();if(kind!=null)selectMode=false;
     notifyListeners();
   }
 
@@ -172,7 +228,7 @@ class DrawingController extends ChangeNotifier {
     _draft.clear();
     // Like PowerPoint: the new shape is selected so it can be styled at once,
     // and the tool is released so the next tap selects instead of drawing.
-    _tool=null;_selection..clear()..add(f.id);
+    _tool=null;_selection..clear()..add(f.id);_pois.clear();
     _record({f.id:null},{f.id:f});
     _put(f,isNew:true);
     notifyListeners();
@@ -191,7 +247,7 @@ class DrawingController extends ChangeNotifier {
         createdBy:actorId,updatedBy:actorId,updatedAt:now,
       ),
     ];
-    _tool=null;_draft.clear();_selection.clear();
+    _tool=null;_draft.clear();_selection.clear();_pois.clear();
     _record({for(final f in created)f.id:null},{for(final f in created)f.id:f});
     for(final f in created){_put(f,isNew:true);}
     notifyListeners();
@@ -200,7 +256,7 @@ class DrawingController extends ChangeNotifier {
 
   void select(String? id){
     if(id!=null&&!_features.containsKey(id))return;
-    _selection.clear();if(id!=null)_selection.add(id);
+    _selection.clear();_pois.clear();if(id!=null)_selection.add(id);
     notifyListeners();
   }
 
@@ -229,7 +285,7 @@ class DrawingController extends ChangeNotifier {
   }
   /// ✕, Échap, a touch on the empty map, closing the drawing bar or opening
   /// another panel: nothing selected, no tool, the map moves again.
-  void endSelection(){selectMode=false;_selection.clear();if(_tool!=null){_tool=null;_draft.clear();}notifyListeners();}
+  void endSelection(){selectMode=false;_selection.clear();_pois.clear();if(_tool!=null){_tool=null;_draft.clear();}notifyListeners();}
 
   void _grouped(String action,int n,void Function() run){
     _group=n>1?(id:_uuid.v4(),n:n,action:action):null;
@@ -239,9 +295,22 @@ class DrawingController extends ChangeNotifier {
   // Drag gestures: call beginEdit once at the start, then the move/update
   // methods for every frame, then endEdit, so one drag is one undo step and
   // one synchronised change.
-  void beginEdit(){final all=selection;_editBefore=all.isEmpty?null:{for(final f in all)f.id:f};}
+  void beginEdit(){
+    final all=selection;_editBefore=all.isEmpty?null:{for(final f in all)f.id:f};
+    _poiLive.clear();
+    final pois={for(final id in selectedPois)id:poiHooks!.positionOf(id)!};
+    _poiEditBefore=pois.isEmpty?null:pois;
+  }
 
-  void moveSelected(double dLat,double dLon){_mutateSelected((f)=>f.translated(dLat,dLon));}
+  /// Moves the selected drawings and points of interest together.
+  void moveSelected(double dLat,double dLon){
+    final before=_poiEditBefore;
+    if(before!=null){
+      for(final id in before.keys){final at=_poiLive[id]??before[id]!;_poiLive[id]=LatLng(at.latitude+dLat,at.longitude+dLon);}
+      if(selection.isEmpty)notifyListeners();
+    }
+    _mutateSelected((f)=>f.translated(dLat,dLon));
+  }
 
   void moveVertex(int index,LatLng to){
     _mutateSelected((f){
@@ -288,19 +357,29 @@ class DrawingController extends ChangeNotifier {
   void setRadius(double r){_mutateSelected((f)=>f.copyWith(radiusM:r<1?1:r));}
 
   void endEdit(){
-    final before=_editBefore;
-    _editBefore=null;
-    if(before==null)return;
+    final before=_editBefore, poiBefore=_poiEditBefore;
+    _editBefore=null;_poiEditBefore=null;
+    final moved={for(final e in _poiLive.entries)if(poiBefore!=null&&poiBefore.containsKey(e.key)&&poiBefore[e.key]!=e.value)e.key:e.value};
+    _poiLive.clear();
     final changed=<String,MapFeature>{};
-    for(final id in before.keys){final f=_features[id];if(f!=null&&!identical(before[id],f))changed[id]=_stamp(f);}
-    if(changed.isEmpty)return;
+    if(before!=null){for(final id in before.keys){final f=_features[id];if(f!=null&&!identical(before[id],f))changed[id]=_stamp(f);}}
+    if(changed.isEmpty&&moved.isEmpty){if(poiBefore!=null)notifyListeners();return;}
     _features.addAll(changed);
-    _record({for(final id in changed.keys)id:before[id]},changed);
+    // Points moved with the drawings: one undo step for all (lot 25).
+    final hooks=poiHooks, from={for(final id in moved.keys)id:poiBefore![id]!};
+    _record({for(final id in changed.keys)id:before![id]},changed,
+      undoExtra:moved.isEmpty||hooks==null?null:()=>hooks.onMoved(from),redoExtra:moved.isEmpty||hooks==null?null:()=>hooks.onMoved(moved));
     _grouped('move',changed.length,(){for(final f in changed.values){onChanged?.call(f,isNew:false);}});
+    if(moved.isNotEmpty)hooks?.onMoved(moved);
     notifyListeners();
   }
 
-  void setColor(int c){color=c;_changeSelected((f)=>f.copyWith(color:c));}
+  void setColor(int c){
+    color=c;
+    final pois=selectedPois;
+    if(pois.isNotEmpty)poiHooks?.onColor(pois,c);
+    _changeSelected((f)=>f.copyWith(color:c));
+  }
   void setStrokeWidth(double w){strokeWidth=w;_changeSelected((f)=>f.copyWith(strokeWidth:w));}
   void setLabel(String label){_changeSelected((f)=>f.copyWith(label:label.trim()));}
   void toggleGeofence(){_changeSelected((f)=>f.copyWith(geofence:!f.geofence));}
@@ -310,8 +389,10 @@ class DrawingController extends ChangeNotifier {
 
   /// Deletes every selected object: one undo step.
   void deleteSelected(){
-    final all=selection;
-    if(all.isEmpty)return;
+    final all=selection, pois=selectedPois;
+    _pois.clear();
+    if(pois.isNotEmpty)poiHooks?.onDelete(pois);
+    if(all.isEmpty){notifyListeners();return;}
     _selection.clear();
     _record({for(final f in all)f.id:f},{for(final f in all)f.id:null});
     _grouped('delete',all.length,(){for(final f in all){_remove(f.id);}});
@@ -323,7 +404,7 @@ class DrawingController extends ChangeNotifier {
     final all=selection;
     if(all.isEmpty)return null;
     final copies=[for(final f in all)_stamp(f.translated(offsetDeg,offsetDeg).copyWith(id:_uuid.v7()))];
-    _selection..clear()..addAll(copies.map((c)=>c.id));
+    _selection..clear()..addAll(copies.map((c)=>c.id));_pois.clear();
     _record({for(final c in copies)c.id:null},{for(final c in copies)c.id:c});
     _grouped('duplicate',copies.length,(){for(final c in copies){_put(c,isNew:true);}});
     notifyListeners();
@@ -421,8 +502,8 @@ class DrawingController extends ChangeNotifier {
     if(f!=null)onDeleted?.call(f);
   }
 
-  void _record(Map<String,MapFeature?> before,Map<String,MapFeature?> after){
-    _undo.add(_Step(before,after));
+  void _record(Map<String,MapFeature?> before,Map<String,MapFeature?> after,{VoidCallback? undoExtra,VoidCallback? redoExtra}){
+    _undo.add(_Step(before,after,undoExtra:undoExtra,redoExtra:redoExtra));
     if(_undo.length>_historyLimit)_undo.removeAt(0);
     _redo.clear();
   }
