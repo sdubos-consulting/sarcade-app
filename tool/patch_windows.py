@@ -10,6 +10,9 @@
   wWinMain, brings the window already open to the front and returns
   (tool/windows_runner/single_instance.*); channel « sarcade/runner » so the
   Dart code quits without exit() (tool/windows_runner/runner_channel.*).
+- The engine (flutter_windows.dll) and the plugin DLLs are delay-loaded:
+  loaded at their first use, after the single instance lock and the start
+  window, never by a second process (lot 25, patch_delay_load).
 
 Idempotent, and fails loudly if the template changed shape.
 """
@@ -58,6 +61,8 @@ def main() -> int:
     if not patch_splash():
         return 1
     if not patch_single_instance():
+        return 1
+    if not patch_delay_load():
         return 1
     return 0
 
@@ -191,6 +196,50 @@ def patch_single_instance() -> bool:
             return _fail("flutter_controller_ = nullptr not found in windows/runner/flutter_window.cpp")
         window_cpp.write_text(text, encoding="utf-8")
     print(f"patched {window_cpp}")
+    return True
+
+
+DELAY_LOAD_MARK = "# SARCADE: delay-loaded engine and plugins"
+DELAY_LOAD = DELAY_LOAD_MARK + """ (tool/patch_windows.py, card
+# « Windows : SARCADE a cessé de fonctionner », lot 25). Without it Windows
+# loads flutter_windows.dll and every plugin DLL before wWinMain: on the
+# first start after an install (unsigned files scanned by Defender) the
+# start window showed after 17 s, and a second process loaded the engine
+# and the plugins before being refused. Delay-loaded, they are loaded at
+# their first use: after the single instance lock and the start window, and
+# never by a refused second process. Static plugins are linked in the exe.
+target_link_options(${BINARY_NAME} PRIVATE "/DELAYLOAD:flutter_windows.dll")
+foreach(sarcade_plugin ${FLUTTER_PLUGIN_LIST})
+  if(TARGET ${sarcade_plugin}_plugin)
+    get_target_property(sarcade_plugin_type ${sarcade_plugin}_plugin TYPE)
+    if(sarcade_plugin_type STREQUAL "SHARED_LIBRARY")
+      target_link_options(${BINARY_NAME} PRIVATE "/DELAYLOAD:$<TARGET_FILE_NAME:${sarcade_plugin}_plugin>")
+    endif()
+  endif()
+endforeach(sarcade_plugin)
+target_link_libraries(${BINARY_NAME} PRIVATE delayimp)
+"""
+
+
+def add_delay_load(text: str) -> str | None:
+    """windows/CMakeLists.txt with the delay-load rules after the plugins
+    (None when the include of the plugins is not found). Idempotent."""
+    if DELAY_LOAD_MARK in text:
+        return text
+    text, n = re.subn(r"(\ninclude\(flutter/generated_plugins\.cmake\)\n)",
+                      lambda m: m.group(1) + "\n" + DELAY_LOAD, text, count=1)
+    return text if n == 1 else None
+
+
+def patch_delay_load() -> bool:
+    """Card « Windows : SARCADE a cessé de fonctionner » (lot 25), points 2
+    and 3: the second process returns before any DLL of Flutter is loaded,
+    and the start window shows before the long load of the engine."""
+    text = add_delay_load(CMAKE.read_text(encoding="utf-8"))
+    if text is None:
+        return _fail("include(flutter/generated_plugins.cmake) not found in windows/CMakeLists.txt")
+    CMAKE.write_text(text, encoding="utf-8")
+    print(f"patched {CMAKE} (delay load)")
     return True
 
 

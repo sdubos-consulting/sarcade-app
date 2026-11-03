@@ -8,7 +8,10 @@
 // without message and without ending the process abruptly (a second process
 // ended by exit(0) while its start window and engine were running crashed
 // with 0xc0000409 in ucrtbase.dll). The lock of the Dart code
-// (acquireSingleInstance) stays as a safety net.
+// (acquireSingleInstance) stays as a safety net. Since lot 25 the engine and
+// the plugin DLLs are delay-loaded (tool/patch_windows.py): a refused
+// process loads none of them. Each start writes which process took the lock
+// (single_instance=acquired) or was refused (second_instance=refused).
 #ifndef RUNNER_SINGLE_INSTANCE_H_
 #define RUNNER_SINGLE_INSTANCE_H_
 
