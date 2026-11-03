@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sarcade_app/src/features/map/link_weather_pill.dart';
 import 'package:sarcade_app/src/features/map/map_bottom_line.dart';
+import 'package:sarcade_app/src/features/map/map_right_column.dart';
 import 'package:sarcade_app/src/features/map/sos_placement.dart';
 
 // Lot 19, card « Téléphone : boutons du bas de la carte cachés par la barre
@@ -13,11 +14,11 @@ import 'package:sarcade_app/src/features/map/sos_placement.dart';
 Widget _phone({required double badgeWidth})=>MaterialApp(home:Scaffold(body:Stack(children:[
   phoneBottomLine(badge:SizedBox(key:const ValueKey('badge'),width:badgeWidth,height:pillHeight),
     scale:const SizedBox(key:ValueKey('scale'),width:110,height:26)),
-  mapColumnPlacement(compact:true,taking:false,card:false,bottom:mapColumnBottom(compact:true),
-    child:const Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.end,children:[
-      SizedBox(key:ValueKey('layers'),width:48,height:48),SizedBox(height:10),
-      SizedBox(key:ValueKey('me'),width:48,height:48),SizedBox(height:16),
-      SizedBox(key:ValueKey('sos'),width:56,height:56),
+  mapColumnPlacement(compact:true,taking:false,card:false,bottom:mapColumnBottom,
+    child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.end,children:[
+      mapColumnSlot(const SizedBox(key:ValueKey('layers'),width:48,height:48)),const SizedBox(height:mapColumnGap),
+      mapColumnSlot(const SizedBox(key:ValueKey('me'),width:48,height:48)),const SizedBox(height:mapColumnSosGap),
+      const SizedBox(key:ValueKey('sos'),width:56,height:56),
     ])),
 ])));
 
@@ -37,7 +38,7 @@ void main() {
       expect(scale.center.dy, closeTo(badge.center.dy, 0.5), reason: 'same line');
       expect(sos.bottom - sosDiscInset, closeTo(badge.bottom, 0.5), reason: 'bottom of the SOS disc on the line');
       expect(scale.right, lessThanOrEqualTo(sos.left), reason: 'the scale stays clear of the column');
-      expect(layers.right, sos.right);
+      expect(layers.center.dx, sos.center.dx, reason: 'same axis (lot 25)');
     });
   }
 
@@ -63,6 +64,5 @@ void main() {
     // Computer and tablet: unchanged.
     expect(mapAttributionBottom(compact: false, fullBleed: false), 0);
     expect(mapScaleBottom(compact: false), 44);
-    expect(mapColumnBottom(compact: false), 24);
   });
 }

@@ -18,6 +18,7 @@ import '../../platform/platform_services.dart' show webBluetoothAvailable;
 import '../../offline/local_store.dart';
 import '../../l10n/strings.dart';
 import '../../services/notification_service.dart';
+import '../lora/lora_battery.dart';
 import '../remotes/remote_meshcore.dart';
 import 'meshcore_chat.dart';
 import 'meshcore_protocol.dart';
@@ -26,7 +27,9 @@ import 'meshcore_protocol.dart';
 /// after a click in this tab (« Reconnecter le module »). [disconnected]
 /// (lot 19): « Déconnecter » was pressed, the module stays remembered but is
 /// not joined again until « Se connecter ».
-enum MeshCoreState { none, connecting, connected, reconnecting, failed, waitingClick, disconnected }
+/// [unavailable]: web app (lot 25), « Reconnecter » failed (module off or
+/// out of reach); no automatic attempt, the pill stays to try again later.
+enum MeshCoreState { none, connecting, connected, reconnecting, failed, waitingClick, disconnected, unavailable }
 
 /// Preference keys of the remembered module.
 const meshCoreDeviceKey='meshcore_device', meshCoreNameKey='meshcore_name';
@@ -40,7 +43,7 @@ const meshCoreOffKey='meshcore_off';
 /// grey, lot 19), 'ok', 'wait', 'bad'.
 String meshCorePillTone(MeshCoreState s)=>switch(s){
   MeshCoreState.none||MeshCoreState.disconnected=>'off', MeshCoreState.connected=>'ok',
-  MeshCoreState.connecting||MeshCoreState.reconnecting||MeshCoreState.waitingClick=>'wait', MeshCoreState.failed=>'bad'};
+  MeshCoreState.connecting||MeshCoreState.reconnecting||MeshCoreState.waitingClick=>'wait', MeshCoreState.failed||MeshCoreState.unavailable=>'bad'};
 
 /// Delay before the next attempt to join the module again: 5 s, 15 s,
 /// 30 s, then every minute.
@@ -278,6 +281,10 @@ class MeshCoreLink extends ChangeNotifier {
       await _send(frame,what);
     };
     chats.notify??=(title,body)=>unawaited(NotificationService().message(title:title,body:body,priority:'routine'));
+    // Lot 25: thresholds kept on this device, alert notified.
+    final battery=LoraBatteryMonitor.instance;
+    battery.read??=store.preference; battery.save??=store.setPreference;
+    battery.notify??=(title,body)=>unawaited(NotificationService().message(title:title,body:body,priority:'urgent'));
     if(_wired)return;
     _wired=true;
     showOnMap=store.preference(meshCoreMapKey)=='1';
@@ -315,6 +322,10 @@ class MeshCoreLink extends ChangeNotifier {
         log('${_contacts.length} nœud(s) connu(s)');
       case 'advert':
         unawaited(_send(contactsQuery(),'GET_CONTACTS'));
+      // Lot 25: low battery of the module (lora_battery.dart).
+      case 'battery':
+        final mv=info.batteryMv, id=deviceId;
+        if(mv!=null&&id!=null)LoraBatteryMonitor.instance.report(id:id,name:info.name??deviceName??id,box:LoraBox.meshcore,millivolts:mv);
       // Private messages (lot 17).
       case 'sent':
         final sent=readMeshCoreSent(v); if(sent!=null)MeshCoreChats.instance.onSent(sent.ack,sent.timeout);
@@ -341,6 +352,7 @@ class MeshCoreLink extends ChangeNotifier {
     await _connSub?.cancel(); _connSub=null;
     final id=deviceId;
     if(id!=null&&!testMode){try{await UniversalBle.disconnect(id);}catch(_){}}
+    if(id!=null)LoraBatteryMonitor.instance.forget(id);
     connectedSince=null;
     _stopping=false;
   }
@@ -371,5 +383,22 @@ class MeshCoreLink extends ChangeNotifier {
     if(d==null)return;
     _webChosen.add(d.deviceId);
     await choose(d);
+  }
+
+  /// Web, « Reconnecter » of the bar (lot 25, card « Web, MeshCore :
+  /// bandeau affiché en permanence », point 2): when the module cannot be
+  /// joined (off or out of reach), the bar goes and the state becomes
+  /// « module indisponible », without automatic attempts; the pill stays
+  /// to try again later. [pick] and [join] are replaced by the tests.
+  Future<void> reconnectInBrowser({Future<BleDevice?> Function()? pick,Future<void> Function(BleDevice)? join}) async {
+    final d=await (pick??pickInBrowser)();
+    if(d!=null){
+      _webChosen.add(d.deviceId);
+      await (join??choose)(d);
+      if(state==MeshCoreState.connected||state==MeshCoreState.disconnected)return;
+    }
+    _retry?.cancel(); trying=false; retryIn=null;
+    log('module indisponible');
+    _set(MeshCoreState.unavailable);
   }
 }

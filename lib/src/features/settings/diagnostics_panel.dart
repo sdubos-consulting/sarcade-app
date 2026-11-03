@@ -27,6 +27,8 @@ import '../../access/access_session.dart' show AccessSession;
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart' show eventModules;
+import '../lora/lora_battery.dart' show LoraBatteryMonitor, loraBatteryLine;
+import '../lora/lora_battery_view.dart' show meshCorePillToneWithBattery;
 import '../meshcore/meshcore_link.dart';
 import '../meshcore/meshcore_page.dart';
 import '../../ui/overlay_page.dart';
@@ -390,9 +392,13 @@ DiagLine? adsbDiagLine(String block,Map<String,dynamic>? st,DateTime now){
 
 /// Line « Module MeshCore » of Liaisons (1 Nov 2026, 8 h 17): connected,
 /// out of reach, or no module chosen.
-DiagLine meshCoreDiagLine(String block,MeshCoreLink link)=>(block:block,label:S.t('mesh.tool'),
-  value:link.remembered?'${link.deviceName??link.deviceId} · ${S.t('mesh.state.${link.state.name}')}':S.t('mesh.state.none'),
-  state:!link.remembered?null:switch(meshCorePillTone(link.state)){'ok'=>'green','wait'=>'orange','off'=>'off',_=>'red'});
+/// Lot 25: the level of the battery when known, orange while it is low.
+DiagLine meshCoreDiagLine(String block,MeshCoreLink link){
+  final battery=link.deviceId==null?null:LoraBatteryMonitor.instance.stateOf(link.deviceId!);
+  return (block:block,label:S.t('mesh.tool'),
+    value:link.remembered?['${link.deviceName??link.deviceId} · ${S.t('mesh.state.${link.state.name}')}',if(battery!=null)loraBatteryLine(battery.percent)].join(' · '):S.t('mesh.state.none'),
+    state:!link.remembered?null:switch(meshCorePillToneWithBattery(meshCorePillTone(link.state),link.deviceId)){'ok'=>'green','wait'||'battery'=>'orange','off'=>'off',_=>'red'});
+}
 
 /// Where itineraries are computed: 'server', 'device' or 'none'.
 String routingWhere({required bool server,required bool device})=>server?'server':device?'device':'none';
