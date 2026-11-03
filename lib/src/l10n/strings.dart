@@ -590,6 +590,22 @@ const Texts _fr={
   'diag.serverForbidden':'Réservé au PCO et aux administrateurs',
   'diag.serverOld':'Serveur trop ancien pour ce bloc',
   'diag.accessBrowser':'par le navigateur','diag.accessBrowserRefused':'sans réponse, reconnectez-vous'
+  // Lot 26 · habilitations : connexion (auth.), administration (admin.), accès aux événements (access.).
+  'auth.account':'Compte','auth.signIn':'Se connecter','auth.signOut':'Se déconnecter','auth.signedOut':'Non connecté','auth.signedAs':'Connecté : {email}',
+  'auth.signInHelp':'Un code vous est envoyé par e-mail, puis cet appareil reste connecté','auth.title':'Se connecter','auth.email':'Adresse e-mail',
+  'auth.requestCode':'Recevoir un code','auth.codeSent':'Code envoyé à {email}','auth.simulated':'Envoi simulé : le code est dans le journal de sécurité du serveur',
+  'auth.code':'Code à {n} chiffres','auth.verify':'Valider','auth.resend':'Renvoyer le code','auth.resendIn':'Renvoyer dans {s} s','auth.changeEmail':'Changer d’adresse',
+  'auth.withAccess':'Continuer avec {email}','auth.withAccessHelp':'Adresse déjà vérifiée par Cloudflare Access','auth.connected':'Connecté : {email}','auth.offline':'Serveur injoignable : réessayez',
+  'auth.error.invalid_email':'Adresse e-mail invalide','auth.error.resend_too_soon':'Patientez {s} s avant un nouveau code','auth.error.too_many_codes':'Trop de codes demandés : réessayez dans {min} min',
+  'auth.error.too_many_requests':'Trop de demandes depuis ce réseau : réessayez dans {min} min','auth.error.mail_failed':'E-mail non envoyé : réessayez plus tard',
+  'auth.error.no_code':'Aucun code en cours : demandez-en un','auth.error.invalid_code':'Code incorrect : {n## essai restant|# essais restants}','auth.error.code_expired':'Code expiré : demandez-en un nouveau',
+  'auth.error.too_many_attempts':'Trop d’essais : demandez un nouveau code','auth.error.account_disabled':'Compte désactivé : voyez un administrateur',
+  'auth.error.access_email_required':'Adresse non vérifiée par Cloudflare Access','auth.error.other':'Refus du serveur ({e})',
+  'auth.signOutAsk':'Se déconnecter de {email} ?','auth.signOutBody':'Cet appareil garde les droits de base (Public)',
+  'auth.devices':'Mes appareils','auth.devicesNone':'Aucun appareil','auth.thisDevice':'cet appareil','auth.revoke':'Révoquer','auth.revokeAsk':'Révoquer « {name} » ?',
+  'auth.revokeBody':'Il devra se reconnecter avec un code','auth.revoked':'Appareil révoqué','auth.lastSeen':'vu le {date}','auth.enrolled':'connecté le {date}',
+  'auth.method.email_code':'code e-mail','auth.method.access':'Cloudflare Access','auth.later':'Plus tard',
+  'auth.refused.device_revoked':'Appareil déconnecté de votre compte','auth.refused.device_token_invalid':'Connexion de l’appareil inconnue du serveur',
 };
 
 const Texts _en={
@@ -1117,4 +1133,20 @@ const Texts _en={
   'diag.serverForbidden':'PCO and administrators only',
   'diag.serverOld':'Server too old for this block',
   'diag.accessBrowser':'through the browser','diag.accessBrowserRefused':'no answer, sign in again'
+  // Lot 26 · rights: sign-in (auth.), administration (admin.), event access (access.).
+  'auth.account':'Account','auth.signIn':'Sign in','auth.signOut':'Sign out','auth.signedOut':'Not signed in','auth.signedAs':'Signed in: {email}',
+  'auth.signInHelp':'A code is sent to you by email, then this device stays signed in','auth.title':'Sign in','auth.email':'Email address',
+  'auth.requestCode':'Get a code','auth.codeSent':'Code sent to {email}','auth.simulated':'Simulated sending: the code is in the security log of the server',
+  'auth.code':'{n}-digit code','auth.verify':'Confirm','auth.resend':'Send the code again','auth.resendIn':'Send again in {s} s','auth.changeEmail':'Change address',
+  'auth.withAccess':'Continue as {email}','auth.withAccessHelp':'Address already checked by Cloudflare Access','auth.connected':'Signed in: {email}','auth.offline':'Server unreachable: try again',
+  'auth.error.invalid_email':'Invalid email address','auth.error.resend_too_soon':'Wait {s} s before a new code','auth.error.too_many_codes':'Too many codes asked: try again in {min} min',
+  'auth.error.too_many_requests':'Too many requests from this network: try again in {min} min','auth.error.mail_failed':'Email not sent: try again later',
+  'auth.error.no_code':'No code in progress: ask for one','auth.error.invalid_code':'Wrong code: {n## attempt left|# attempts left}','auth.error.code_expired':'Code expired: ask for a new one',
+  'auth.error.too_many_attempts':'Too many attempts: ask for a new code','auth.error.account_disabled':'Account disabled: see an administrator',
+  'auth.error.access_email_required':'Address not checked by Cloudflare Access','auth.error.other':'Refused by the server ({e})',
+  'auth.signOutAsk':'Sign out of {email}?','auth.signOutBody':'This device keeps the basic rights (Public)',
+  'auth.devices':'My devices','auth.devicesNone':'No device','auth.thisDevice':'this device','auth.revoke':'Revoke','auth.revokeAsk':'Revoke « {name} »?',
+  'auth.revokeBody':'It will have to sign in again with a code','auth.revoked':'Device revoked','auth.lastSeen':'seen on {date}','auth.enrolled':'signed in on {date}',
+  'auth.method.email_code':'email code','auth.method.access':'Cloudflare Access','auth.later':'Later',
+  'auth.refused.device_revoked':'Device signed out of your account','auth.refused.device_token_invalid':'Sign-in of the device unknown to the server',
 };

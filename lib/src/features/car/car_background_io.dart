@@ -52,6 +52,7 @@ Future<CarContext?> loadCarContext() async {
 /// the secure storage: the background isolate has no application state).
 Future<AccessHttpClient> _client() async {
   await AccessManager.instance.load();
+  await AccountManager.instance.load();
   return AccessHttpClient();
 }
 

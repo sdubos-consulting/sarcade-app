@@ -20,8 +20,10 @@ class SarcadeHttpException implements Exception {
 class SarcadeApi {
   final String baseUrl; final http.Client _client;
   SarcadeApi({required this.baseUrl,http.Client? client}):_client=client??AccessHttpClient();
-  /// Headers of the Cloudflare Access session, for the real-time channel.
-  Map<String,String> realtimeHeaders()=>AccessManager.instance.headersFor(Uri.parse(baseUrl));
+  /// Headers of the Cloudflare Access session and the device token (lot 26),
+  /// for the real-time channel (a browser cannot send them: cookie only).
+  Map<String,String> realtimeHeaders()=>{...AccessManager.instance.headersFor(Uri.parse(baseUrl)),
+    ...AccountManager.instance.headersFor(Uri.parse(baseUrl))};
   Future<List<SarcadePosition>> latestPositions(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/positions/latest'));
     if(r.statusCode!=200) throw Exception('positions_http_${r.statusCode}');

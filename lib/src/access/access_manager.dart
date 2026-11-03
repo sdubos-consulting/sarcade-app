@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'access_session.dart';
+import '../account/device_account.dart';
+export '../account/device_account.dart' show AccountManager;
 
 /// Cloudflare Access sessions of the servers (« Accès protégé par Cloudflare
 /// Access »): kept in the secure storage of the device (Keystore, Keychain,
@@ -96,7 +98,10 @@ class AccessManager extends ChangeNotifier {
 /// so that « Connexion requise » is not mistaken for « Hors connexion ».
 class AccessHttpClient extends http.BaseClient {
   final http.Client _inner; final AccessManager access;
-  AccessHttpClient({http.Client? inner,AccessManager? access}):_inner=inner??http.Client(),access=access??AccessManager.instance;
+  /// Device token of the account (lot 26), sent as `Authorization: Bearer`.
+  final AccountManager account;
+  AccessHttpClient({http.Client? inner,AccessManager? access,AccountManager? account}):_inner=inner??http.Client(),
+    access=access??AccessManager.instance,account=account??AccountManager.instance;
 
   bool _challenged(http.StreamedResponse r){
     // Redirections are followed: a call that ends on the Cloudflare sign-in
@@ -108,7 +113,16 @@ class AccessHttpClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     request.headers.addAll(access.headersFor(request.url));
+    final token=request.headers.containsKey('authorization')?const <String,String>{}:account.headersFor(request.url);
+    request.headers.addAll(token);
     var response=await _inner.send(request);
+    // Device token refused (revoked, unknown): forgotten, the call sent
+    // again without it (docs/accounts-v0.1.md of the server).
+    if(token.isNotEmpty&&response.statusCode==401){
+      final (retry,read)=await checkRefusedToken(account,request,response);
+      if(retry!=null)return send(retry);
+      response=read;
+    }
     if(_challenged(response)){
       // A token still valid: one more try a second later before asking for
       // a new one (a passing refusal is not the end of the session).
