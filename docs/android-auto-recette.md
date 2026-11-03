@@ -87,6 +87,18 @@ Au lot 23, la voiture montrait **une rubrique à la fois** : bouton « Rubriques
 | 5.9 | Dans la fiche, toucher « Écrire », dicter un message, « Envoyer » | L'opérateur reçoit un message direct (routine) avec le texte dicté |
 | 5.10 | Fiche d'un opérateur sans position | « Position inconnue », seulement « Écrire » |
 
+### Fiches des onglets Points et Ordres
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 5.11 | Onglet Points, toucher la **ligne** d'un point (pas la flèche) | Sa fiche s'ouvre : nom en titre, type, distance et direction, auteur (« Créé par … ») ; pour un point haut, son altitude |
+| 5.12 | Revenir, toucher la **flèche** d'un point | Maps ou Waze guidé vers le point, sans passer par la fiche |
+| 5.13 | Fiche d'un point, « Je suis sur place » | « Envoyé » ; le PCO reçoit « Je suis sur place : <point> (<latitude>, <longitude>) » dans le canal PCO |
+| 5.14 | Fiche d'un point, « Y aller » | Maps ou Waze guidé vers le point |
+| 5.15 | Fiche d'un ordre **en attente** | Boutons Refuser et Accepter ; « Écrire au PCO » en haut à droite |
+| 5.16 | Fiche d'un ordre **accepté** | Boutons « Écrire » et « Y aller » ; « Je suis arrivé » en haut à droite, et il passe l'ordre à « arrivé » chez le PCO |
+| 5.17 | « Écrire » (ou « Écrire au PCO »), dicter, « Envoyer » | Le PCO reçoit le message dans le canal PCO |
+
 ## 6. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.

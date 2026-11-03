@@ -71,6 +71,7 @@ class CarScreensTest {
             "note" to "Consigne", "gone" to "Plus disponible", "stale" to "Données de {time}",
             "operator" to "Opérateur", "write" to "Écrire", "writeTo" to "Message à {who}",
             "lastMessage" to "Dernier message", "noPosition" to "Position inconnue",
+            "point" to "Point", "onSite" to "Je suis sur place", "writePco" to "Écrire au PCO", "pcoTitle" to "Message au PCO",
         ).forEach { (k, v) -> labels.put(k, v) }
         val points = JSONArray()
             .put(JSONObject().put("id", "poi1").put("kind", "poi").put("icon", "gathering").put("color", 0xFF1E88E5.toInt())
@@ -192,10 +193,59 @@ class CarScreensTest {
         val intent = car.startCarAppIntents.last()
         assertEquals(CarContext.ACTION_NAVIGATE, intent.action)
         assertEquals("geo:48.819100,1.921000", intent.dataString)
-        // Touching the row itself does the same.
+        // Lot 24: touching the row itself opens the card of the point.
+        val before = car.startCarAppIntents.size
         rows(tab(MainScreen.POINTS))[1].onClickDelegate!!.sendClick(object : OnDoneCallback {})
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals("geo:48.819100,1.979000", car.startCarAppIntents.last().dataString)
+        assertEquals(before, car.startCarAppIntents.size)
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is PointScreen)
+    }
+
+    @Test
+    fun pointCard_typeDistanceAltitudeAuthor_onSiteAndGo() {
+        // Lot 24 (card « fiches dans les onglets Points et Ordres », choice 1).
+        val json = CarData.snapshot(car)
+        json.getJSONArray("points").getJSONObject(1)
+            .put("type", "Point haut").put("away", "3 km au nord-est").put("alt", "Altitude 412 m")
+        json.getJSONArray("points").getJSONObject(0)
+            .put("type", "Rassemblement").put("away", "3 km au nord-ouest").put("by", "Créé par PCO")
+        write(json)
+        val high = PointScreen(car, "h1").onGetTemplate() as PaneTemplate
+        assertEquals("Butte", high.title.toString())
+        assertEquals(listOf("Point haut", "3 km au nord-est"), high.pane.rows.map { it.title.toString() })
+        assertEquals("Altitude 412 m", high.pane.rows[1].texts[0].toString())
+        val poi = PointScreen(car, "poi1").onGetTemplate() as PaneTemplate
+        assertEquals("Créé par PCO", poi.pane.rows[0].texts[0].toString())
+        val actions = poi.pane.actions
+        assertEquals(listOf("Je suis sur place", "Y aller"), actions.map { it.title.toString() })
+        click(actions[1])
+        assertEquals("geo:48.819100,1.921000", car.startCarAppIntents.last().dataString)
+        click(actions[0])
+        val sent = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("onSite", sent.getString("type"))
+        assertEquals("poi1", sent.getString("id"))
+    }
+
+    @Test
+    fun orderCard_writeToThePco_answersWhileSent_arrivedKeptOnceAccepted() {
+        // Lot 24 (card « fiches dans les onglets Points et Ordres », choice 2).
+        val sent = OrderScreen(car, "o1").onGetTemplate() as PaneTemplate
+        assertEquals(listOf("Refuser", "Accepter"), sent.pane.actions.map { it.title.toString() })
+        assertEquals(listOf("Écrire au PCO"), sent.actionStrip!!.actions.map { it.title.toString() })
+        write(snapshot(JSONArray().put(order("o1", "accepted"))))
+        val accepted = OrderScreen(car, "o1").onGetTemplate() as PaneTemplate
+        assertEquals(listOf("Écrire", "Y aller"), accepted.pane.actions.map { it.title.toString() })
+        assertEquals(listOf("Je suis arrivé"), accepted.actionStrip!!.actions.map { it.title.toString() })
+        click(accepted.actionStrip!!.actions[0])
+        val answer = JSONArray(CarData.takeActions(app)).getJSONObject(0)
+        assertEquals("order", answer.getString("type"))
+        assertEquals("arrived", answer.getString("status"))
+        click(accepted.pane.actions[0])
+        assertTrue(car.getCarService(TestScreenManager::class.java).screensPushed.last() is ReplyScreen)
+        write(snapshot(JSONArray().put(order("o1", "arrived"))))
+        val arrived = OrderScreen(car, "o1").onGetTemplate() as PaneTemplate
+        assertEquals(listOf("Écrire au PCO", "Y aller"), arrived.pane.actions.map { it.title.toString() })
+        assertTrue(arrived.actionStrip == null)
     }
 
     @Test
