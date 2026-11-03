@@ -26,6 +26,13 @@ Future<void> _open<T>(WidgetTester t,List<T?> out,Future<T?> Function(BuildConte
   await t.pumpAndSettle();
 }
 
+/// Window of [size] logical pixels (MediaQuery follows it).
+void _size(WidgetTester t,Size size){
+  t.view.physicalSize=size;
+  t.view.devicePixelRatio=1;
+  addTearDown(t.view.reset);
+}
+
 Future<void> _tapVisible(WidgetTester t,Finder f) async {
   await t.ensureVisible(f);
   await t.pumpAndSettle();
@@ -51,8 +58,7 @@ void main(){
     });
 
     testWidgets('the window gives the colour, which follows the icon until chosen',(t) async {
-      await t.binding.setSurfaceSize(const Size(800,1000));
-      addTearDown(()=>t.binding.setSurfaceSize(null));
+      _size(t,const Size(800,1000));
       final out=<PoiDraft?>[];
       await _open(t,out,(c)=>showPoiDialog(c,pinColor:0xFF43A047,name:'Point 14:00'));
       expect(find.text(S.t('poi.createHere')), findsOneWidget);
@@ -98,8 +104,7 @@ void main(){
 
   group('modify with the window of creation (card 2)', (){
     testWidgets('« Modifier le point d’intérêt », filled, « Enregistrer »',(t) async {
-      await t.binding.setSurfaceSize(const Size(800,1000));
-      addTearDown(()=>t.binding.setSurfaceSize(null));
+      _size(t,const Size(800,1000));
       final out=<PoiDraft?>[];
       await _open(t,out,(c)=>editPoiDialog(c,_poi(icon:'water',color:0xFF1E88E5)));
       expect(find.text(S.t('poi.editTitle')), findsOneWidget);
@@ -111,8 +116,7 @@ void main(){
     });
 
     testWidgets('the sheet: one « Modifier », « Déplacer », « Supprimer » last in red',(t) async {
-      await t.binding.setSurfaceSize(const Size(390,844));
-      addTearDown(()=>t.binding.setSurfaceSize(null));
+      _size(t,const Size(390,844));
       final out=<String?>[];
       await _open(t,out,(c)=>showPoiSheet(c,_poi(),format:CoordFormat.dd,canEdit:true));
       expect(find.text(S.t('poi.edit')), findsOneWidget);
@@ -139,8 +143,7 @@ void main(){
   group('sheet on a computer and small window (card 3)', (){
     for(final size in const [Size(320,360),Size(1280,360)]){
       testWidgets('« Supprimer » reachable, sheet within 90 % (${size.width.toInt()} × ${size.height.toInt()})',(t) async {
-        await t.binding.setSurfaceSize(size);
-        addTearDown(()=>t.binding.setSurfaceSize(null));
+        _size(t,size);
         final out=<String?>[];
         await _open(t,out,(c)=>showPoiSheet(c,_poi(),format:CoordFormat.dd,canEdit:true));
         expect(find.byKey(const ValueKey('map-sheet-side')), mapSheetIsSide(size)?findsOneWidget:findsNothing);
@@ -152,8 +155,7 @@ void main(){
     }
 
     testWidgets('a wide screen opens the sheet on the right',(t) async {
-      await t.binding.setSurfaceSize(const Size(1280,800));
-      addTearDown(()=>t.binding.setSurfaceSize(null));
+      _size(t,const Size(1280,800));
       final out=<String?>[];
       await _open(t,out,(c)=>showPoiSheet(c,_poi(),format:CoordFormat.dd,canEdit:true));
       final box=t.getRect(find.byKey(const ValueKey('map-sheet-side')));
@@ -165,8 +167,7 @@ void main(){
     });
 
     testWidgets('any long sheet of the map scrolls at the smallest height',(t) async {
-      await t.binding.setSurfaceSize(const Size(320,300));
-      addTearDown(()=>t.binding.setSurfaceSize(null));
+      _size(t,const Size(320,300));
       final out=<int?>[];
       await _open(t,out,(c)=>showMapSheet<int>(c,builder:(s)=>Column(mainAxisSize:MainAxisSize.min,children:[
         for(var i=0;i<12;i++)ListTile(key:ValueKey('row-$i'),title:Text('Ligne $i'),onTap:()=>Navigator.pop(s,i))])));
