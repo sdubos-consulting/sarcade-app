@@ -5,7 +5,8 @@ import 'package:flutter/services.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
 import '../../access/access_session.dart';
-import '../../account/account_section.dart' show AccountSection;
+import '../../account/account_section.dart' show AccountBanner, AccountSection;
+import '../../account/rights.dart' show RightsState;
 import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
 import '../../config/version.dart';
@@ -323,7 +324,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// ADRASEC on for the event this device follows (Core and modules).
-  bool get _adrasec=>eventModules(widget.store?.eventSettings(widget.initial.eventId)).contains('adrasec');
+  bool get _adrasec=>eventModules(widget.store?.eventSettings(widget.initial.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec');
 
   String? _required(String? v)=>(v==null||v.trim().isEmpty)?S.t('settings.required'):null;
 
@@ -630,6 +631,8 @@ class _SettingsPageState extends State<SettingsPage> {
           if(widget.firstRun)Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:Text(S.t('settings.subtitleFirst'),
             style:t.textTheme.bodyMedium?.copyWith(color:t.colorScheme.onSurfaceVariant))),
           const SizedBox(height:8),
+          // Discreet invitation to sign in (lot 26, device without account).
+          if(!widget.firstRun)AccountBanner(server:widget.initial.serverUrl,deviceId:widget.initial.deviceId,store:widget.store,invite:true),
           // Underlined tabs; every tab stays built so that the form keeps
           // and validates all its fields.
           DefaultTabController(key:ValueKey(_tabs.length),length:_tabs.length,initialIndex:_tab,child:Builder(builder:(context){

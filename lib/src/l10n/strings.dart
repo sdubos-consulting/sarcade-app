@@ -620,6 +620,7 @@ const Texts _fr={
   'auth.revokeBody':'Il devra se reconnecter avec un code','auth.revoked':'Appareil révoqué','auth.lastSeen':'vu le {date}','auth.enrolled':'connecté le {date}',
   'auth.method.email_code':'code e-mail','auth.method.access':'Cloudflare Access','auth.later':'Plus tard',
   'auth.refused.device_revoked':'Appareil déconnecté de votre compte','auth.refused.device_token_invalid':'Connexion de l’appareil inconnue du serveur',
+  'auth.invite':'Connectez-vous pour garder vos droits après la transition','auth.inviteUntil':'Connectez-vous avant le {date} pour garder vos droits','auth.inviteAfter':'Connectez-vous pour retrouver vos droits',
 };
 
 const Texts _en={
@@ -1177,4 +1178,5 @@ const Texts _en={
   'auth.revokeBody':'It will have to sign in again with a code','auth.revoked':'Device revoked','auth.lastSeen':'seen on {date}','auth.enrolled':'signed in on {date}',
   'auth.method.email_code':'email code','auth.method.access':'Cloudflare Access','auth.later':'Later',
   'auth.refused.device_revoked':'Device signed out of your account','auth.refused.device_token_invalid':'Sign-in of the device unknown to the server',
+  'auth.invite':'Sign in to keep your rights after the transition','auth.inviteUntil':'Sign in before {date} to keep your rights','auth.inviteAfter':'Sign in to get your rights back',
 };

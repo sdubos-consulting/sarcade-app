@@ -8,7 +8,12 @@ library;
 String? myActorId;
 Set<String> myRoles=<String>{};
 
-bool isPco(String actorId)=>actorId=='PCO'||actorId.startsWith('PCO-')||(actorId==myActorId&&myRoles.contains('pco'));
+/// The PCO recognised by its name (`PCO`, `PCO-…`) until the end of the
+/// transition period chosen on the server (lot 26, decision 6); then by
+/// the rights of the account only (`/me`).
+bool pcoByName=true;
+
+bool isPco(String actorId)=>(pcoByName&&(actorId=='PCO'||actorId.startsWith('PCO-')))||(actorId==myActorId&&myRoles.contains('pco'));
 
 class CommGroup {
   final String id, eventId, name, description, mode, kind, createdBy, updatedBy, radioChannel;

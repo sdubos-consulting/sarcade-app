@@ -85,6 +85,7 @@ import '../../offline/sync_service.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
 import '../../account/account_section.dart' show AccountBanner;
+import '../../account/rights.dart' show RightsState, refreshRights;
 import '../../platform/platform_services.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart';
@@ -194,7 +195,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// ADRASEC module of the event (card « Séparer le Core et les modules »,
   /// 31 Oct 2026): without it, no bearing, resection, APRS, fixed stations
   /// nor reference sites (high points, relays) anywhere on this screen.
-  bool get _adrasec=>_ops.settings.moduleOn('adrasec');
+  bool get _adrasec=>_ops.settings.moduleOn('adrasec')&&RightsState.instance.allows('adrasec');
   bool get _showAprs=>_showAprsPref&&_adrasec;
   bool get _showHighPoints=>_showHighPointsPref&&_adrasec;
   bool get _showRelays=>_showRelaysPref&&_adrasec;
@@ -343,7 +344,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Link pill of every screen: a touch opens the Diagnostic (31 Oct 2026).
     linkStatusOnTap=()=>_openDiagnostics();
     try{
-      final me=await widget.api.me();
+      final me=await refreshRights(widget.api,deviceId:widget.deviceId);
       myRoles={for(final r in (me?['roles'] as List?)??const [])'$r'};
       if(mounted)setState((){});
     }catch(e){
@@ -479,7 +480,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='aprs.class.updated'){unawaited(_applyFixedClass(e.data));}
     if(e.type=='operator.status'||e.type=='device.updated'){_statuses.applyJson(e.data);}
     if(e.type=='device.updated'){final id='${e.data['device_id']??''}';if(id.isNotEmpty&&mounted)setState(()=>_devices[id]=Map<String,dynamic>.from(e.data));}
-    if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());return;}
+    if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());unawaited(_loadRoles());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());_traces.add(p);if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'||e.type=='poi.updated'||e.type=='poi.deleted'){unawaited(applyRemotePoi(_pois,widget.store,Map<String,dynamic>.from(e.data),widget.eventId).then((c){if(c&&mounted)setState((){});}));}
     if(e.type=='message.created'){_receiveMessage(e.data);}
@@ -499,6 +500,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
     if(e.type=='group.deleted'){widget.store.deleteGroup('${e.data['id']}');}
     if(e.type=='device.revoked'){unawaited(AccountManager.instance.onDeviceRevoked(widget.api.baseUrl,e.data));}
+    // Rights read again at once, a withdrawal first (lot 26).
+    if(e.type=='rights.changed'||e.type=='transition.changed'||e.type=='device.revoked'){unawaited(_loadRoles());}
     // PCO settings changed or event closed: the heartbeat brings the new state.
     if(e.type=='event.settings.updated'||e.type=='event.closed'){unawaited(_ops.beat());}
   }
