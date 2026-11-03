@@ -112,6 +112,9 @@ const Texts _fr={
   'links.serverLink':'Liaison avec le serveur','links.direct':'Connecté','links.slowed':'Ralentie','links.cut':'Coupée','links.starting':'Connexion…','links.slowedHelp':'Temps réel coupé : mises à jour environ chaque minute','links.cutHelp':'Hors ligne : vos envois partiront au retour de la liaison','links.signInAgain':'Se reconnecter (Cloudflare)',
   'settings.otherColor':'Autre couleur','color.4290824755':'Vert pomme','color.4278225275':'Sarcelle','color.4278234305':'Cyan','color.4278426597':'Bleu ciel','color.4281944491':'Indigo','color.4292352864':'Rose','color.4285353025':'Marron','color.4285887861':'Gris',
   'favourites.only':'Favoris','favourites.none':'Aucun favori : touchez l’étoile d’un opérateur','teams.active':'Actifs','teams.silent':'Sans nouvelles','teams.old':'Anciens',
+  // Lot 24, statut de l'opérateur (features/team/operator_status.dart).
+  'team.status.en_route':'En route','team.status.sur_place':'Sur place','team.status.disponible':'Disponible','team.status.pause':'Pause',
+  'team.status.mine':'Mon statut','team.status.since':'depuis {time}','team.status.clear':'Retirer le statut','team.status.queued':'Statut enregistré : envoi au retour de la liaison','team.status.failed':'Statut non envoyé',
   'fixed.section':'Stations fixes (iGates, relais)','fixed.layer':'Stations fixes','fixed.kind':'Classement','fixed.fixed':'Fixe','fixed.mobile':'Mobile','fixed.autoFixed':'Auto (fixe)','fixed.autoMobile':'Auto (mobile)',
   'operators.none':'Aucun opérateur',
   'bearings.signal':'Signal recherché','bearings.signalNew':'Nouveau signal','bearings.colorBy':'Couleur des relevés','bearings.colorSignal':'Signal','bearings.colorOperator':'Opérateur',
@@ -613,6 +616,9 @@ const Texts _en={
   'links.serverLink':'Link with the server','links.direct':'Connected','links.slowed':'Slowed','links.cut':'Cut','links.starting':'Connecting…','links.slowedHelp':'Realtime off: updates about every minute','links.cutHelp':'Offline: what you send leaves when the link is back','links.signInAgain':'Sign in again (Cloudflare)',
   'settings.otherColor':'Other colour','color.4290824755':'Lime','color.4278225275':'Teal','color.4278234305':'Cyan','color.4278426597':'Sky blue','color.4281944491':'Indigo','color.4292352864':'Pink','color.4285353025':'Brown','color.4285887861':'Grey',
   'favourites.only':'Favourites','favourites.none':'No favourite: tap the star of an operator','teams.active':'Active','teams.silent':'No news','teams.old':'Old',
+  // Lot 24, status of the operator (features/team/operator_status.dart).
+  'team.status.en_route':'On the way','team.status.sur_place':'On site','team.status.disponible':'Available','team.status.pause':'Break',
+  'team.status.mine':'My status','team.status.since':'since {time}','team.status.clear':'Remove the status','team.status.queued':'Status saved: sent when the link is back','team.status.failed':'Status not sent',
   'fixed.section':'Fixed stations (iGates, relays)','fixed.layer':'Fixed stations','fixed.kind':'Classification','fixed.fixed':'Fixed','fixed.mobile':'Mobile','fixed.autoFixed':'Auto (fixed)','fixed.autoMobile':'Auto (mobile)',
   'operators.none':'No operator',
   'bearings.signal':'Signal searched','bearings.signalNew':'New signal','bearings.colorBy':'Bearing colour','bearings.colorSignal':'Signal','bearings.colorOperator':'Operator',
