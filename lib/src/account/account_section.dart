@@ -70,9 +70,9 @@ class AccountBanner extends StatefulWidget {
 
 class _AccountBannerState extends State<AccountBanner> {
   AccountManager get _account=>widget.account??AccountManager.instance;
-  late String? _token=_account.sessionFor(widget.server)?.token;
+  String? _token;
 
-  @override void initState(){super.initState();_account.addListener(_changed);}
+  @override void initState(){super.initState();_token=_account.sessionFor(widget.server)?.token;_account.addListener(_changed);}
   @override void dispose(){_account.removeListener(_changed);super.dispose();}
 
   void _changed(){
