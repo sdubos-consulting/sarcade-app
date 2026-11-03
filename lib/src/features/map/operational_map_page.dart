@@ -152,6 +152,8 @@ import 'operator_icons.dart';
 import '../team/operator_status.dart';
 import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
+import '../poi/poi_move.dart';
+import '../../ui/map_sheet.dart';
 import '../routes/waypoint_sheet.dart';
 import '../../ui/action_buttons.dart';
 import '../../ui/link_status.dart';
@@ -598,7 +600,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   void _showMoveOrder(MoveOrder o){
-    showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+    showMapSheet<void>(context,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       ListTile(leading:Icon(Icons.flag,color:moveOrderColor(o.status)),title:Text('${S.t('order.title')} · ${o.targetId}'),
         subtitle:Text('« ${o.label} » · ${moveOrderSubtitle(o)}${o.note.isEmpty?'':'\n${o.note}'}')),
       // « Ouvrir dans… » Waze, Google Maps… (31 Oct 2026).
@@ -705,11 +707,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(t!=null)await _createPoiHere(t);
   }
 
-  /// « Créer un point d'intérêt ici » (grid and measure): name and icon.
+  /// « Créer un point d'intérêt ici » (grid and measure): name, icon and colour (lot 25).
   Future<void> _createPoiHere(LatLng t) async {
-    final d=await showCreatePoiDialog(context,color:Color(poiColorFor(_profileDrawColor)));
+    final d=await showPoiDialog(context,pinColor:poiColorFor(_profileDrawColor));
     if(d==null||!mounted)return;
-    final poi=newPoiJson(id:_uuid.v4(),eventId:widget.eventId,at:t,label:d.name,actor:widget.deviceId,drawColor:_profileDrawColor,icon:d.icon);
+    final poi=newPoiJson(id:_uuid.v4(),eventId:widget.eventId,at:t,label:d.name,actor:widget.deviceId,drawColor:_profileDrawColor,icon:d.icon,color:d.color);
     await widget.store.cachePoi(poi);
     setState(()=>_pois[poi['id'] as String]=SarcadePoi.fromJson(poi));
     await _sync.queue(objectId:poi['id'] as String,objectType:'poi',payload:poi);
@@ -857,13 +859,21 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(a=='route'){await _routeToHere(LatLng(p.lat,p.lon));return;}
     if(a=='send'){await Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
       actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:poiMessage(p,_coordFormat,mgrsDigits:_mgrsDigits))));return;}
-    if(a=='icon'){final k=await showPoiIconPicker(context,current:p.icon??'pin',color:Color(poiColor(p)));
-      if(k!=null&&mounted){await changePoiIcon(_pois,widget.store,_sync,p,k,widget.deviceId);if(mounted)setState((){});}return;}
-    if(a=='rename'){final n=await askPoiName(context,p);if(n!=null&&mounted){await renamePoi(_pois,widget.store,_sync,p,n,widget.deviceId);if(mounted)setState((){});}return;}
+    // Lot 25: one « Modifier » (window of creation), « Déplacer » (poi_move.dart).
+    if(a=='edit'){final d=await editPoiDialog(context,p);if(d!=null&&mounted){await savePoiDraft(_pois,widget.store,_sync,p,d,widget.deviceId);if(mounted)setState((){});}return;}
+    if(a=='move'){setState(()=>_poiMove.start(p));return;}
     if(a=='delete'&&await confirmPoiDelete(context,p)){
       await deletePoi(_pois,widget.store,_sync,p,widget.deviceId);
       if(mounted){setState((){});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('poi.deleted'))));}
     }
+  }
+
+  /// Point of interest being moved (lot 25, poi_move.dart).
+  final _poiMove=PoiMove();
+  Future<void> _finishPoiMove() async {
+    final m=_poiMove.finish();
+    setState((){});
+    if(m!=null)await commitPoiMove(context,move:m,pois:_pois,store:widget.store,sync:_sync,actor:widget.deviceId,history:_drawing,refresh:(){if(mounted)setState((){});});
   }
 
   /// A designated point of the event (same as « Enregistrer le point »).
@@ -1458,6 +1468,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final pick=_pickPoint;
     if(pick!=null){setState((){_pickPoint=null;_pickHint=null;});pick(point,null);return;}
     if(_adjusting!=null){_adjustTowards(point);return;}
+    if(_poiMove.active){_poiMove.moveTo(point);return;}
     if(_aim!=null){_aimClick(tap,point);return;}
     if(_pickingOrigin){setState(()=>_pickingOrigin=false);_measure.setOrigin(MeasureOrigin(point:point,label:S.t('measure.originPoint')));return;}
     final drawingRoute=_drawingRouteId==null?null:_routes.route(_drawingRouteId!);
@@ -2515,10 +2526,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       final bytes=await readPickedFile(file);
       if(bytes==null)throw ImportFormatException(S.t('map.unreadable'));
       final result=parseMapFile(file.name,bytes);
-      final created=_drawing.importShapes(result.shapes);
-      _fitPoints([for(final f in created)...f.points]);
+      // Lot 25: isolated points become points of interest (poi_sheet.dart).
+      final split=splitImportedPoints(result.shapes);
+      final created=_drawing.importShapes(split.shapes);
+      final added=await addPois(_pois,widget.store,_sync,importedPoiJson(split.points,newId:_uuid.v4,eventId:widget.eventId,actor:widget.deviceId,drawColor:_profileDrawColor));
+      if(!mounted)return;
+      setState((){});
+      _fitPoints([for(final f in created)...f.points,for(final p in added)LatLng(p.lat,p.lon)]);
       final skipped=result.skipped>0?S.t('map.importSkipped',{'n':result.skipped}):'';
-      messenger.showSnackBar(SnackBar(content:Text(S.t('map.importDone',{'n':created.length,'file':file.name,'skipped':skipped}))));
+      messenger.showSnackBar(SnackBar(content:Text(S.t('map.importDone',{'n':created.length+added.length,'file':file.name,'skipped':skipped}))));
     }on ImportFormatException catch(e){
       messenger.showSnackBar(SnackBar(content:Text(e.message)));
     }catch(e){
@@ -2570,6 +2586,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       bool run(VoidCallback action){action();return true;}
       final handled=switch(key){
         LogicalKeyboardKey.escape when _aim!=null=>run(_cancelAim),
+        LogicalKeyboardKey.escape when _poiMove.active=>run(()=>setState(_poiMove.cancel)),
         LogicalKeyboardKey.delete||LogicalKeyboardKey.backspace when _drawing.hasSelection=>run(()=>unawaited(deleteSelection(context,_drawing))),
         LogicalKeyboardKey.keyZ when ctrl&&keys.isShiftPressed=>run(_drawing.redo),
         LogicalKeyboardKey.keyZ when ctrl=>run(_drawing.undo),
@@ -2798,7 +2815,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ..._resectionLayers(),
           if(_showPois)touchableMarkers(ignoring:_placingOnMap,child:_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)),
             onDoubleTap:(p)=>unawaited(doubleTapPoi(context,p,actor:widget.deviceId,openSheet:()=>unawaited(_openPoi(p)),
-              rename:(n) async {await renamePoi(_pois,widget.store,_sync,p,n,widget.deviceId);if(mounted)setState((){});}))))),
+              save:(d) async {await savePoiDraft(_pois,widget.store,_sync,p,d,widget.deviceId);if(mounted)setState((){});}))))),
+          ...poiMoveLayers(_poiMove,_globalToLatLng,_drawing.holdHandle),
           // Card L1 (lot 17): while drawing, measuring or taking a bearing, a
           // touch on a marker places the point instead of opening the marker.
           IgnorePointer(ignoring:_placingOnMap,child:_faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())]))),
@@ -2847,6 +2865,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             TextButton(onPressed:_cancelPick,child:Text(S.t('common.cancel'))),
           ])))))
         else if(_adjusting!=null)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:_adjustBanner())))
+        else if(_poiMove.active)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),
+          child:PoiMoveBanner(move:_poiMove,onCancel:()=>setState(_poiMove.cancel),onValidate:_finishPoiMove))))
         else if(_bearings.taking)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:_bearingHud())))
         else Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           // The drawing button stays in place and toggles the toolbar
@@ -2911,7 +2931,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:bearingSheetWidth,child:_bearingTakeSheet())
         else if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
-          child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
+          child:ConstrainedBox(constraints:BoxConstraints(maxWidth:420,maxHeight:MediaQuery.sizeOf(context).height*mapSheetMaxShare-(compact?24:48)),child:SingleChildScrollView(child:_stationSheet(selected)))),
         if(compact&&_adsb.on&&_adrasec&&_adsb.selectedId!=null)Positioned(left:12,right:12,bottom:12,child:AircraftCard(adsb:_adsb,onClose:_closeAircraft,compact:true)),
         Positioned(left:0,right:0,bottom:compact?60:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
