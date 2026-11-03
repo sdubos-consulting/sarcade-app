@@ -9,6 +9,7 @@ import androidx.car.app.model.CarText
 import androidx.car.app.model.GridItem
 import androidx.car.app.model.GridTemplate
 import androidx.car.app.model.ItemList
+import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Pane
 import androidx.car.app.model.PaneTemplate
@@ -100,6 +101,15 @@ internal class ConversationScreen(
                 .setOnClickListener { session.speaker().say(c.optString("speak"), s.lang) }
                 .build()
         )
+        // Lot 24 (card « messages types en un appui », choice 1): in the
+        // strip at the top (2 buttons at most in the card).
+        if (c.optBoolean("canReply", false) && s.items("quick").isNotEmpty()) {
+            b.setActionStrip(
+                ActionStrip.Builder().addAction(
+                    QuickScreen.action(carContext, s, true) { screenManager.push(QuickScreen(carContext, conversation = key)) }
+                ).build()
+            )
+        }
         return b.build()
     }
 }
@@ -271,13 +281,19 @@ internal class OrderScreen(carContext: CarContext, private val id: String) : Liv
         val note = o.optString("note")
         if (note.isNotEmpty()) pane.addRow(Row.Builder().setTitle(s.label("note")).addText(note).build())
         val card = orderCard(carContext, s, o) { screenManager.push(ReplyScreen(carContext, id, o.optString("from"), ReplyScreen.PCO)) }
+        // Lot 24 (card « messages types en un appui », choice 1): quick
+        // messages to the PCO, in the strip (the only titled button there
+        // when there is none, otherwise an icon).
+        val quick = if (s.items("quick").isEmpty()) null
+            else QuickScreen.action(carContext, s, card.strip.isEmpty()) { screenManager.push(QuickScreen(carContext, order = id)) }
         card.body.forEach { pane.addAction(it) }
         val t = PaneTemplate.Builder(pane.build())
             .setTitle(s.label("order"))
             .setHeaderAction(Action.BACK)
-        if (card.strip.isNotEmpty()) {
+        val top = card.strip + listOfNotNull(quick)
+        if (top.isNotEmpty()) {
             val strip = ActionStrip.Builder()
-            card.strip.forEach { strip.addAction(it) }
+            top.forEach { strip.addAction(it) }
             t.setActionStrip(strip.build())
         }
         return t.build()
@@ -347,6 +363,60 @@ internal class PointScreen(carContext: CarContext, private val id: String) : Liv
             .setTitle(p.optString("title"))
             .setHeaderAction(Action.BACK)
             .build()
+    }
+}
+
+/**
+ * Quick messages in one touch (lot 24, card « Android Auto : messages types
+ * en un appui »): the list of the event (4 at most, set by the PCO),
+ * « Besoin d'aide » urgent; one touch sends it, in the [conversation] (to
+ * whom « Répondre » answers) or from the card of an [order] (to the PCO).
+ */
+internal class QuickScreen(
+    carContext: CarContext,
+    private val conversation: String? = null,
+    private val order: String? = null,
+) : LiveScreen(carContext) {
+    override fun watched(s: Snapshot): String = "${s.lang}|${s.items("quick")}"
+
+    override fun onGetTemplate(): Template {
+        val s = snap
+        drawn(s)
+        val items = ItemList.Builder()
+        for (q in s.items("quick").take(4)) {
+            val text = q.optString("text")
+            val priority = q.optString("priority", "routine")
+            // The title of a row takes no colour: « URGENT » in red below it.
+            val row = Row.Builder().setTitle(text)
+            CarUi.priorityLabel(q.optString("prioLabel"), priority)?.let { row.addText(it) }
+            items.addItem(
+                row
+                    .setOnClickListener {
+                        CarUi.post(carContext, "quick") {
+                            put("text", text); put("priority", priority)
+                            conversation?.let { put("conversation", it) }
+                            order?.let { put("order", it) }
+                        }
+                        CarUi.toast(carContext, s.label("sent"))
+                        screenManager.pop()
+                    }
+                    .build()
+            )
+        }
+        return ListTemplate.Builder().setSingleList(items.build())
+            .setTitle(s.label("quick"))
+            .setHeaderAction(Action.BACK)
+            .build()
+    }
+
+    companion object {
+        /** « Messages types » button: titled, or the icon alone ([titled]
+         *  false: the strip takes one titled button only). */
+        fun action(context: CarContext, s: Snapshot, titled: Boolean, onClick: () -> Unit): Action {
+            val b = Action.Builder().setIcon(CarUi.icon(context, R.drawable.sarcade_car_chat)).setOnClickListener { onClick() }
+            if (titled) b.setTitle(s.label("quick"))
+            return b.build()
+        }
     }
 }
 

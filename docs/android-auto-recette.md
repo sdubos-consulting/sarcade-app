@@ -113,6 +113,16 @@ Au lot 23, la voiture montrait **une rubrique à la fois** : bouton « Rubriques
 | 5.25 | Autre ordre : toucher « Plus tard », puis tourner autour du point | Aucune nouvelle alerte pour cet ordre ; « Je suis arrivé » reste dans sa fiche |
 | 5.26 | SARCADE pas au premier plan dans la voiture (Maps ouvert) en arrivant | Notification de la voiture « Vous êtes arrivé à … » avec « Oui » |
 
+### Messages types
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 5.27 | Ouvrir une conversation où « Répondre » est proposé | « Messages types » en haut à droite |
+| 5.28 | Toucher « Messages types » | Liste « Bien reçu », « J'arrive », « Besoin d'aide » (avec « URGENT » en rouge dessous), « Retard » |
+| 5.29 | Toucher « Besoin d'aide » | « Envoyé » ; l'interlocuteur reçoit « Besoin d'aide » en priorité **urgente** (pas une détresse) |
+| 5.30 | Fiche d'un ordre : icône de bulle en haut à droite (ou « Messages types » s'il n'y a pas d'autre bouton en haut) | Même liste ; le message part au PCO |
+| 5.31 | Le PCO change la liste dans les paramètres de l'événement (4 messages au plus) | La voiture montre la nouvelle liste en moins d'une minute |
+
 ## 6. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.
