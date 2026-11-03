@@ -282,6 +282,14 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
             else -> R.drawable.sarcade_car_groups
         }
 
+        /** « Y aller » towards the point of an order: the navigation of the
+         *  car, and the application follows the estimated time of arrival
+         *  (lot 24, card « heure d'arrivée estimée envoyée au PCO »). */
+        fun goToOrder(context: CarContext, snap: Snapshot, o: JSONObject) {
+            CarUi.post(context, "go") { put("id", o.optString("id")) }
+            CarUi.navigate(context, snap, o.optDouble("lat"), o.optDouble("lon"))
+        }
+
         /** Buttons of an order, the main one last: Refuser, Accepter while
          *  sent; Je suis arrivé, Naviguer once accepted; nothing after. */
         fun orderActions(context: CarContext, snap: Snapshot, o: JSONObject): List<Action> {
@@ -306,7 +314,7 @@ internal class MainScreen(carContext: CarContext, private val session: SarcadeSe
                     answer("arrived", "arrived", R.drawable.sarcade_car_flag, false),
                     Action.Builder().setTitle(CarUi.navigateTitle(context, snap)).setFlags(Action.FLAG_PRIMARY)
                         .setIcon(CarUi.icon(context, R.drawable.sarcade_car_directions))
-                        .setOnClickListener { CarUi.navigate(context, snap, o.optDouble("lat"), o.optDouble("lon")) }
+                        .setOnClickListener { goToOrder(context, snap, o) }
                         .build(),
                 )
                 else -> emptyList()

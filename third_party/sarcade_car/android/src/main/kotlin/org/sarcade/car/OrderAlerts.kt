@@ -82,7 +82,7 @@ internal object OrderAlerts {
     fun alert(context: CarContext, snap: Snapshot, o: JSONObject, view: () -> Unit): Alert {
         val go = Action.Builder().setTitle(snap.label("go"))
             .setIcon(CarUi.icon(context, R.drawable.sarcade_car_directions))
-            .setOnClickListener { CarUi.navigate(context, snap, o.optDouble("lat"), o.optDouble("lon")) }
+            .setOnClickListener { MainScreen.goToOrder(context, snap, o) }
             .build()
         val see = Action.Builder().setTitle(snap.label("view"))
             .setIcon(CarUi.icon(context, R.drawable.sarcade_car_visibility))

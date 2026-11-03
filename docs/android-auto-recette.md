@@ -133,6 +133,15 @@ Au lot 23, la voiture montrait **une rubrique à la fois** : bouton « Rubriques
 | 5.35 | Recommencer et toucher « Annuler » dans les 10 s | « Point d'écoute annulé » ; le point disparaît chez le PCO |
 | 5.36 | Téléphone sans position | La ligne indique « Position inconnue » ; un appui n'envoie rien |
 
+### Heure d'arrivée estimée
+
+| # | Action | Résultat attendu |
+|---|--------|------------------|
+| 5.37 | Ordre accepté, rouler quelques minutes, puis « Y aller » (ligne de l'ordre, fiche ou alerte) | Maps ou Waze guidé vers le point |
+| 5.38 | Continuer à rouler 2 minutes | Chez le PCO, l'ordre affiche « arrivée estimée HH:MM » (partie téléphone/PC du lot 24), mise à jour toutes les 2 minutes |
+| 5.39 | S'arrêter quelques minutes (feu, bouchon) | L'heure estimée recule ; mise à jour dès qu'elle bouge de plus de 3 minutes |
+| 5.40 | Signaler l'arrivée (ou le PCO annule l'ordre) | Plus d'heure estimée chez le PCO |
+
 ## 6. Après la recette
 
 - Reporter les résultats dans la carte du Kanban (colonne « À recetter ») avec les photos.
