@@ -12,8 +12,10 @@ import 'package:flutter/material.dart';
 import '../../l10n/strings.dart';
 import '../../ui/link_status.dart';
 import '../../ui/overlay_page.dart';
+import '../lora/lora_battery_view.dart' show LoraBatteryThresholdsTile;
 import '../remotes/remote.dart';
 import '../remotes/remotes_page.dart' show openRemotes;
+import 'meshcore_banner.dart';
 import 'meshcore_chat_page.dart';
 import 'meshcore_link.dart';
 import 'meshcore_link_card.dart';
@@ -74,8 +76,9 @@ class MeshCorePage extends StatefulWidget {
 
 class _MeshCorePageState extends State<MeshCorePage> {
   final link=MeshCoreLink.instance;
-  @override void initState(){super.initState();link.addListener(_changed);unawaited(link.refresh());}
-  @override void dispose(){link.removeListener(_changed);super.dispose();}
+  // Lot 25: one bar on this screen, the one above the map hides meanwhile.
+  @override void initState(){super.initState();meshCoreScreensOpen.value++;link.addListener(_changed);unawaited(link.refresh());}
+  @override void dispose(){meshCoreScreensOpen.value--;link.removeListener(_changed);super.dispose();}
   void _changed(){if(mounted)setState((){});}
 
   Widget _metric(String label,String value)=>Padding(padding:const EdgeInsets.symmetric(vertical:3),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -94,7 +97,7 @@ class _MeshCorePageState extends State<MeshCorePage> {
       ]),
       body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),child:ListView(padding:const EdgeInsets.all(16),children:[
         // Web (lot 17): the browser waits for a click to join the module.
-        const MeshCoreReconnectBanner(),
+        const MeshCoreReconnectBanner(inScreen:true),
         // Lot 21: a link to Outils › Télécommandes.
         const MeshCoreRemotesTile(),
         if(!link.remembered)...[
@@ -115,6 +118,8 @@ class _MeshCorePageState extends State<MeshCorePage> {
           // Lot 17: the nodes on the map, also under Fond et affichage.
           SwitchListTile(key:const ValueKey('mesh-show-map'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             title:Text(S.t('mesh.showOnMap')),value:link.showOnMap,onChanged:(v)=>unawaited(link.setShowOnMap(v))),
+          // Lot 25: thresholds of the low battery alert.
+          const LoraBatteryThresholdsTile(),
           // Lot 19: search field and filters above the nodes.
           MeshCoreNodeList(nodes:nodes,initialQuery:meshCoreFocusQuery(widget.focus),tile:(n)=>ListTile(key:ValueKey('mesh-node-${n.shortKey}'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             leading:Icon(meshCoreKindIcon(n.kind)),

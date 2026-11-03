@@ -4,10 +4,14 @@
 #   powershell -ExecutionPolicy Bypass -File tool\windows_smoke.ps1 -Exe "C:\Program Files\SARCADE\sarcade_app.exe" -Out smoke
 # Writes to -Out: report.json (from the app), capture.png (screen after a few
 # seconds), demarrage.log (startup log). Exit code 0 when the start window
-# showed within one second, the first screen without error, a second launch
-# was refused leaving one process, and no « Application Error » event.
+# showed within one second, the first screen without error, of two launches
+# in the same instant one was refused (code 0, logged), a second launch
+# during the start was refused leaving one process, and no « Application
+# Error » event.
 param([Parameter(Mandatory=$true)][string]$Exe, [string]$Out = "smoke", [int]$CaptureAfter = 6, [int]$Timeout = 90)
 $ErrorActionPreference = "Continue"
+# Full path: [Diagnostics.Process]::Start does not follow Set-Location.
+$Exe = (Resolve-Path $Exe).Path
 New-Item -ItemType Directory -Force $Out | Out-Null
 $Out = (Resolve-Path $Out).Path
 $report = Join-Path $Out "report.json"
@@ -45,17 +49,47 @@ public static class SplashW32 {
 "@
 $started = Get-Date
 $clock = [Diagnostics.Stopwatch]::StartNew()
-$p = Start-Process -FilePath $Exe -PassThru
+$exeName = [IO.Path]::GetFileNameWithoutExtension($Exe)
+# Two launches in the same instant (card « Windows : SARCADE a cessé de
+# fonctionner », lot 25, point 1: the owner's two starts in the same second
+# of 2 Nov 2026, one crashed with 0xc0000409 instead of being refused). One
+# keeps starting; the other must end by itself with code 0 and write
+# « deuxième instance refusée » (second_instance=refused) in demarrage.log.
+$a = [Diagnostics.Process]::Start($Exe)
+$b = [Diagnostics.Process]::Start($Exe)
+$null = $a.Handle; $null = $b.Handle  # keep the exit codes readable
 $splashSeen = -1
 while ($clock.ElapsedMilliseconds -lt 3000) {
-  if ([SplashW32]::Shown($p.Id)) { $splashSeen = $clock.ElapsedMilliseconds; break }
+  if ([SplashW32]::Shown($a.Id) -or [SplashW32]::Shown($b.Id)) { $splashSeen = $clock.ElapsedMilliseconds; break }
   Start-Sleep -Milliseconds 10
+}
+$wait = [Diagnostics.Stopwatch]::StartNew()
+while (-not $a.HasExited -and -not $b.HasExited -and $wait.ElapsedMilliseconds -lt 15000) { Start-Sleep -Milliseconds 20 }
+$p = $null
+if ($a.HasExited -and $b.HasExited) {
+  Write-Host "::error title=Windows simultaneous start ($env:PROCESSOR_ARCHITECTURE)::both launches ended (codes 0x$('{0:X8}' -f $a.ExitCode), 0x$('{0:X8}' -f $b.ExitCode)): none kept running"
+  $script:simultaneousFailed = $true
+  $p = $a
+} elseif (-not $a.HasExited -and -not $b.HasExited) {
+  Write-Host "::error title=Windows simultaneous start ($env:PROCESSOR_ARCHITECTURE)::neither launch was refused within 15 s"
+  Stop-Process -Id $b.Id -Force -ErrorAction SilentlyContinue
+  $script:simultaneousFailed = $true
+  $p = $a
+} else {
+  $loser = if ($a.HasExited) { $a } else { $b }
+  $p = if ($a.HasExited) { $b } else { $a }
+  $code = $loser.ExitCode
+  if ($code -eq 0) {
+    Write-Host "::notice title=Windows simultaneous start ($env:PROCESSOR_ARCHITECTURE)::pid $($loser.Id) refused in $($wait.ElapsedMilliseconds) ms (exit code 0), pid $($p.Id) kept"
+  } else {
+    Write-Host "::error title=Windows simultaneous start ($env:PROCESSOR_ARCHITECTURE)::pid $($loser.Id) ended with code 0x$('{0:X8}' -f $code) instead of 0"
+    $script:simultaneousFailed = $true
+  }
 }
 # Second launch while the first one starts (card « Windows : pastille de
 # liaison grise alors que le Diagnostic dit « Tout fonctionne » », lot 19,
 # point 6): the native runner refuses it at once, brings the first window
 # to the front and returns; one process must remain.
-$exeName = [IO.Path]::GetFileNameWithoutExtension($Exe)
 $p2 = Start-Process -FilePath $Exe -PassThru
 $null = $p2.Handle  # keeps the exit code readable
 if ($p2.WaitForExit(15000)) {
@@ -155,12 +189,25 @@ if ($crashes.Count -gt 0) {
 if (Test-Path $log) {
   $m = Select-String -Path $log -Pattern 'second_instance=refused' | Select-Object -Last 1
   if ($m) { Write-Host "::notice title=Windows second instance log ($env:PROCESSOR_ARCHITECTURE)::$($m.Line)" }
+  # Two refusals by the native runner (simultaneous launch, then the launch
+  # during the start), each written before any DLL of Flutter is loaded.
+  $refused = @(Select-String -Path $log -Pattern 'second_instance=refused').Count
+  $acquired = @(Select-String -Path $log -Pattern 'single_instance=acquired').Count
+  if ($refused -ge 2 -and $acquired -eq 1) {
+    Write-Host "::notice title=Windows refusals ($env:PROCESSOR_ARCHITECTURE)::$refused launches refused by the native runner, lock taken once"
+  } else {
+    Write-Host "::error title=Windows refusals ($env:PROCESSOR_ARCHITECTURE)::$refused native refusal(s) instead of 2, lock taken $acquired time(s) instead of 1"
+    $script:simultaneousFailed = $true
+  }
+} else {
+  $script:simultaneousFailed = $true
 }
 if (-not (Test-Path $report)) { Write-Host "::error title=Windows start::no report: the first screen was not drawn"; exit 1 }
 $r = Get-Content $report -Raw | ConvertFrom-Json
 Write-Host "--- report.json"; Get-Content $report
 if ($script:uniform) { exit 1 }
 if ($script:secondFailed) { exit 1 }
+if ($script:simultaneousFailed) { exit 1 }
 if ($script:crashed) { exit 1 }
 if ($script:splashLate) { exit 1 }
 if (-not $r.first_frame) { Write-Host "::error title=Windows start::first screen not drawn"; exit 1 }
