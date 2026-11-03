@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/strings.dart';
 import '../../ui/link_status.dart';
 import '../../ui/overlay_page.dart';
+import '../lora/lora_battery_view.dart' show LoraBatteryThresholdsTile;
 import '../remotes/remote.dart';
 import '../remotes/remotes_page.dart' show openRemotes;
 import 'meshcore_banner.dart';
@@ -117,6 +118,8 @@ class _MeshCorePageState extends State<MeshCorePage> {
           // Lot 17: the nodes on the map, also under Fond et affichage.
           SwitchListTile(key:const ValueKey('mesh-show-map'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             title:Text(S.t('mesh.showOnMap')),value:link.showOnMap,onChanged:(v)=>unawaited(link.setShowOnMap(v))),
+          // Lot 25: thresholds of the low battery alert.
+          const LoraBatteryThresholdsTile(),
           // Lot 19: search field and filters above the nodes.
           MeshCoreNodeList(nodes:nodes,initialQuery:meshCoreFocusQuery(widget.focus),tile:(n)=>ListTile(key:ValueKey('mesh-node-${n.shortKey}'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             leading:Icon(meshCoreKindIcon(n.kind)),

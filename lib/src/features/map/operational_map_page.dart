@@ -142,6 +142,7 @@ import '../../modules/adrasec/adsb/adsb_page.dart';
 import '../../modules/adrasec/adsb/adsb_search.dart';
 import '../meshcore/meshcore_link.dart';
 import '../meshcore/meshcore_link_card.dart' show meshCoreStateText, MeshCoreReconnectBanner;
+import '../lora/lora_battery_view.dart';
 import '../meshcore/meshcore_page.dart';
 import '../meshcore/meshcore_map.dart';
 import '../remotes/remotes_page.dart' show remotesToolItem;
@@ -1916,7 +1917,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return ListenableBuilder(listenable:mesh,builder:(_,_)=>LinkWeatherPill(dot:colour,
       linkTooltip:[ '${S.t('links.serverLink')} : $label',
         if(mesh.remembered)S.t('mesh.pill',{'s':meshCoreStateText(mesh.state)})].join('\n'),
-      mesh:mesh.remembered?meshCorePillTone(mesh.state):null,
+      mesh:mesh.remembered?meshCorePillToneWithBattery(meshCorePillTone(mesh.state),mesh.deviceId):null, // battery: lot 25
       linkWord:dot.word,
       weatherIcon:h==null?null:weatherIcon(weatherKey(h.weatherCode)),
       weatherText:h==null?null:_mapWeather.pillText(pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
@@ -2759,6 +2760,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         banners,
         ?graphBanner,
         const MeshCoreReconnectBanner(),
+        const LoraBatteryBanner(), // lot 25
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
         if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,
