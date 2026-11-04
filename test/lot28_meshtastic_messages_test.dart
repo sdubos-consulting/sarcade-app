@@ -134,7 +134,8 @@ void main(){
     expect(find.text('10 / 200'),findsOneWidget,reason:'bytes, « ç » takes two');
     await t.tap(find.byKey(const ValueKey('meshtastic-chat-send')));
     await t.pump();
-    expect(find.text('Bien reçu'),findsOneWidget);
+    final inPage=find.descendant(of:find.byType(MeshtasticChatPage),matching:find.text('Bien reçu'));
+    expect(inPage,findsOneWidget);
     expect(find.text('envoi…'),findsOneWidget);
     link.onFrame(meshtasticSample('queue'));
     link.onFrame(meshtasticSample('ackDelivered'));

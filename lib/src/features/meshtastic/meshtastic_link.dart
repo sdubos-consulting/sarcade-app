@@ -315,7 +315,7 @@ class MeshtasticLink extends ChangeNotifier {
     final chats=MeshtasticChats.instance;
     chats.send=send; chats.newId=newPacketId;
     chats.myNum=()=>info.myNum;
-    chats.nameOf=(num)=>_nodes[num]?.name;
+    chats.nameOf=(n)=>_nodes[n]?.name;
     chats.channelName=()=>channelName;
     if(_chatsWired)return;
     _chatsWired=true;
