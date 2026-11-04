@@ -9,7 +9,7 @@ One Flutter code base; the CI builds every platform on each PR.
 | **ChromeOS** | Web app installed (PWA) — main channel; Android app as fallback | Hardware features optional (no touch screen or GPS required). PWA: SARCADE service worker so the app starts without network; installation and location need the server in HTTPS. |
 | **Linux** | `sarcade-linux-x86_64.AppImage` and the `tar.gz` bundle | Also in the Linux environment of an x86-64 Chromebook. |
 | **Web** | Served by the SARCADE server itself (`web-dev` pre-release embedded in the Docker image) | Browser notifications; local data in IndexedDB. |
-| iOS | Unsigned build (proves compilation) | Signing and TestFlight once the Apple account exists. |
+| iOS | TestFlight, one signed build every night on main (`ios-nightly.yml`); unsigned build on pull requests | Alert issue when no build reached TestFlight for 48 h. |
 
 ## Client updates (note « Mises à jour et sécurité »)
 The local server can distribute the Windows installer, the AppImage and the
