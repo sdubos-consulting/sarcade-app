@@ -68,6 +68,8 @@ class SarcadeAboutContent extends StatelessWidget {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             SelectableText(S.t('about.version', {'version': appVersion})),
             if (appBuild.isNotEmpty) SelectableText(S.t('about.build', {'build': appBuild})),
+            // Reference version (lot 28): the label, else « main@commit ».
+            SelectableText(S.t('version.referenceLine', {'ref': appReference()})),
             const SizedBox(height: 8),
             Text(S.t('about.publisher')),
           ])),
@@ -78,6 +80,7 @@ class SarcadeAboutContent extends StatelessWidget {
               final text = [
                 S.t('about.version', {'version': appVersion}),
                 if (appBuild.isNotEmpty) S.t('about.build', {'build': appBuild}),
+                S.t('version.referenceLine', {'ref': appReference()}),
                 S.t('about.publisher'),
               ].join('\n');
               await Clipboard.setData(ClipboardData(text: text));
