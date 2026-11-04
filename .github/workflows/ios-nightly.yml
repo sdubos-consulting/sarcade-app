@@ -8,8 +8,8 @@ name: iOS nightly
 # version a day instead of one per merge) and on demand; pull requests keep
 # the unsigned build of CI. If the arm64 machine is not given, the same build
 # runs once more on an Intel Mac (macos-15-intel).
-# A run on another branch (Actions › iOS nightly › Run workflow) only builds,
-# unsigned: nothing is sent to TestFlight from a branch.
+# A run on another branch (Actions › iOS nightly › Run workflow) or on a pull
+# request only builds, unsigned: nothing is sent to TestFlight from a branch.
 # Build number: run number of this workflow + 2000, above every number of
 # the CI workflow that sent builds before (977, CI runs < 1100 on 4 Nov 2026).
 # Watch: issue « Pas de version iPhone depuis 48 h » (label ci) opened when no
@@ -18,6 +18,13 @@ on:
   schedule:
     - cron: "23 4 * * *"
   workflow_dispatch:
+  # Self-test of this workflow when it changes (unsigned build, issue not
+  # written): a workflow can only be run by hand once it is on main.
+  pull_request:
+    paths:
+      - .github/workflows/ios-nightly.yml
+      - .github/workflows/ios-build.yml
+      - tool/ios_watch.py
 
 permissions:
   contents: read

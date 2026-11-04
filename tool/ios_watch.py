@@ -96,8 +96,13 @@ class GitHub:
 
     def recent_jobs(self, now: dt.datetime, days: int = 7) -> list[dict]:
         since = (now - dt.timedelta(days=days)).strftime("%Y-%m-%d")
-        runs = self.call("GET", f"/repos/{self.repo}/actions/workflows/{WORKFLOW}/runs"
-                                f"?branch=main&created=%3E%3D{since}&per_page=100")
+        try:
+            runs = self.call("GET", f"/repos/{self.repo}/actions/workflows/{WORKFLOW}/runs"
+                                    f"?branch=main&created=%3E%3D{since}&per_page=100")
+        except urllib.error.HTTPError as e:
+            if e.code != 404:  # workflow not yet on main
+                raise
+            return []
         jobs: list[dict] = []
         for run in runs.get("workflow_runs", []):
             data = self.call("GET", f"/repos/{self.repo}/actions/runs/{run['id']}/jobs?filter=all&per_page=100")
