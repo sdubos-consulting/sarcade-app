@@ -25,6 +25,7 @@ import '../../ui/theme.dart' show glass;
 import '../lora/lora_link.dart';
 import '../map/drawing/geometry.dart' show formatDistance;
 import '../search/map_search.dart';
+import 'meshtastic_chat_page.dart' show openMeshtasticNodeChat;
 import 'meshtastic_link.dart';
 import 'meshtastic_protocol.dart';
 
@@ -116,7 +117,7 @@ class MeshtasticNodeCard extends StatelessWidget {
   final DateTime now;
   final String? distance;
   final VoidCallback onClose;
-  /// « Écrire » (messages, lot 28 3/3); null when not offered.
+  /// « Écrire » (point 3); null when not offered.
   final VoidCallback? onWrite;
   final VoidCallback? onCenter;
   const MeshtasticNodeCard({super.key,required this.node,required this.now,this.distance,required this.onClose,this.onWrite,this.onCenter});
@@ -154,10 +155,6 @@ class MeshtasticNodeCard extends StatelessWidget {
   }
 }
 
-/// « Écrire » to a node from its card or the list (set by the messages,
-/// meshtastic_chat_page.dart); null while they are not there.
-void Function(BuildContext context,MeshtasticNode node)? meshtasticWriteTo;
-
 /// The card of the selected node over the map: top left on a large
 /// screen, at the bottom on a phone. [me]: my position for the distance,
 /// else the one of the module.
@@ -173,10 +170,9 @@ class MeshtasticNodeOverlay extends StatelessWidget {
     if(node==null)return const SizedBox.shrink();
     final mine=link.me;
     final from=me??(mine!=null&&mine.placed?LatLng(mine.lat!,mine.lon!):null);
-    final write=meshtasticWriteTo;
     final card=MeshtasticNodeCard(node:node,now:DateTime.now(),distance:meshtasticDistance(node,from),
       onClose:()=>meshtasticSelected.value=null,
-      onWrite:write==null?null:()=>write(context,node),
+      onWrite:()=>unawaited(openMeshtasticNodeChat(context,node)),
       onCenter:node.placed?()=>unawaited(meshtasticShowOnMap(map,node)):null);
     if(compact){
       return Positioned(left:8,right:8,bottom:140,child:Align(alignment:Alignment.bottomCenter,

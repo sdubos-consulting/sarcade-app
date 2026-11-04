@@ -16,6 +16,7 @@ import '../../ui/link_status.dart';
 import '../../ui/overlay_page.dart';
 import '../lora/lora_battery_view.dart' show LoraBatteryThresholdsTile;
 import '../lora/lora_link.dart';
+import 'meshtastic_chat_page.dart';
 import 'meshtastic_link.dart';
 import 'meshtastic_link_card.dart';
 import 'meshtastic_nodes.dart';
@@ -81,6 +82,10 @@ class _MeshtasticPageState extends State<MeshtasticPage> {
         if(link.remembered)...[
           // Same thresholds as MeshCore (lot 25): one setting per device.
           const LoraBatteryThresholdsTile(),
+          // Point 3: the primary channel.
+          Card(child:ListTile(key:const ValueKey('meshtastic-channel'),leading:const Icon(Icons.groups_outlined),
+            title:Text(S.t('meshtastic.channel')),subtitle:link.channelName==null?null:Text(link.channelName!),
+            trailing:const Icon(Icons.chevron_right),onTap:()=>unawaited(openMeshtasticChannel(context)))),
           // Point 2: the nodes on the map, also under Fond et affichage.
           SwitchListTile(key:const ValueKey('meshtastic-show-map'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
             title:Text(S.t('mesh.showOnMap')),value:link.showOnMap,onChanged:(v)=>unawaited(link.setShowOnMap(v))),
@@ -90,8 +95,8 @@ class _MeshtasticPageState extends State<MeshtasticPage> {
             title:Text(n.name),
             subtitle:Text(meshtasticNodeSubtitle(n,now)),
             trailing:Row(mainAxisSize:MainAxisSize.min,children:[
-              if(meshtasticWriteTo!=null)TextButton(key:ValueKey('meshtastic-write-${n.id}'),
-                onPressed:()=>meshtasticWriteTo!(context,n),child:Text(S.t('mesh.write'))),
+              TextButton(key:ValueKey('meshtastic-write-${n.id}'),
+                onPressed:()=>unawaited(openMeshtasticNodeChat(context,n)),child:Text(S.t('mesh.write'))),
               if(n.placed&&widget.onShowOnMap!=null)TextButton(key:ValueKey('meshtastic-see-${n.id}'),
                 onPressed:()=>widget.onShowOnMap!(n),child:Text(S.t('mesh.seeOnMap'))),
             ]))),

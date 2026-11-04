@@ -32,6 +32,7 @@ import '../tv/tv_nearby.dart';
 import '../../ui/link_status.dart';
 import '../../ui/text_fields_dialog.dart';
 import '../meshcore/meshcore_chat_page.dart' show MeshCoreThreadTiles;
+import '../meshtastic/meshtastic_chat_page.dart' show MeshtasticThreadTiles;
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -453,7 +454,8 @@ class _MessagesPageState extends State<MessagesPage>{
          onTap:()=>_open(k)));
      }),
      // Threads with MeshCore nodes, kept on this device (lot 17).
-     const MeshCoreThreadTiles()])),
+     const MeshCoreThreadTiles(),
+     const MeshtasticThreadTiles()])), // lot 28
    ]);
  }
 

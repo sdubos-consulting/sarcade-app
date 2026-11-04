@@ -29,6 +29,7 @@ import '../../platform/platform_services.dart' show webBluetoothAvailable;
 import '../../services/notification_service.dart';
 import '../lora/lora_battery.dart';
 import '../lora/lora_link.dart';
+import 'meshtastic_chat.dart';
 import 'meshtastic_protocol.dart';
 
 /// Preference keys of the remembered module.
@@ -302,7 +303,36 @@ class MeshtasticLink extends ChangeNotifier {
     }
   }
 
+  /// Name of the primary channel: its own, else the name of the preset.
+  String? get channelName{
+    final c=info.channelName;
+    return c==null?null:c.isEmpty?meshtasticPresetName(info.preset):c;
+  }
+
+  /// The messages (point 3) go through this link.
+  bool _chatsWired=false;
+  void _wireChats(){
+    final chats=MeshtasticChats.instance;
+    chats.send=send; chats.newId=newPacketId;
+    chats.myNum=()=>info.myNum;
+    chats.nameOf=(num)=>_nodes[num]?.name;
+    chats.channelName=()=>channelName;
+    if(_chatsWired)return;
+    _chatsWired=true;
+    addPacketListener(chats.onPacket);
+    addQueueListener(chats.onQueue);
+  }
+
+  /// Tests: the messages wired without a store.
+  @visibleForTesting
+  void wireChatsForTest()=>_wireChats();
+
+  bool _storeWired=false;
   void _wire(LocalStore store){
+    _wireChats();
+    final chats=MeshtasticChats.instance;
+    chats.notify??=(title,body)=>unawaited(NotificationService().message(title:title,body:body,priority:'routine'));
+    if(!_storeWired){_storeWired=true;chats.attach(load:store.preference,save:store.setPreference);}
     final battery=LoraBatteryMonitor.instance;
     battery.read??=store.preference; battery.save??=store.setPreference;
     battery.notify??=(title,body)=>unawaited(NotificationService().message(title:title,body:body,priority:'urgent'));
