@@ -18,6 +18,7 @@ import '../lora/lora_battery_view.dart' show LoraBatteryThresholdsTile;
 import '../lora/lora_link.dart';
 import 'meshtastic_link.dart';
 import 'meshtastic_link_card.dart';
+import 'meshtastic_nodes.dart';
 import 'meshtastic_protocol.dart';
 
 /// « Diagnostic » of Outils › Meshtastic: the card of the module (search,
@@ -37,8 +38,15 @@ List<(String,String)> meshtasticModuleLines(MeshtasticLink link,DateTime now)=>[
   if(link.lastFrameAt!=null)(S.t('mesh.field.lastFrame'),loraAge(link.lastFrameAt,now)),
 ];
 
+/// Text put in the search field for a node chosen elsewhere.
+String? meshtasticFocusQuery(MeshtasticNode? n)=>n?.name;
+
 class MeshtasticPage extends StatefulWidget {
-  const MeshtasticPage({super.key});
+  /// « Voir sur la carte »: the map shows the node (point 2).
+  final void Function(MeshtasticNode)? onShowOnMap;
+  /// Opened on this node (search of the map, point 5).
+  final MeshtasticNode? focus;
+  const MeshtasticPage({super.key,this.onShowOnMap,this.focus});
   @override State<MeshtasticPage> createState()=>_MeshtasticPageState();
 }
 
@@ -73,8 +81,20 @@ class _MeshtasticPageState extends State<MeshtasticPage> {
         if(link.remembered)...[
           // Same thresholds as MeshCore (lot 25): one setting per device.
           const LoraBatteryThresholdsTile(),
-          Padding(padding:const EdgeInsets.fromLTRB(4,16,4,6),child:Text(S.t('mesh.nodes',{'n':'${link.others.length}'}),
-            key:const ValueKey('meshtastic-nodes-title'),style:t.textTheme.titleSmall)),
+          // Point 2: the nodes on the map, also under Fond et affichage.
+          SwitchListTile(key:const ValueKey('meshtastic-show-map'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
+            title:Text(S.t('mesh.showOnMap')),value:link.showOnMap,onChanged:(v)=>unawaited(link.setShowOnMap(v))),
+          MeshtasticNodeList(nodes:link.others,initialQuery:meshtasticFocusQuery(widget.focus),tile:(n)=>ListTile(key:ValueKey('meshtastic-node-${n.id}'),
+            contentPadding:const EdgeInsets.symmetric(horizontal:4),
+            leading:Icon(meshtasticKindIcon(n.kind)),
+            title:Text(n.name),
+            subtitle:Text(meshtasticNodeSubtitle(n,now)),
+            trailing:Row(mainAxisSize:MainAxisSize.min,children:[
+              if(meshtasticWriteTo!=null)TextButton(key:ValueKey('meshtastic-write-${n.id}'),
+                onPressed:()=>meshtasticWriteTo!(context,n),child:Text(S.t('mesh.write'))),
+              if(n.placed&&widget.onShowOnMap!=null)TextButton(key:ValueKey('meshtastic-see-${n.id}'),
+                onPressed:()=>widget.onShowOnMap!(n),child:Text(S.t('mesh.seeOnMap'))),
+            ]))),
           Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.local'),style:t.textTheme.bodySmall)),
         ],
       ]))),

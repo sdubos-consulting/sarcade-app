@@ -976,7 +976,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         _onMapNow((){try{_map.move(aircraftEstimated(a,_adsb.serverNow),_map.camera.zoom);}catch(_){/* map not ready */}unawaited(_selectAircraft(a));});}))),
     if(MeshCoreLink.instance.supported)ToolItem(id:'meshcore',icon:Icons.hub_outlined,title:S.t('mesh.tool'),subtitle:S.t('mesh.toolHelp'),color:Colors.cyan,
       onTap:()=>_openDesk('meshcore',()=>MeshCorePage(onShowOnMap:(n){if(_isCompact)Navigator.of(context).pop();_onMapNow(()=>unawaited(meshCoreShowOnMap(_map,n)));}))),
-    meshtasticToolItem(open:_openDesk), // lot 28
+    meshtasticToolItem(open:_openDesk,onShowOnMap:_showMeshtasticNode), // lot 28
     ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
       onTap:_openTvScreens),
     if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
@@ -1510,7 +1510,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _onMapTap(TapPosition tap,LatLng point) async {
-    meshCoreSelected.value=null;
+    meshCoreSelected.value=null; meshtasticSelected.value=null;
     final pick=_pickPoint;
     if(pick!=null){setState((){_pickPoint=null;_pickHint=null;});pick(point,null);return;}
     if(_adjusting!=null){_adjustTowards(point);return;}
@@ -1769,14 +1769,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   ];
   /// Lot 19: aircraft received and MeshCore nodes heard, in the search of the map only.
   Iterable<Searchable> _mapSearchables()=>[..._searchables(),if(_adrasec)...aircraftSearchables(_adsb.received(DateTime.now())),
-    if(MeshCoreLink.instance.remembered)...meshCoreSearchables(MeshCoreLink.instance.contacts,DateTime.now())];
+    if(MeshCoreLink.instance.remembered)...meshCoreSearchables(MeshCoreLink.instance.contacts,DateTime.now()),...meshtasticMapSearchables()];
+  // Lot 28: Meshtastic nodes, « Voir sur la carte » and found in the search.
+  void _showMeshtasticNode(MeshtasticNode n){if(_isCompact)Navigator.of(context).pop();_onMapNow(()=>unawaited(meshtasticShowOnMap(_map,n)));}
+  void _openMeshtasticOn(MeshtasticNode n){_deskId=null;_openDesk('meshtastic',()=>MeshtasticPage(key:ValueKey('meshtastic-focus-${n.num}'),focus:n,onShowOnMap:_showMeshtasticNode));}
   void _openMeshCoreOn(MeshCoreContact n){_deskId=null;_openDesk('meshcore',()=>MeshCorePage(key:ValueKey('mesh-focus-${n.key}'),focus:n,
     onShowOnMap:(c){if(_isCompact)Navigator.of(context).pop();_onMapNow(()=>unawaited(meshCoreShowOnMap(_map,c)));}));}
   Future<List<SearchResult>> _searchAddresses(String q,LatLng? near) async =>
     addressResults(await widget.api.geocode(q,lat:near?.latitude,lon:near?.longitude));
   LatLng? _mapCentre(){try{return _map.camera.center;}catch(_){return null;}}
   void _onSearchPick(SearchResult r){
-    if(openFoundOnMap(r,map:_map,openNodeInTool:_openMeshCoreOn)||(_adrasec&&openAircraftFound(r,map:_map,adsb:_adsb)))return;
+    if(openMeshtasticFound(r,map:_map,openInTool:_openMeshtasticOn)||openFoundOnMap(r,map:_map,openNodeInTool:_openMeshCoreOn)||(_adrasec&&openAircraftFound(r,map:_map,adsb:_adsb)))return;
     setState(()=>_searchPin=r.point);
     _map.move(r.point,r.kind==SearchKind.address||r.kind==SearchKind.coordinates?16:15);
   }
@@ -1857,6 +1860,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ],
       // Lot 17: « Nœuds MeshCore » (Core), set too in Outils › MeshCore.
       if(MeshCoreLink.instance.remembered)row(S.t('mesh.layer'),MeshCoreLink.instance.showOnMap,(v)=>MeshCoreLink.instance.setShowOnMap(v)),
+      if(MeshtasticLink.instance.remembered)row(S.t('meshtastic.layer'),MeshtasticLink.instance.showOnMap,(v)=>MeshtasticLink.instance.setShowOnMap(v)), // lot 28
       const SizedBox(height:12),
     ];
   }
@@ -2871,6 +2875,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_adsb.on&&_adrasec)...[aircraftRoutes(_adsb.routes),touchableMarkers(ignoring:_placingOnMap,child:AircraftMarkers(aircraft:_adsb.shown,onTap:(a)=>unawaited(_selectAircraft(a)),
             now:()=>_adsb.serverNow,filters:_adsb.filters,selectedId:_adsb.selectedId,followed:_adsb.followed))],
           touchableMarkers(ignoring:_placingOnMap,child:const MeshCoreNodesLayer()),
+          touchableMarkers(ignoring:_placingOnMap,child:const MeshtasticNodesLayer()), // lot 28
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             lineHits:_routeHits,onWaypointTap:(w)=>unawaited(_openWaypoint(w))),
           if(_showOrders)...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
@@ -2919,6 +2924,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         // Phone: on the line of « Suivi de position » (map_bottom_line.dart).
         if(!compact||_bearings.taking||selected!=null)Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
         MeshCoreNodeOverlay(map:_map,me:_me,compact:compact),
+        MeshtasticNodeOverlay(map:_map,me:_me,compact:compact), // lot 28
         if(_inDistress)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:Material(color:Theme.of(context).colorScheme.error,
           borderRadius:BorderRadius.circular(16),child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_distress,child:Padding(padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
             child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.sos,color:Theme.of(context).colorScheme.onError),const SizedBox(width:8),
