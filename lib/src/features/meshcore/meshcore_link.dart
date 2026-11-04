@@ -16,20 +16,15 @@ import 'package:universal_ble/universal_ble.dart';
 
 import '../../platform/platform_services.dart' show webBluetoothAvailable;
 import '../../offline/local_store.dart';
-import '../../l10n/strings.dart';
 import '../../services/notification_service.dart';
 import '../lora/lora_battery.dart';
+import '../lora/lora_link.dart';
 import '../remotes/remote_meshcore.dart';
 import 'meshcore_chat.dart';
 import 'meshcore_protocol.dart';
 
-/// [waitingClick]: web app (lot 17), the browser lets join the module only
-/// after a click in this tab (« Reconnecter le module »). [disconnected]
-/// (lot 19): « Déconnecter » was pressed, the module stays remembered but is
-/// not joined again until « Se connecter ».
-/// [unavailable]: web app (lot 25), « Reconnecter » failed (module off or
-/// out of reach); no automatic attempt, the pill stays to try again later.
-enum MeshCoreState { none, connecting, connected, reconnecting, failed, waitingClick, disconnected, unavailable }
+/// States of the link (lot 28: shared with Meshtastic, lora/lora_link.dart).
+typedef MeshCoreState=LoraLinkState;
 
 /// Preference keys of the remembered module.
 const meshCoreDeviceKey='meshcore_device', meshCoreNameKey='meshcore_name';
@@ -39,24 +34,16 @@ const meshCoreMapKey='meshcore_map';
 /// purpose, start of the application included.
 const meshCoreOffKey='meshcore_off';
 
-/// Colour family of the pill: 'off' (no module, or disconnected on purpose:
-/// grey, lot 19), 'ok', 'wait', 'bad'.
-String meshCorePillTone(MeshCoreState s)=>switch(s){
-  MeshCoreState.none||MeshCoreState.disconnected=>'off', MeshCoreState.connected=>'ok',
-  MeshCoreState.connecting||MeshCoreState.reconnecting||MeshCoreState.waitingClick=>'wait', MeshCoreState.failed||MeshCoreState.unavailable=>'bad'};
+/// Colour family of the pill (lora/lora_link.dart).
+String meshCorePillTone(MeshCoreState s)=>loraPillTone(s);
 
-/// Delay before the next attempt to join the module again: 5 s, 15 s,
-/// 30 s, then every minute.
-Duration meshCoreRetryDelay(int attempt)=>Duration(seconds:const [5,15,30,60][attempt.clamp(0,3)]);
+/// Delay before the next attempt (lora/lora_link.dart).
+Duration meshCoreRetryDelay(int attempt)=>loraRetryDelay(attempt);
 
 /// Text shown when the module cannot be reached (card « MeshCore : message
-/// d'erreur lisible », validated 1 Nov 2026, 8 h 15): the technical error
-/// stays in the journal only.
-String? meshCoreProblem({required MeshCoreState state,required bool trying,String? error,Duration? retryIn}){
-  if(error==null||trying||state==MeshCoreState.connected||state==MeshCoreState.none||state==MeshCoreState.disconnected)return null;
-  final wait=retryIn==null?'':' ${S.t('mesh.retryIn',{'s':retryIn.inSeconds})}';
-  return '${S.t('mesh.unreachable')}$wait';
-}
+/// d'erreur lisible », validated 1 Nov 2026, 8 h 15; lora/lora_link.dart).
+String? meshCoreProblem({required MeshCoreState state,required bool trying,String? error,Duration? retryIn})=>
+  loraProblem(state:state,trying:trying,error:error,retryIn:retryIn);
 
 /// Nodes sorted for the list: heard most recently first, unnamed last.
 List<MeshCoreContact> sortedContacts(Iterable<MeshCoreContact> all)=>all.toList()

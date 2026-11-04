@@ -45,6 +45,16 @@ class S {
 }
 
 const Texts _fr={
+  // Lot 28 · Module Meshtastic (features/meshtastic/) ; textes génériques des modules LoRa : mesh.* (lora/lora_link.dart).
+  'meshtastic.tool':'Meshtastic','meshtastic.toolHelp':'Module LoRa, nœuds et messages','meshtastic.title':'Module Meshtastic',
+  'meshtastic.help':'Module LoRa avec le firmware Meshtastic, Bluetooth activé. Choisi une fois, il est retrouvé tout seul au démarrage et après une coupure. Code d’appairage : celui affiché par le module (123456 sans écran)',
+  'meshtastic.searching':'Recherche des modules Meshtastic (10 s)…','meshtastic.noneFound':'Aucun module trouvé : allumez-le, activez son Bluetooth et vérifiez qu’aucun autre téléphone n’y est connecté',
+  'meshtastic.noModule':'Aucun module Meshtastic choisi : recherchez-le ci-dessous','meshtastic.web.connect':'Connecter un module Meshtastic',
+  'meshtastic.web.help':'Chrome ou Edge : choisissez le module dans la fenêtre du navigateur. La liaison s’arrête à la fermeture de l’onglet',
+  'meshtastic.web.reconnectHelp':'Module Meshtastic : le navigateur demande un clic pour le reconnecter','meshtastic.pill':'Module Meshtastic : {s}','meshtastic.powered':'secteur',
+  'meshtastic.field.shortName':'Nom court','meshtastic.field.id':'Identifiant','meshtastic.field.model':'Matériel','meshtastic.field.firmware':'Firmware',
+  'meshtastic.field.radio':'Région et préréglage','meshtastic.field.power':'Puissance','meshtastic.field.hopLimit':'Sauts maximum','meshtastic.field.channel':'Canal principal',
+  'meshtastic.field.battery':'Batterie','meshtastic.field.position':'Position',
   'win.starting':'Démarrage…',
   'messages.replyQuote':'Répondre','messages.quoteMissing':'Message introuvable','messages.quotePhoto':'Photo',
   'ext.app.other':'Autre application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Toujours ouvrir avec cette application','ext.warningShort':'Votre position est transmise','ext.warningAll':'Google Maps et Waze reçoivent votre position','settings.navApp':'Application de navigation','settings.navAppAsk':'Demander à chaque fois',
@@ -715,6 +725,16 @@ const Texts _fr={
 };
 
 const Texts _en={
+  // Lot 28 · Meshtastic module (features/meshtastic/); generic texts of the LoRa modules: mesh.* (lora/lora_link.dart).
+  'meshtastic.tool':'Meshtastic','meshtastic.toolHelp':'LoRa module, nodes and messages','meshtastic.title':'Meshtastic module',
+  'meshtastic.help':'LoRa module with the Meshtastic firmware, Bluetooth on. Chosen once, it is joined again by itself at start and after a drop. Pairing code: the one shown by the module (123456 without a screen)',
+  'meshtastic.searching':'Searching for Meshtastic modules (10 s)…','meshtastic.noneFound':'No module found: switch it on, turn its Bluetooth on and check that no other phone is connected to it',
+  'meshtastic.noModule':'No Meshtastic module chosen: search for it below','meshtastic.web.connect':'Connect a Meshtastic module',
+  'meshtastic.web.help':'Chrome or Edge: choose the module in the browser window. The link stops when the tab is closed',
+  'meshtastic.web.reconnectHelp':'Meshtastic module: the browser needs a click to reconnect it','meshtastic.pill':'Meshtastic module: {s}','meshtastic.powered':'external power',
+  'meshtastic.field.shortName':'Short name','meshtastic.field.id':'Identifier','meshtastic.field.model':'Hardware','meshtastic.field.firmware':'Firmware',
+  'meshtastic.field.radio':'Region and preset','meshtastic.field.power':'Power','meshtastic.field.hopLimit':'Maximum hops','meshtastic.field.channel':'Primary channel',
+  'meshtastic.field.battery':'Battery','meshtastic.field.position':'Position',
   'win.starting':'Starting…',
   'messages.replyQuote':'Reply','messages.quoteMissing':'Message not found','messages.quotePhoto':'Photo',
   'ext.app.other':'Other application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Always open with this application','ext.warningShort':'Your position is shared','ext.warningAll':'Google Maps and Waze receive your position','settings.navApp':'Navigation application','settings.navAppAsk':'Ask every time',

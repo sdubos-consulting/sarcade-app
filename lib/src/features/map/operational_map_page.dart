@@ -148,6 +148,7 @@ import '../meshcore/meshcore_link_card.dart' show meshCoreStateText, MeshCoreRec
 import '../lora/lora_battery_view.dart';
 import '../meshcore/meshcore_page.dart';
 import '../meshcore/meshcore_map.dart';
+import '../meshtastic/meshtastic_hooks.dart';
 import '../remotes/remotes_page.dart' show remotesToolItem;
 import 'locate_button.dart';
 import 'locate_cycle.dart';
@@ -302,7 +303,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false;_showMessagesPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initAdsb();_initTvDiscovery();_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_carScreen.start();_stopWakeups=listenWakeups(_onWakeup);_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initAdsb();_initTvDiscovery();_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_carScreen.start();_stopWakeups=listenWakeups(_onWakeup);_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));unawaited(MeshtasticLink.instance.restore(widget.store));}
 
   /// « Découverte automatique des écrans », remembered on this device.
   void _initTvDiscovery(){
@@ -975,6 +976,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         _onMapNow((){try{_map.move(aircraftEstimated(a,_adsb.serverNow),_map.camera.zoom);}catch(_){/* map not ready */}unawaited(_selectAircraft(a));});}))),
     if(MeshCoreLink.instance.supported)ToolItem(id:'meshcore',icon:Icons.hub_outlined,title:S.t('mesh.tool'),subtitle:S.t('mesh.toolHelp'),color:Colors.cyan,
       onTap:()=>_openDesk('meshcore',()=>MeshCorePage(onShowOnMap:(n){if(_isCompact)Navigator.of(context).pop();_onMapNow(()=>unawaited(meshCoreShowOnMap(_map,n)));}))),
+    meshtasticToolItem(open:_openDesk), // lot 28
     ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
       onTap:_openTvScreens),
     if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
@@ -1942,11 +1944,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final next=r?.upcoming(DateTime.now(),n:1)??const [];
     final h=next.isEmpty?null:next.first;
     final alert=(r?.vigilance?.colorId??1)>=3;
-    final mesh=MeshCoreLink.instance;
-    return ListenableBuilder(listenable:mesh,builder:(_,_)=>LinkWeatherPill(dot:colour,
+    final mesh=MeshCoreLink.instance, tastic=MeshtasticLink.instance;
+    return ListenableBuilder(listenable:Listenable.merge([mesh,tastic]),builder:(_,_)=>LinkWeatherPill(dot:colour,
       linkTooltip:[ '${S.t('links.serverLink')} : $label',
-        if(mesh.remembered)S.t('mesh.pill',{'s':meshCoreStateText(mesh.state)})].join('\n'),
+        if(mesh.remembered)S.t('mesh.pill',{'s':meshCoreStateText(mesh.state)}),?meshtasticPillTooltip()].join('\n'),
       mesh:mesh.remembered?meshCorePillToneWithBattery(meshCorePillTone(mesh.state),mesh.deviceId):null, // battery: lot 25
+      meshtastic:meshtasticPillTone(), // lot 28
       linkWord:dot.word,
       weatherIcon:h==null?null:weatherIcon(weatherKey(h.weatherCode)),
       weatherText:h==null?null:_mapWeather.pillText(pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
@@ -2795,6 +2798,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         banners,
         ?graphBanner,
         const MeshCoreReconnectBanner(),
+        const MeshtasticReconnectBanner(), // lot 28
         const LoraBatteryBanner(), // lot 25
         AccountBanner(server:widget.api.baseUrl,deviceId:widget.deviceId,onChanged:_accountChanged),
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[

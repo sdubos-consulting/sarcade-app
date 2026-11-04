@@ -13,6 +13,7 @@ import '../../l10n/strings.dart';
 import '../../ui/link_status.dart';
 import '../../ui/overlay_page.dart';
 import '../lora/lora_battery_view.dart' show LoraBatteryThresholdsTile;
+import '../lora/lora_link.dart';
 import '../remotes/remote.dart';
 import '../remotes/remotes_page.dart' show openRemotes;
 import 'meshcore_banner.dart';
@@ -30,18 +31,11 @@ Future<void> openMeshCoreDiagnostic(BuildContext context)=>showOverlayPage<void>
   body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),
     child:ListView(padding:const EdgeInsets.all(16),children:const [MeshCoreLinkCard()])))));
 
-/// « il y a 3 min », « il y a 2 h », « il y a 4 j ».
-String meshCoreAge(DateTime? at,DateTime now){
-  if(at==null)return S.t('mesh.never');
-  final d=now.difference(at);
-  if(d.inMinutes<1)return S.t('mesh.ageNow');
-  if(d.inHours<1)return S.t('mesh.ageMin',{'n':'${d.inMinutes}'});
-  if(d.inDays<1)return S.t('mesh.ageHour',{'n':'${d.inHours}'});
-  return S.t('mesh.ageDay',{'n':'${d.inDays}'});
-}
+/// « il y a 3 min », « il y a 2 h », « il y a 4 j » (lora/lora_link.dart).
+String meshCoreAge(DateTime? at,DateTime now)=>loraAge(at,now);
 
-/// « direct », « 2 sauts », « route inconnue ».
-String meshCoreHops(int? hops)=>hops==null?S.t('mesh.hopsUnknown'):hops==0?S.t('mesh.hopsDirect'):S.t('mesh.hops',{'n':'$hops'});
+/// « direct », « 2 sauts », « route inconnue » (lora/lora_link.dart).
+String meshCoreHops(int? hops)=>loraHops(hops);
 
 /// Text put in the search field for a node chosen elsewhere (lot 19).
 String? meshCoreFocusQuery(MeshCoreContact? c)=>c==null?null:c.name.isEmpty?c.shortKey:c.name;
