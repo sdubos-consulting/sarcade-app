@@ -18,7 +18,7 @@ Application **Flutter** de SARCADE (Android, iPhone, Windows, Linux, web/PWA) po
 ## Construire et tester
 - Les dossiers `android/`, `ios/`, `web/`, `windows/`, `linux/` **ne sont pas dans le dépôt** : la CI les génère (`flutter create --org org.sarcade`) puis les adapte avec `tool/patch_*.py`.
 - Localement : `flutter analyze` (aucune remarque tolérée, même « info ») puis `flutter test`.
-- CI (`.github/workflows/ci.yml`) : analyse et tests, builds Android, Windows, Linux et web, test de bout en bout web (Playwright, `e2e/`) et Android (émulateur, `integration_test/`). Le job iOS est désactivé tant que la plateforme Apple n'est pas paramétrée ; le réactiver avec la signature et TestFlight.
+- CI (`.github/workflows/ci.yml`) : analyse et tests, builds Android, Windows, Linux et web, test de bout en bout web (Playwright, `e2e/`) et Android (émulateur, `integration_test/`). iOS : construction non signée sur les PR (`ios-build.yml`), version signée envoyée à TestFlight chaque nuit sur `main` et à la demande (`ios-nightly.yml`), alerte par ticket après 48 h sans version.
 - Si le SDK Flutter n'est pas disponible dans l'environnement de l'assistant, s'appuyer sur la CI et lire les annotations des jobs.
 
 ## Distribution
