@@ -32,8 +32,10 @@ class LinkWeatherPill extends StatelessWidget {
   /// MeshCore module (lot D, 1 Nov 2026): 'ok', 'wait', 'bad' or 'off'; null
   /// when no module is remembered (nothing drawn).
   final String? mesh;
+  /// Meshtastic module (lot 28): same tones as [mesh].
+  final String? meshtastic;
   const LinkWeatherPill({super.key,required this.dot,required this.linkTooltip,required this.onLinks,required this.onWeather,
-    this.linkWord,this.weatherIcon,this.weatherText,this.alert,this.compact=false,this.mesh});
+    this.linkWord,this.weatherIcon,this.weatherText,this.alert,this.compact=false,this.mesh,this.meshtastic});
 
   /// 'off' (lot 19): disconnected on purpose, grey and not red.
   /// 'battery' (lot 25): the module linked has a low battery, orange.
@@ -54,6 +56,7 @@ class LinkWeatherPill extends StatelessWidget {
           child:Padding(padding:EdgeInsets.only(left:14,right:weather?6:14),child:Row(mainAxisSize:MainAxisSize.min,mainAxisAlignment:MainAxisAlignment.center,children:[
             Container(width:10,height:10,decoration:BoxDecoration(color:dot,shape:BoxShape.circle)),
             if(mesh!=null)...[const SizedBox(width:6),Icon(mesh=='battery'?Icons.battery_alert:Icons.settings_input_antenna,key:const ValueKey('pill-mesh'),size:15,color:meshColor(mesh!,s))],
+            if(meshtastic!=null)...[const SizedBox(width:6),Icon(meshtastic=='battery'?Icons.battery_alert:Icons.wifi_tethering,key:const ValueKey('pill-meshtastic'),size:15,color:meshColor(meshtastic!,s))],
             if(linkWord!=null)...[const SizedBox(width:6),Text(linkWord!,style:TextStyle(fontSize:13,fontWeight:FontWeight.w600,color:s.onSurface))],
           ]))))),
         if(weather)InkWell(customBorder:shape,onTap:onWeather,child:SizedBox(height:pillTouch,child:Padding(padding:const EdgeInsets.only(left:6,right:14),

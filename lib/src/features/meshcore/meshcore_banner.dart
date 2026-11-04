@@ -12,6 +12,8 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import '../lora/lora_link.dart';
+
 import 'meshcore_link.dart';
 
 /// « Plus tard » pressed: hidden until SARCADE is opened again (memory
@@ -21,7 +23,8 @@ final ValueNotifier<bool> meshCoreBannerLater=ValueNotifier(false);
 /// Number of MeshCore screens open (Outils › MeshCore).
 final ValueNotifier<int> meshCoreScreensOpen=ValueNotifier(0);
 
-/// The bar shows: the browser waits for a click, « Plus tard » not pressed,
-/// and, for the bar above the map, no MeshCore screen open (it has its own).
+/// The bar shows (lora/lora_link.dart): the browser waits for a click,
+/// « Plus tard » not pressed, and, for the bar above the map, no MeshCore
+/// screen open (it has its own).
 bool meshCoreBannerShown({required MeshCoreState state,required bool later,required bool inScreen,required int screensOpen})=>
-  state==MeshCoreState.waitingClick&&!later&&(inScreen||screensOpen==0);
+  loraBannerShown(state:state,later:later,inScreen:inScreen,screensOpen:screensOpen);
