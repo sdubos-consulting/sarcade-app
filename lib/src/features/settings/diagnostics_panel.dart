@@ -12,6 +12,10 @@
 /// fonctionne » or the problems with their action at the top; the items not
 /// sent are listed in « Liaisons »; opened from the map in a sheet
 /// ([showDiagnosticsSheet]); red dot on Paramètres ([diagnosticsAlert]).
+/// Lot 28: three levels computed by the server (user, PCO, administrator;
+/// devices without account keep the view of before during the transition),
+/// test of Brevo, « Échéances » and versions for the administrator, each
+/// line stacked on a narrow screen ([DiagLineRow]).
 library;
 
 import 'dart:async';
@@ -24,6 +28,10 @@ import 'package:geolocator/geolocator.dart';
 import '../../access/access_login_page.dart' show signInToServer;
 import '../../access/access_manager.dart';
 import '../../access/access_session.dart' show AccessSession;
+import '../../account/rights.dart' show RightsState;
+import '../../admin/admin_api.dart';
+import '../../admin/admin_errors.dart' show adminErrorText;
+import '../../admin/deadlines_page.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart' show eventModules;
@@ -44,11 +52,12 @@ import '../../modules/adrasec/aprs/aprs_models.dart' show linkState;
 import '../../services/event_names.dart';
 import '../map/map_load_status.dart';
 import '../navigation/road_graph_service.dart';
+import 'diagnostics_levels.dart';
 import 'link_diagnostics.dart';
 
 /// green / orange / red / off → colour of the dot.
 Color stateColor(String? s)=>switch(s){'green'||'ok'||'connected'=>Colors.green,'orange'||'degraded'||'waiting'=>Colors.orange,
-  'red'||'down'=>Colors.red,_=>Colors.grey};
+  'red'||'down'=>Colors.red,'expired'=>expiredRed,_=>Colors.grey};
 
 /// « 3 j 4 h », « 2 h 05 », « 12 min ».
 String uptimeLabel(int s){
@@ -66,8 +75,15 @@ typedef DiagLine=({String block,String label,String value,String? state});
 /// Lines in red or orange: the problems of the summary at the top.
 List<DiagLine> diagnosticProblems(Iterable<DiagLine> lines)=>[for(final l in lines)if(l.state=='red'||l.state=='orange')l];
 
-/// Red dot on Paramètres and on the Diagnostic tab: items not sent.
-bool diagnosticsAlert()=>(OfflineSyncService.active?.unsent??0)>0;
+/// Items not sent: Paramètres opens on the Diagnostic.
+bool unsentAlert()=>(OfflineSyncService.active?.unsent??0)>0;
+
+/// Administrator: a deadline at 30 days or less (lot 28, `/me`).
+bool deadlinesAlert()=>(RightsState.instance.current?.deadlineAlerts??0)>0;
+
+/// Red dot on Paramètres and on the Diagnostic tab: items not sent, or a
+/// deadline to watch (administrator, lot 28).
+bool diagnosticsAlert()=>unsentAlert()||deadlinesAlert();
 
 /// Diagnostic over the map, one tap from the link dot or the red banner.
 Future<void> showDiagnosticsSheet(BuildContext context,{required SarcadeApi api,required String server,required String eventId,
@@ -156,9 +172,15 @@ class DiagnosticsPanel extends StatefulWidget {
 }
 
 class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
-  List<DiagLine> _device=[], _links=[], _server=[]; bool _loading=true; String? _serverError;
+  List<DiagLine> _device=[], _links=[], _server=[], _mail=[], _deadlines=[]; bool _loading=true; String? _serverError;
+  /// Level computed by the server (lot 28), see [diagLevel].
+  String _level='legacy';
+  Map<String,dynamic>? _deadlineData;
+  bool _mailSending=false;
 
   bool get _pco=>myRoles.contains('pco')||myRoles.contains('admin');
+  /// Block « Serveur »: administrator, or the view of before for the PCO.
+  bool get _showsServer=>_level=='admin'||_level=='organizer'||(_pco&&(_level=='transition'||_level=='legacy'));
 
   /// Event, map and real time are read live (lot 19): what « Réessayer »
   /// changes shows at once.
@@ -194,6 +216,12 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   Future<void> _load() async {
     setState(()=>_loading=true);
     final dev=S.t('diag.device'), lk=S.t('diag.links');
+    // Level and server block first (lot 28): the server says what to show.
+    Map<String,dynamic>? srv; String? err;
+    try{srv=await widget.api.serverDiagnostics().timeout(const Duration(seconds:12));}
+    on SarcadeHttpException catch(e){err=e.statusCode==403?S.t('diag.serverForbidden'):e.statusCode==404?S.t('diag.serverOld'):'HTTP ${e.statusCode}';}
+    catch(_){err=S.t('diag.unreachable');}
+    final level=diagLevel(srv), full=diagFullView(level), services=diagShowsServices(level);
     // Server response time (and what it sees of this device).
     final sw=Stopwatch()..start();
     Map<String,dynamic>? client;
@@ -216,24 +244,30 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     final sync=OfflineSyncService.active;
     final access=AccessManager.instance.sessionFor(widget.server);
     Map<String,dynamic>? aprs;
-    try{aprs=await widget.api.aprsStatus().timeout(const Duration(seconds:5));}catch(_){aprs=null;}
+    if(services){try{aprs=await widget.api.aprsStatus().timeout(const Duration(seconds:5));}catch(_){aprs=null;}}
     // ADS-B (OpenSky): only for an event with the ADRASEC module (8 h 15).
     Map<String,dynamic>? adsb;
-    try{
-      final ev=await widget.api.event(widget.eventId).timeout(const Duration(seconds:5));
-      final settings=ev['settings'] is Map?Map<String,dynamic>.from(ev['settings'] as Map):null;
-      if(eventModules(settings).contains('adrasec'))adsb=await widget.api.adsbStatus().timeout(const Duration(seconds:5));
-    }catch(_){adsb=null;}
+    if(services){
+      try{
+        final ev=await widget.api.event(widget.eventId).timeout(const Duration(seconds:5));
+        final settings=ev['settings'] is Map?Map<String,dynamic>.from(ev['settings'] as Map):null;
+        if(eventModules(settings).contains('adrasec'))adsb=await widget.api.adsbStatus().timeout(const Duration(seconds:5));
+      }catch(_){adsb=null;}
+    }
     bool engine=false;
-    try{engine=(await widget.api.routingStatus().timeout(const Duration(seconds:5)))['available']==true;}catch(_){engine=false;}
+    if(services){try{engine=(await widget.api.routingStatus().timeout(const Duration(seconds:5)))['available']==true;}catch(_){engine=false;}}
     Map<String,dynamic>? link(String k)=>aprs?[k] is Map?Map<String,dynamic>.from(aprs![k] as Map):null;
     final device=<DiagLine>[
       (block:dev,label:S.t('diag.version'),value:'SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}',state:null),
+      // Version of the server and reference version (lot 28).
+      ...versionLines(dev,srv),
       // Name and identifier of the event: the identifier only here (revue n° 60).
-      (block:dev,label:S.t('diagnostics.event'),value:eventReportValue(await loadEventName(widget.api,widget.eventId),widget.eventId),state:null),
-      (block:dev,label:S.t('diag.localIp'),value:local.isEmpty?'—':local.join(', '),state:null),
-      (block:dev,label:S.t('diag.publicIp'),value:'${client?['ip']??'—'}',state:null),
-      (block:dev,label:S.t('diag.network'),value:net,state:null),
+      if(services)(block:dev,label:S.t('diagnostics.event'),value:eventReportValue(await loadEventName(widget.api,widget.eventId),widget.eventId),state:null),
+      if(full)...[
+        (block:dev,label:S.t('diag.localIp'),value:local.isEmpty?'—':local.join(', '),state:null),
+        (block:dev,label:S.t('diag.publicIp'),value:'${client?['ip']??'—'}',state:null),
+        (block:dev,label:S.t('diag.network'),value:net,state:null),
+      ],
       (block:dev,label:S.t('diag.gps'),value:gps,state:gpsState),
       (block:dev,label:S.t('diag.notifications'),value:S.t(NotificationService.windowsUnavailable=='admin'?'diag.notifAdmin':notif==null?'diag.unknown':notif?'diag.allowed':'diag.refused'),state:notif==null?null:notif?'green':'orange'),
       (block:dev,label:S.t('diag.lastSync'),value:sync?.lastServerContact==null?'—':_date(sync!.lastServerContact!.toUtc().toIso8601String()),state:sync==null?null:sync.lastSyncOk?'green':'orange'),
@@ -242,23 +276,71 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       (block:lk,label:S.t('diag.response'),value:reached?'${sw.elapsedMilliseconds} ms':S.t('diag.unreachable'),state:!reached?'red':sw.elapsedMilliseconds>1500?'orange':'green'),
       accessDiagLine(lk,web:isWebPlatform,session:access,client:client,
         refused:AccessManager.instance.requiredFor(widget.server),online:!isWebPlatform||browserOnline),
-      // Itinerary computation: server, device, or straight line (31 Oct 2026).
-      (block:lk,label:S.t('diag.routing'),value:S.t('diag.routing.${routingWhere(server:engine,device:RoadGraphService.active?.graph!=null)}'),
-        state:switch(routingWhere(server:engine,device:RoadGraphService.active?.graph!=null)){'server'=>'green','device'=>'orange',_=>'red'}),
-      (block:lk,label:S.t('aprs.is'),value:S.t('aprs.link.${linkState(link('aprs_is'))}'),state:linkState(link('aprs_is'))),
-      (block:lk,label:S.t('aprs.radio'),value:S.t('aprs.link.${linkState(link('radio'))}'),state:linkState(link('radio'))),
-      ?adsbDiagLine(lk,adsb,DateTime.now()),
-      // MeshCore: one status line; everything else in Outils › MeshCore.
-      if(MeshCoreLink.instance.supported)meshCoreDiagLine(lk,MeshCoreLink.instance),
+      // A user sees the server only when it is down (lot 28).
+      if(!full)?serverDownLine(lk,srv),
+      // Services of the event: PCO and administrators (lot 28).
+      if(services)...[
+        // Itinerary computation: server, device, or straight line (31 Oct 2026).
+        (block:lk,label:S.t('diag.routing'),value:S.t('diag.routing.${routingWhere(server:engine,device:RoadGraphService.active?.graph!=null)}'),
+          state:switch(routingWhere(server:engine,device:RoadGraphService.active?.graph!=null)){'server'=>'green','device'=>'orange',_=>'red'}),
+        (block:lk,label:S.t('aprs.is'),value:S.t('aprs.link.${linkState(link('aprs_is'))}'),state:linkState(link('aprs_is'))),
+        (block:lk,label:S.t('aprs.radio'),value:S.t('aprs.link.${linkState(link('radio'))}'),state:linkState(link('radio'))),
+        ?adsbDiagLine(lk,adsb,DateTime.now()),
+        // MeshCore: one status line; everything else in Outils › MeshCore.
+        if(MeshCoreLink.instance.supported)meshCoreDiagLine(lk,MeshCoreLink.instance),
+      ],
     ];
-    var server=<DiagLine>[]; String? err;
-    if(_pco){
-      try{server=serverLines(await widget.api.serverDiagnostics().timeout(const Duration(seconds:8)));}
-      on SarcadeHttpException catch(e){err=e.statusCode==403?S.t('diag.serverForbidden'):e.statusCode==404?S.t('diag.serverOld'):'HTTP ${e.statusCode}';}
-      catch(_){err=S.t('diag.unreachable');}
-    }
+    final server=<DiagLine>[
+      if(level=='organizer'&&srv!=null)...eventServiceLines(srv)
+      else if(srv!=null&&level!='user')...[...serverLines(srv),if(level=='admin')...adminBuildLines(srv)],
+    ];
+    final mail=level=='admin'&&srv?['mail'] is Map?mailLines(Map<String,dynamic>.from(srv!['mail'] as Map)):<DiagLine>[];
+    final deadlineData=level=='admin'&&srv?['deadlines'] is Map?Map<String,dynamic>.from(srv!['deadlines'] as Map):null;
     if(!mounted)return;
-    setState((){_device=device;_links=links;_server=server;_serverError=err;_loading=false;});
+    setState((){_device=device;_links=links;_server=server;_serverError=srv==null?err:null;_level=level;
+      _mail=mail;_deadlineData=deadlineData;_deadlines=deadlineLines(deadlineData);_loading=false;});
+  }
+
+  /// « Envoyer un e-mail d'essai » to the address of the administrator.
+  Future<void> _mailTest() async {
+    final m=ScaffoldMessenger.of(context);
+    setState(()=>_mailSending=true);
+    final api=AdminApi(widget.server);
+    try{
+      final r=await api.mailTest();
+      m.showSnackBar(SnackBar(content:Text(r['status']=='simulated'?S.t('diag.mailTestSimulated'):S.t('diag.mailTestSent',{'to':r['to']??''}))));
+    }catch(e){
+      m.showSnackBar(SnackBar(content:Text(S.t('diag.mailTestFailed',{'e':adminErrorText(e)}))));
+    }finally{
+      api.close();
+      if(mounted)setState(()=>_mailSending=false);
+    }
+    if(mounted)unawaited(_load());
+  }
+
+  /// « Modifier les échéances »: the list typed by the administrator.
+  Future<void> _editDeadlines() async {
+    final api=AdminApi(widget.server);
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>DeadlinesPage(api:api)));
+    api.close();
+    if(mounted)unawaited(_load());
+  }
+
+  /// Banner of the deadlines to watch (30 days or less), at the top.
+  Widget? _deadlineBanner(){
+    final alerts=deadlineAlerts(_deadlineData);
+    if(alerts.isEmpty)return null;
+    final t=Theme.of(context);
+    final worst=alerts.first;
+    final color=stateColor(deadlineState(worst));
+    return Card(key:const ValueKey('deadline-banner'),elevation:0,margin:const EdgeInsets.only(top:12),color:color.withValues(alpha:0.14),
+      child:Padding(padding:const EdgeInsets.all(14),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Icon(Icons.event_busy_outlined,color:color),const SizedBox(width:12),
+        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(S.t('deadline.banner',{'n':alerts.length}),style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700)),
+          for(final a in alerts.take(3))Text('${a['name']} : ${deadlineValue(a)}'),
+        ])),
+      ])));
   }
 
   /// Items not sent, read live (the list below changes it).
@@ -278,7 +360,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     if(await signInToServer(context,widget.server)&&mounted)unawaited(_load());
   }
 
-  Widget _reconnectButton()=>TextButton(key:const ValueKey('diag-access-reconnect'),onPressed:_reconnect,child:Text(S.t('links.signInAgain')));
+  // « Renouveler l'accès » (lot 28, card « Paramètres : deux connexions »).
+  Widget _reconnectButton()=>TextButton(key:const ValueKey('diag-access-reconnect'),onPressed:_reconnect,child:Text(S.t('profile.renewAccess')));
 
   Future<void> _retryAll() async {
     final sync=OfflineSyncService.active; if(sync==null)return;
@@ -305,11 +388,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Padding(padding:const EdgeInsets.fromLTRB(14,6,14,4),child:Text(S.t('diag.problems',{'n':problems.length}),
           style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
-        for(final l in problems)Padding(padding:const EdgeInsets.symmetric(horizontal:16,vertical:4),child:Row(children:[
-          SizedBox(width:24,child:Icon(Icons.circle,size:12,color:stateColor(l.state))),
-          Expanded(child:Text('${l.label} : ${l.value}')),
-          ?action(l),
-        ])),
+        for(final l in problems)DiagLineRow(line:l,action:action(l),dense:true),
       ])));
   }
 
@@ -318,17 +397,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     return Card(elevation:0,margin:const EdgeInsets.only(top:12),color:t.colorScheme.surfaceContainerLow,child:Padding(
       padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Padding(padding:const EdgeInsets.fromLTRB(14,6,14,4),child:Text(title,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
-        // Label kept on one line, value wraps (30 Oct 2026: on iPhone the
-        // ListTile trailing squeezed the label into one letter per line).
-        for(final l in lines)Padding(padding:const EdgeInsets.symmetric(horizontal:16,vertical:8),child:Row(
-          crossAxisAlignment:CrossAxisAlignment.start,children:[
-            SizedBox(width:24,child:l.state==null?null:Padding(padding:const EdgeInsets.only(top:4),
-              child:Icon(Icons.circle,size:12,color:stateColor(l.state)))),
-            Text(l.label,softWrap:false),
-            const SizedBox(width:12),
-            Expanded(child:SelectableText(l.value,textAlign:TextAlign.end)),
-            ?action?.call(l),
-          ])),
+        // Stacked on a narrow screen (lot 28): see [DiagLineRow].
+        for(final l in lines)DiagLineRow(line:l,action:action?.call(l)),
         ?footer,
       ])));
   }
@@ -336,19 +406,20 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   @override Widget build(BuildContext context){
     final sync=OfflineSyncService.active;
     final links=_links.isEmpty?_links:[_pendingLine(),..._liveLines(),..._links];
-    final all=[..._device,...links,..._server];
+    final all=[..._device,...links,..._server,..._mail];
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
         // A discreet pill, as « Actualiser » (revue n° 65).
         OutlinedButton.icon(key:const ValueKey('diag-copy'),onPressed:all.isEmpty?null:() async {
           final messenger=ScaffoldMessenger.of(context);
-          await Clipboard.setData(ClipboardData(text:diagnosticsReport(reportLines(all,server:widget.server,device:widget.actorId))));
+          await Clipboard.setData(ClipboardData(text:diagnosticsReport(reportLines([...all,..._deadlines],server:widget.server,device:widget.actorId))));
           messenger.showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
         },icon:const Icon(Icons.copy_all),label:Text(S.t('diag.copyReport'))),
         OutlinedButton.icon(onPressed:_loading?null:_load,icon:const Icon(Icons.refresh),label:Text(S.t('diag.refresh'))),
         if(_loading)const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)),
       ])),
       if(!_loading||all.isNotEmpty)_summary(all),
+      ?_deadlineBanner(),
       if(_device.isNotEmpty)_block(S.t('diag.device'),_device),
       if(links.isNotEmpty)_block(S.t('diag.links'),links,
         action:(l)=>l.label==S.t('diag.access')&&showsAccessReconnect(l,web:isWebPlatform)?_reconnectButton():_linkAction(l),
@@ -358,8 +429,15 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
               icon:const Icon(Icons.hub_outlined),label:Text(S.t('mesh.openTool'))))),
           if(sync!=null)UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});}),
         ])),
-      if(_pco&&(_server.isNotEmpty||_serverError!=null))_block(S.t('diag.server'),_server,
+      if(_showsServer&&(_server.isNotEmpty||_serverError!=null))_block(S.t(_level=='organizer'?'diag.eventServices':'diag.server'),_server,
         footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!))),
+      // Administrator (lot 28): Brevo, then the deadlines.
+      if(_mail.isNotEmpty)_block(S.t('diag.mail'),_mail,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),child:Align(alignment:Alignment.centerLeft,
+        child:TextButton.icon(key:const ValueKey('diag-mail-test'),onPressed:_mailSending?null:_mailTest,
+          icon:const Icon(Icons.outgoing_mail),label:Text(S.t('diag.mailTest')))))),
+      if(_level=='admin'&&_deadlineData!=null)_block(S.t('deadline.title'),_deadlines,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),
+        child:Align(alignment:Alignment.centerLeft,child:TextButton.icon(key:const ValueKey('deadline-edit'),onPressed:_editDeadlines,
+          icon:const Icon(Icons.edit_calendar_outlined),label:Text(S.t('deadline.edit')))))),
       // Every « Connexion requise » of Cloudflare on this device (1 Nov 2026).
       if(AccessManager.instance.challenges.isNotEmpty)Card(key:const ValueKey('diag-access'),margin:const EdgeInsets.only(top:12),child:Padding(padding:const EdgeInsets.all(14),
         child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -370,6 +448,39 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         ]))),
     ]);
   }
+}
+
+/// One line of the Diagnostic. Wide: dot, label, value on the right, button.
+/// Narrow (under [narrowWidth], card « Téléphone : Diagnostic, ligne
+/// Cloudflare Access écrite une lettre par ligne », 4 Nov 2026): the label,
+/// the value under it on the whole width, the button under it.
+class DiagLineRow extends StatelessWidget {
+  final DiagLine line; final Widget? action;
+  /// Lines of the summary at the top: less space between them.
+  final bool dense;
+  const DiagLineRow({super.key,required this.line,this.action,this.dense=false});
+  static const narrowWidth=480.0;
+
+  @override
+  Widget build(BuildContext context)=>LayoutBuilder(builder:(context,c){
+    final pad=EdgeInsets.symmetric(horizontal:16,vertical:dense?4:8);
+    final dot=SizedBox(width:24,child:line.state==null?null:Padding(padding:const EdgeInsets.only(top:4),
+      child:Icon(Icons.circle,size:12,color:stateColor(line.state))));
+    if(c.maxWidth<narrowWidth){
+      return Padding(key:const ValueKey('diag-line-narrow'),padding:pad,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Row(crossAxisAlignment:CrossAxisAlignment.start,children:[dot,Expanded(child:Text(line.label,style:const TextStyle(fontWeight:FontWeight.w600)))]),
+        Padding(padding:const EdgeInsets.only(left:24,top:2),child:SelectableText(line.value)),
+        if(action!=null)Padding(padding:const EdgeInsets.only(left:12),child:Align(alignment:Alignment.centerLeft,child:action)),
+      ]));
+    }
+    return Padding(padding:pad,child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      dot,
+      ConstrainedBox(constraints:BoxConstraints(maxWidth:c.maxWidth*0.4),child:Text(line.label)),
+      const SizedBox(width:12),
+      Expanded(child:SelectableText(line.value,textAlign:TextAlign.end)),
+      ?action,
+    ]));
+  });
 }
 
 /// Line « ADS-B (OpenSky) » of Liaisons (card validated 1 Nov 2026, 8 h 15),

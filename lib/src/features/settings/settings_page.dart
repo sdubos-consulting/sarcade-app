@@ -93,7 +93,7 @@ class _SettingsPageState extends State<SettingsPage> {
     // « Choisir un événement » of the Diagnostic opens Général (lot 19).
     final asked=settingsRequestedTab; settingsRequestedTab=null;
     if(asked!=null&&_tabs.contains(asked)){_tab=_tabs.indexOf(asked);}
-    else if(!widget.firstRun&&diagnosticsAlert()){_tab=_tabs.indexOf('diagnostics');}
+    else if(!widget.firstRun&&unsentAlert()){_tab=_tabs.indexOf('diagnostics');}
     _events=widget.cachedEvents?.call(_serverText)??[];
     if(widget.loadEvents!=null)WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_loadEvents();});
   }
@@ -398,29 +398,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool get _eventTab=>widget.api!=null&&isPco(widget.initial.deviceId);
   int _tab=0;
 
-  /// One setting per line: bold label and grey help on the left (under it
-  /// on a phone), the control on the right.
-  Widget _row(String label,{String? help,String? tip,required Widget child}){
-    final t=Theme.of(context);
-    final head=Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Row(children:[
-        Flexible(child:Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600))),
-        // Fewer words (card « Paramètres › Général, mise en page », 16 h 38):
-        // the explanation in an ⓘ rather than grey text.
-        if(tip!=null)Tooltip(message:tip,triggerMode:TooltipTriggerMode.tap,child:Padding(padding:const EdgeInsets.only(left:6),
-          child:Icon(Icons.info_outline,size:16,color:t.colorScheme.onSurfaceVariant))),
-      ]),
-      if(help!=null)Padding(padding:const EdgeInsets.only(top:2),child:Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
-    ]);
-    return Column(children:[
-      // Width of the screen, not a LayoutBuilder: a field keeps its focus
-      // while the keyboard opens.
-      Padding(padding:const EdgeInsets.symmetric(vertical:14),child:MediaQuery.sizeOf(context).width>=640
-        ? Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Expanded(flex:2,child:head),const SizedBox(width:24),Expanded(flex:3,child:child)])
-        : Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[head,const SizedBox(height:8),child])),
-      const Divider(height:1),
-    ]);
-  }
+  /// One setting per line: see [settingsRowLayout].
+  Widget _row(String label,{String? help,String? tip,required Widget child})=>settingsRowLayout(context,label,help:help,tip:tip,child:child);
 
   /// Compact field; its label stays inside (read by screen readers and the
   /// end-to-end tests).
@@ -677,6 +656,31 @@ class _SettingsPageState extends State<SettingsPage> {
       ))),
     );
   }
+}
+
+/// One setting per line of Paramètres: bold label and grey help on the left
+/// (under it on a phone), the control on the right. Public for the tests at
+/// 320 px of Paramètres › Administration (lot 28).
+Widget settingsRowLayout(BuildContext context,String label,{String? help,String? tip,required Widget child}){
+  final t=Theme.of(context);
+  final head=Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+    Row(children:[
+      Flexible(child:Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600))),
+      // Fewer words (card « Paramètres › Général, mise en page », 16 h 38):
+      // the explanation in an ⓘ rather than grey text.
+      if(tip!=null)Tooltip(message:tip,triggerMode:TooltipTriggerMode.tap,child:Padding(padding:const EdgeInsets.only(left:6),
+        child:Icon(Icons.info_outline,size:16,color:t.colorScheme.onSurfaceVariant))),
+    ]),
+    if(help!=null)Padding(padding:const EdgeInsets.only(top:2),child:Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
+  ]);
+  return Column(children:[
+    // Width of the screen, not a LayoutBuilder: a field keeps its focus
+    // while the keyboard opens.
+    Padding(padding:const EdgeInsets.symmetric(vertical:14),child:MediaQuery.sizeOf(context).width>=640
+      ? Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Expanded(flex:2,child:head),const SizedBox(width:24),Expanded(flex:3,child:child)])
+      : Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[head,const SizedBox(height:8),child])),
+    const Divider(height:1),
+  ]);
 }
 
 /// Tabs of Paramètres: Général, Événement (PCO), Profil, Notifications,
