@@ -13,7 +13,6 @@ import 'package:sarcade_app/src/features/map/link_weather_pill.dart';
 import 'package:sarcade_app/src/features/meshtastic/meshtastic_hooks.dart';
 import 'package:sarcade_app/src/features/meshtastic/meshtastic_link.dart';
 import 'package:sarcade_app/src/features/meshtastic/meshtastic_link_card.dart';
-import 'package:sarcade_app/src/features/meshtastic/meshtastic_page.dart';
 import 'package:sarcade_app/src/features/meshtastic/meshtastic_protocol.dart';
 import 'package:sarcade_app/src/l10n/strings.dart';
 
