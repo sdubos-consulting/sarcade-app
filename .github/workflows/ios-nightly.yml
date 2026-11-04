@@ -43,12 +43,40 @@ jobs:
       build-number-offset: 2000
     secrets: inherit
 
+  arm64-check:
+    name: arm64 machine given?
+    needs: arm64
+    if: ${{ !cancelled() && needs.arm64.result != 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      retry: ${{ steps.check.outputs.retry }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # A job never taken by a machine has no runner and no step; a
+          # compile or signing error has both (no retry then).
+          runner=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name | startswith("TestFlight (macOS arm64)")) | ((.runner_name // "") + "#" + (.steps | length | tostring))] | first // ""')
+          echo "arm64 job: ${runner}"
+          if [ -z "$runner" ] || [ "$runner" = "#0" ]; then
+            echo "retry=true" >> "$GITHUB_OUTPUT"
+            echo "::warning title=iPhone::no macOS arm64 machine given, build retried on an Intel Mac"
+          else
+            echo "retry=false" >> "$GITHUB_OUTPUT"
+          fi
+
   intel:
     name: TestFlight (macOS Intel, fallback)
-    needs: arm64
-    # Only when no arm64 machine took the job (cancelled), not after a
-    # compile or signing error.
-    if: ${{ always() && needs.arm64.result == 'cancelled' }}
+    needs: [arm64, arm64-check]
+    # Only when no arm64 machine took the job, not after a compile or
+    # signing error.
+    if: ${{ !cancelled() && needs.arm64-check.outputs.retry == 'true' }}
     uses: ./.github/workflows/ios-build.yml
     with:
       runs-on: macos-15-intel
@@ -58,7 +86,7 @@ jobs:
 
   watch:
     name: Watch (48 h)
-    needs: [arm64, intel]
+    needs: [arm64, arm64-check, intel]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
