@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
 import '../../access/access_session.dart';
-import '../../account/account_section.dart' show AccountBanner, AccountSection;
+import '../../account/account_section.dart' show AccountBanner, AccountSection, connectionSummary;
 import '../../account/rights.dart' show RightsState;
 import '../../admin/admin_section.dart' show AdminSection;
 import '../../config/app_config.dart';
@@ -93,7 +93,7 @@ class _SettingsPageState extends State<SettingsPage> {
     // « Choisir un événement » of the Diagnostic opens Général (lot 19).
     final asked=settingsRequestedTab; settingsRequestedTab=null;
     if(asked!=null&&_tabs.contains(asked)){_tab=_tabs.indexOf(asked);}
-    else if(!widget.firstRun&&diagnosticsAlert()){_tab=_tabs.indexOf('diagnostics');}
+    else if(!widget.firstRun&&unsentAlert()){_tab=_tabs.indexOf('diagnostics');}
     _events=widget.cachedEvents?.call(_serverText)??[];
     if(widget.loadEvents!=null)WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_loadEvents();});
   }
@@ -187,7 +187,9 @@ class _SettingsPageState extends State<SettingsPage> {
           decoration:_field(),
           items:[
             // The address only when it differs from the name (revue n° 62).
-            for(final s in _servers)DropdownMenuItem(value:s.url,child:Text(s.label==s.shortAddress?s.label:'${s.label} · ${s.shortAddress}',overflow:TextOverflow.ellipsis)),
+            // The address only when the name does not already say it (revue
+            // n° 62; lot 28: « SARCADE · app.sarcade.org » without a second one).
+            for(final s in _servers)DropdownMenuItem(value:s.url,child:Text(serverChoiceLabel(s),overflow:TextOverflow.ellipsis)),
             if(current==null&&_serverText.isNotEmpty)DropdownMenuItem(value:_serverText,child:Text(S.t('servers.new',{'url':_serverText}),overflow:TextOverflow.ellipsis)),
             // « + Ajouter un serveur… » at the bottom of the list (16 h 38).
             DropdownMenuItem(key:const ValueKey('server-add'),value:addServerValue,child:Text(S.t('servers.addItem'),overflow:TextOverflow.ellipsis)),
@@ -224,7 +226,21 @@ class _SettingsPageState extends State<SettingsPage> {
     if(await signInToServer(context,_serverText)&&mounted){setState(()=>_accessRequired=false);_loadEvents();}
   }
 
-  /// Sign-in state of the server (Cloudflare Access), with its buttons.
+  /// « Connecté : sdubos@gmail.com › Profil » under the server (lot 28,
+  /// card « Paramètres : deux Connecté / Se déconnecter », 23 h 59): the
+  /// account and the Internet access are in Profil › Connexion.
+  Widget _connectionLine()=>ListenableBuilder(listenable:Listenable.merge([AccountManager.instance,AccessManager.instance]),builder:(context,_){
+    if(_url(_server.text)!=null)return const SizedBox.shrink();
+    final server=_serverText;
+    final text=connectionSummary(account:AccountManager.instance.sessionFor(server),access:AccessManager.instance.sessionFor(server),
+      accessRequired:_accessRequired||AccessManager.instance.requiredFor(server));
+    return Align(alignment:Alignment.centerLeft,child:Padding(padding:const EdgeInsets.only(top:4),child:TextButton.icon(
+      key:const ValueKey('general-connection'),icon:const Icon(Icons.account_circle_outlined,size:18),label:Text(text),
+      onPressed:()=>setState(()=>_tab=_tabs.indexOf('profile')))));
+  });
+
+  /// Sign-in state of the server (Cloudflare Access), with its buttons:
+  /// first setup only (the list of events needs it).
   Widget _accessRow(){
     if(_url(_server.text)!=null)return const SizedBox.shrink();
     final server=_serverText;
@@ -382,29 +398,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool get _eventTab=>widget.api!=null&&isPco(widget.initial.deviceId);
   int _tab=0;
 
-  /// One setting per line: bold label and grey help on the left (under it
-  /// on a phone), the control on the right.
-  Widget _row(String label,{String? help,String? tip,required Widget child}){
-    final t=Theme.of(context);
-    final head=Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Row(children:[
-        Flexible(child:Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600))),
-        // Fewer words (card « Paramètres › Général, mise en page », 16 h 38):
-        // the explanation in an ⓘ rather than grey text.
-        if(tip!=null)Tooltip(message:tip,triggerMode:TooltipTriggerMode.tap,child:Padding(padding:const EdgeInsets.only(left:6),
-          child:Icon(Icons.info_outline,size:16,color:t.colorScheme.onSurfaceVariant))),
-      ]),
-      if(help!=null)Padding(padding:const EdgeInsets.only(top:2),child:Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
-    ]);
-    return Column(children:[
-      // Width of the screen, not a LayoutBuilder: a field keeps its focus
-      // while the keyboard opens.
-      Padding(padding:const EdgeInsets.symmetric(vertical:14),child:MediaQuery.sizeOf(context).width>=640
-        ? Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Expanded(flex:2,child:head),const SizedBox(width:24),Expanded(flex:3,child:child)])
-        : Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[head,const SizedBox(height:8),child])),
-      const Divider(height:1),
-    ]);
-  }
+  /// One setting per line: see [settingsRowLayout].
+  Widget _row(String label,{String? help,String? tip,required Widget child})=>settingsRowLayout(context,label,help:help,tip:tip,child:child);
 
   /// Compact field; its label stays inside (read by screen readers and the
   /// end-to-end tests).
@@ -455,7 +450,7 @@ class _SettingsPageState extends State<SettingsPage> {
           onChanged:(_)=>setState((){}),
         ),
       )),
-      _accessRow(),
+      _connectionLine(),
     ])),
     _row(S.t('settings.eventRow'),tip:S.t('settings.eventHelp'),child:widget.loadEvents!=null?_eventPicker():_withActions(TextFormField(
       controller:_event,decoration:_field(),autocorrect:false,validator:_required))),
@@ -663,6 +658,31 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+/// One setting per line of Paramètres: bold label and grey help on the left
+/// (under it on a phone), the control on the right. Public for the tests at
+/// 320 px of Paramètres › Administration (lot 28).
+Widget settingsRowLayout(BuildContext context,String label,{String? help,String? tip,required Widget child}){
+  final t=Theme.of(context);
+  final head=Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+    Row(children:[
+      Flexible(child:Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600))),
+      // Fewer words (card « Paramètres › Général, mise en page », 16 h 38):
+      // the explanation in an ⓘ rather than grey text.
+      if(tip!=null)Tooltip(message:tip,triggerMode:TooltipTriggerMode.tap,child:Padding(padding:const EdgeInsets.only(left:6),
+        child:Icon(Icons.info_outline,size:16,color:t.colorScheme.onSurfaceVariant))),
+    ]),
+    if(help!=null)Padding(padding:const EdgeInsets.only(top:2),child:Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
+  ]);
+  return Column(children:[
+    // Width of the screen, not a LayoutBuilder: a field keeps its focus
+    // while the keyboard opens.
+    Padding(padding:const EdgeInsets.symmetric(vertical:14),child:MediaQuery.sizeOf(context).width>=640
+      ? Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Expanded(flex:2,child:head),const SizedBox(width:24),Expanded(flex:3,child:child)])
+      : Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[head,const SizedBox(height:8),child])),
+    const Divider(height:1),
+  ]);
+}
+
 /// Tabs of Paramètres: Général, Événement (PCO), Profil, Notifications,
 /// Diagnostic, À propos; at the first setup Général, Profil, À propos.
 List<String> settingsTabs({required bool firstRun,required bool event,bool admin=false})=>firstRun
@@ -677,5 +697,10 @@ String? settingsRequestedTab;
 
 /// The save bar, except on Diagnostic and À propos with nothing changed.
 bool settingsShowsSaveBar({required String tab,required bool firstRun,required bool dirty})=>firstRun||dirty||!(tab=='diagnostics'||tab=='about'||tab=='admin');
+/// Name of a remembered server in the list: « SARCADE · app.sarcade.org »
+/// as it is, « Club · 192.168.0.110:8000 » when the name does not say the
+/// address (lot 28: no address twice).
+String serverChoiceLabel(SavedServer s)=>s.label.toLowerCase().contains(s.shortAddress.toLowerCase())?s.label:'${s.label} · ${s.shortAddress}';
+
 /// Value of « + Ajouter un serveur… » in the list of servers.
 const addServerValue='\u0000add-server';

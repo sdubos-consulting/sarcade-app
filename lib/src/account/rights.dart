@@ -33,8 +33,13 @@ class MyRights {
   final bool isServerAdmin, canAdminister;
   final int rightsVersion;
   final TransitionState transition;
+  /// Administrators (lot 28): deadlines at 30 days or less, and the worst
+  /// colour (`orange`, `red`, `expired`); red dot on Paramètres.
+  final int deadlineAlerts;
+  final String? deadlineWorst;
   const MyRights({this.email,this.via,this.groups=const [],this.adminRights=const [],this.moduleRights=const [],this.modules=const [],
-    this.modulesKnown=false,this.isServerAdmin=false,this.canAdminister=false,this.rightsVersion=0,this.transition=const TransitionState()});
+    this.modulesKnown=false,this.isServerAdmin=false,this.canAdminister=false,this.rightsVersion=0,this.transition=const TransitionState(),
+    this.deadlineAlerts=0,this.deadlineWorst});
 
   static List<Map<String,dynamic>> _maps(Object? v)=>[for(final x in (v as List?)??const [])if(x is Map)Map<String,dynamic>.from(x)];
 
@@ -44,7 +49,9 @@ class MyRights {
     modules:[for(final m in (me['modules'] as List?)??const [])'$m'],modulesKnown:me['modules'] is List,
     isServerAdmin:me['is_server_admin']==true,canAdminister:me['can_administer']==true,
     rightsVersion:(me['rights_version'] as num?)?.toInt()??0,
-    transition:TransitionState.fromJson(me['transition']));
+    transition:TransitionState.fromJson(me['transition']),
+    deadlineAlerts:((me['deadlines'] as Map?)?['alerts'] as num?)?.toInt()??0,
+    deadlineWorst:(me['deadlines'] as Map?)?['worst'] as String?);
 
   /// Server of lot 26 (directory, transition).
   bool get directory=>modulesKnown;
