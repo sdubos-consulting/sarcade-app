@@ -606,6 +606,14 @@ const Texts _fr={
   'diag.serverForbidden':'Réservé au PCO et aux administrateurs',
   'diag.serverOld':'Serveur trop ancien pour ce bloc',
   'diag.accessBrowser':'par le navigateur','diag.accessBrowserRefused':'sans réponse, reconnectez-vous',
+  // Lot 28 · Diagnostic, Profil › Connexion, Échéances, versions (diag., profile., deadline., version.).
+  'profile.connection':'Connexion','profile.account':'Compte SARCADE','profile.access':'Accès Internet (Cloudflare)',
+  'profile.accessUntil':'{email}, valable jusqu’au {date}','profile.accessExpired':'{email} : accès expiré','profile.accessRequired':'Connexion requise',
+  'profile.renewAccess':'Renouveler l’accès','profile.connectedLine':'Connecté : {email} › Profil','profile.notConnectedLine':'Non connecté › Profil',
+  'profile.accessRequiredLine':'Connexion requise › Profil','profile.signOutWhich':'Se déconnecter de quoi ?',
+  'profile.signOutWhichBody':'Le compte SARCADE de cet appareil, l’accès Internet (Cloudflare), ou les deux',
+  'profile.signOut.account':'Le compte','profile.signOut.access':'L’accès Internet','profile.signOut.both':'Les deux',
+  'profile.signOutAccessAsk':'Fermer l’accès Internet ?','profile.signOutAccessBody':'Hors du réseau local, ce serveur demandera de vous reconnecter',
   // Lot 26 · habilitations : connexion (auth.), administration (admin.), accès aux événements (access.).
   'auth.account':'Compte','auth.signIn':'Se connecter','auth.signOut':'Se déconnecter','auth.signedOut':'Non connecté','auth.signedAs':'Connecté : {email}',
   'auth.signInHelp':'Un code vous est envoyé par e-mail, puis cet appareil reste connecté','auth.title':'Se connecter','auth.email':'Adresse e-mail',
@@ -1232,6 +1240,14 @@ const Texts _en={
   'diag.serverForbidden':'PCO and administrators only',
   'diag.serverOld':'Server too old for this block',
   'diag.accessBrowser':'through the browser','diag.accessBrowserRefused':'no answer, sign in again',
+  // Lot 28 · Diagnostic, Profile › Connection, Deadlines, versions (diag., profile., deadline., version.).
+  'profile.connection':'Connection','profile.account':'SARCADE account','profile.access':'Internet access (Cloudflare)',
+  'profile.accessUntil':'{email}, valid until {date}','profile.accessExpired':'{email}: access expired','profile.accessRequired':'Sign-in required',
+  'profile.renewAccess':'Renew access','profile.connectedLine':'Signed in: {email} › Profile','profile.notConnectedLine':'Not signed in › Profile',
+  'profile.accessRequiredLine':'Sign-in required › Profile','profile.signOutWhich':'Sign out of what?',
+  'profile.signOutWhichBody':'The SARCADE account of this device, the Internet access (Cloudflare), or both',
+  'profile.signOut.account':'The account','profile.signOut.access':'The Internet access','profile.signOut.both':'Both',
+  'profile.signOutAccessAsk':'Close the Internet access?','profile.signOutAccessBody':'Outside the local network, this server will ask you to sign in again',
   // Lot 26 · rights: sign-in (auth.), administration (admin.), event access (access.).
   'auth.account':'Account','auth.signIn':'Sign in','auth.signOut':'Sign out','auth.signedOut':'Not signed in','auth.signedAs':'Signed in: {email}',
   'auth.signInHelp':'A code is sent to you by email, then this device stays signed in','auth.title':'Sign in','auth.email':'Email address',

@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../access/access_login_page.dart' show signInToServer;
+import '../access/access_manager.dart' show AccessManager;
+import '../access/access_session.dart' show AccessSession;
 import '../l10n/strings.dart';
 import '../offline/local_store.dart';
 import 'account_api.dart';
@@ -17,46 +20,121 @@ Future<void> signOutDevice(String server,{AccountApi? api,AccountManager? accoun
   await (account??AccountManager.instance).forget(server);
 }
 
-/// Paramètres › Profil › Compte (lot 26): « Se connecter », or the email
-/// with « Mes appareils » and « Se déconnecter ».
+/// What « Se déconnecter » closes (lot 28): the SARCADE account of this
+/// device, the Internet access (Cloudflare Access), or both.
+enum SignOutChoice { account, access, both }
+
+/// The choices offered by the single « Se déconnecter » of Profil › Connexion.
+List<SignOutChoice> signOutChoices({required bool account,required bool access})=>[
+  if(account)SignOutChoice.account,
+  if(access)SignOutChoice.access,
+  if(account&&access)SignOutChoice.both,
+];
+
+/// « sdubos@gmail.com, valable jusqu'au 23/11 » (card « Paramètres : deux
+/// Connecté / Se déconnecter différents », 3 Nov 2026, 23 h 56).
+String accessLine(AccessSession? session,{required DateTime now}){
+  if(session==null)return S.t('profile.accessRequired');
+  final email=session.email??'';
+  if(session.expired(now))return S.t('profile.accessExpired',{'email':email});
+  final end=session.expiresAt;
+  if(end==null)return email;
+  final l=end.toLocal();
+  String two(int v)=>v.toString().padLeft(2,'0');
+  return S.t('profile.accessUntil',{'email':email,'date':'${two(l.day)}/${two(l.month)}'});
+}
+
+/// Line of Paramètres › Général under the server (lot 28, 23 h 59, point 4):
+/// « Connecté : sdubos@gmail.com › Profil ».
+String connectionSummary({DeviceSession? account,AccessSession? access,bool accessRequired=false}){
+  final email=account?.email??access?.email;
+  if(email!=null&&email.isNotEmpty)return S.t('profile.connectedLine',{'email':email});
+  return S.t(accessRequired?'profile.accessRequiredLine':'profile.notConnectedLine');
+}
+
+/// Paramètres › Profil › Connexion (lot 26, then lot 28: everything in
+/// Profil, decided on 3 Nov 2026, 23 h 59): 1) the SARCADE account (address,
+/// « Mes appareils », « Se connecter »); 2) just under it the Internet access
+/// (Cloudflare) with its end date and « Renouveler l'accès », shown only when
+/// the server goes through Cloudflare; 3) one « Se déconnecter » offering
+/// the account, the access or both.
 class AccountSection extends StatelessWidget {
   final String server, deviceId;
   final Widget Function(String label,{String? help,required Widget child}) row;
   final AccountManager? account;
-  const AccountSection({super.key,required this.server,required this.deviceId,required this.row,this.account});
+  final AccessManager? access;
+  /// Calls of « Se déconnecter » (tests); the server of [server] otherwise.
+  final AccountApi? api;
+  const AccountSection({super.key,required this.server,required this.deviceId,required this.row,this.account,this.access,this.api});
 
   AccountManager get _account=>account??AccountManager.instance;
+  AccessManager get _access=>access??AccessManager.instance;
 
-  Future<void> _signOut(BuildContext context,DeviceSession s) async {
-    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
-      title:Text(S.t('auth.signOutAsk',{'email':s.email})),
-      content:Text(S.t('auth.signOutBody')),
-      actions:[
-        TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
-        FilledButton(key:const ValueKey('auth-signout-ok'),onPressed:()=>Navigator.pop(c,true),child:Text(S.t('auth.signOut'))),
-      ]));
-    if(ok==true)await signOutDevice(server,account:_account);
+  Future<void> _signOut(BuildContext context,DeviceSession? s,AccessSession? cf) async {
+    final choices=signOutChoices(account:s!=null,access:cf!=null);
+    if(choices.isEmpty)return;
+    final SignOutChoice? choice;
+    if(choices.length==1){
+      final only=choices.single;
+      final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
+        title:Text(only==SignOutChoice.account?S.t('auth.signOutAsk',{'email':s!.email}):S.t('profile.signOutAccessAsk')),
+        content:Text(S.t(only==SignOutChoice.account?'auth.signOutBody':'profile.signOutAccessBody')),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+          FilledButton(key:const ValueKey('auth-signout-ok'),onPressed:()=>Navigator.pop(c,true),child:Text(S.t('auth.signOut'))),
+        ]));
+      choice=ok==true?only:null;
+    }else{
+      choice=await showDialog<SignOutChoice>(context:context,builder:(c)=>AlertDialog(
+        title:Text(S.t('profile.signOutWhich')),
+        content:Text(S.t('profile.signOutWhichBody')),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+          for(final x in choices)TextButton(key:ValueKey('profile-signout-${x.name}'),onPressed:()=>Navigator.pop(c,x),
+            child:Text(S.t('profile.signOut.${x.name}'))),
+        ]));
+    }
+    if(choice==null)return;
+    if(choice!=SignOutChoice.access)await signOutDevice(server,api:api,account:_account);
+    if(choice!=SignOutChoice.account)await _access.signOut(server);
   }
 
+  Future<void> _renew(BuildContext context) async {await signInToServer(context,server);}
+
   @override
-  Widget build(BuildContext context)=>ListenableBuilder(listenable:_account,builder:(context,_){
+  Widget build(BuildContext context)=>ListenableBuilder(listenable:Listenable.merge([_account,_access]),builder:(context,_){
+    final t=Theme.of(context);
     final s=_account.sessionFor(server);
     final refused=_account.refusedFor(server);
-    if(s==null){
-      return row(S.t('auth.account'),help:refused!=null?S.t('auth.refused.$refused'):S.t('auth.signInHelp'),child:Wrap(spacing:8,runSpacing:8,
+    final cf=_access.sessionFor(server);
+    final showAccess=cf!=null||_access.requiredFor(server);
+    final now=DateTime.now().toUtc();
+    final cfLate=cf==null||cf.expired(now)||cf.renewSoon(now);
+    return Column(key:const ValueKey('profile-connection'),crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Padding(padding:const EdgeInsets.only(top:16),child:Text(S.t('profile.connection'),
+        style:t.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w700))),
+      if(s==null)row(S.t('profile.account'),help:refused!=null?S.t('auth.refused.$refused'):S.t('auth.signInHelp'),child:Wrap(spacing:8,runSpacing:8,
         crossAxisAlignment:WrapCrossAlignment.center,children:[
           Text(S.t('auth.signedOut')),
           FilledButton.icon(key:const ValueKey('auth-signin'),icon:const Icon(Icons.login),label:Text(S.t('auth.signIn')),
             onPressed:()=>unawaited(showSignInDialog(context,server:server,deviceId:deviceId,account:_account))),
-        ]));
-    }
-    return row(S.t('auth.account'),help:S.t('auth.signedAs',{'email':s.email}),child:Wrap(spacing:8,runSpacing:8,
-      crossAxisAlignment:WrapCrossAlignment.center,children:[
-        OutlinedButton.icon(key:const ValueKey('auth-devices'),icon:const Icon(Icons.devices_outlined),label:Text(S.t('auth.devices')),
-          onPressed:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>MyDevicesPage(server:server,account:_account)))),
-        OutlinedButton.icon(key:const ValueKey('auth-signout'),icon:const Icon(Icons.logout),label:Text(S.t('auth.signOut')),
-          onPressed:()=>_signOut(context,s)),
-      ]));
+        ]))
+      else row(S.t('profile.account'),help:S.t('auth.signedAs',{'email':s.email}),child:Wrap(spacing:8,runSpacing:8,
+        crossAxisAlignment:WrapCrossAlignment.center,children:[
+          OutlinedButton.icon(key:const ValueKey('auth-devices'),icon:const Icon(Icons.devices_outlined),label:Text(S.t('auth.devices')),
+            onPressed:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>MyDevicesPage(server:server,account:_account)))),
+        ])),
+      if(showAccess)row(S.t('profile.access'),help:accessLine(cf,now:now),child:Wrap(spacing:8,runSpacing:8,
+        crossAxisAlignment:WrapCrossAlignment.center,children:[
+          if(cfLate)const Icon(Icons.lock_outline,size:18,color:Colors.deepOrange),
+          OutlinedButton.icon(key:const ValueKey('profile-access-renew'),icon:const Icon(Icons.vpn_key_outlined),
+            label:Text(S.t(cf==null?'access.signIn':'profile.renewAccess')),onPressed:()=>unawaited(_renew(context))),
+        ])),
+      if(s!=null||cf!=null)Padding(padding:const EdgeInsets.symmetric(vertical:10),child:Align(alignment:Alignment.centerRight,
+        child:OutlinedButton.icon(key:const ValueKey('auth-signout'),icon:const Icon(Icons.logout),label:Text(S.t('auth.signOut')),
+          onPressed:()=>unawaited(_signOut(context,s,cf))))),
+      const Divider(height:1),
+    ]);
   });
 }
 
