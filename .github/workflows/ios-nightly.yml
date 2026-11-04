@@ -1,0 +1,107 @@
+name: iOS nightly
+
+# Card « iPhone : aucune version TestFlight depuis le 3 novembre 2026 »
+# (lot 28). Since 3 Nov 2026 9:51 the iPhone job of each merge was cancelled
+# after about 15 min: « The job was not acquired by Runner of type hosted even
+# after multiple attempts » (macOS arm64 hosted runners short of capacity).
+# Decided: one signed build sent to TestFlight every night on main (one
+# version a day instead of one per merge) and on demand; pull requests keep
+# the unsigned build of CI. If the arm64 machine is not given, the same build
+# runs once more on an Intel Mac (macos-15-intel).
+# A run on another branch (Actions › iOS nightly › Run workflow) or on a pull
+# request only builds, unsigned: nothing is sent to TestFlight from a branch.
+# Build number: run number of this workflow + 2000, above every number of
+# the CI workflow that sent builds before (977, CI runs < 1100 on 4 Nov 2026).
+# Watch: issue « Pas de version iPhone depuis 48 h » (label ci) opened when no
+# build reached TestFlight for 48 h, closed when one does (tool/ios_watch.py).
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+  # Self-test of this workflow when it changes (unsigned build, issue not
+  # written): a workflow can only be run by hand once it is on main.
+  pull_request:
+    paths:
+      - .github/workflows/ios-nightly.yml
+      - .github/workflows/ios-build.yml
+      - tool/ios_watch.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  arm64:
+    name: TestFlight (macOS arm64)
+    uses: ./.github/workflows/ios-build.yml
+    with:
+      runs-on: macos-latest
+      testflight: ${{ github.ref == 'refs/heads/main' }}
+      build-number-offset: 2000
+    secrets: inherit
+
+  arm64-check:
+    name: arm64 machine given?
+    needs: arm64
+    if: ${{ !cancelled() && needs.arm64.result != 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      retry: ${{ steps.check.outputs.retry }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # A job never taken by a machine has no runner and no step; a
+          # compile or signing error has both (no retry then).
+          runner=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name | startswith("TestFlight (macOS arm64)")) | ((.runner_name // "") + "#" + (.steps | length | tostring))] | first // ""')
+          echo "arm64 job: ${runner}"
+          if [ -z "$runner" ] || [ "$runner" = "#0" ]; then
+            echo "retry=true" >> "$GITHUB_OUTPUT"
+            echo "::warning title=iPhone::no macOS arm64 machine given, build retried on an Intel Mac"
+          else
+            echo "retry=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  intel:
+    name: TestFlight (macOS Intel, fallback)
+    needs: [arm64, arm64-check]
+    # Only when no arm64 machine took the job, not after a compile or
+    # signing error.
+    if: ${{ !cancelled() && needs.arm64-check.outputs.retry == 'true' }}
+    uses: ./.github/workflows/ios-build.yml
+    with:
+      runs-on: macos-15-intel
+      testflight: ${{ github.ref == 'refs/heads/main' }}
+      build-number-offset: 2000
+    secrets: inherit
+
+  watch:
+    name: Watch (48 h)
+    needs: [arm64, arm64-check, intel]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Issue « Pas de version iPhone depuis 48 h »
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # The issue is only written from main; a branch run just reports.
+          dry=()
+          [ "$GITHUB_REF" = refs/heads/main ] || dry=(--dry-run)
+          python3 tool/ios_watch.py --repo "$GITHUB_REPOSITORY" "${dry[@]}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
