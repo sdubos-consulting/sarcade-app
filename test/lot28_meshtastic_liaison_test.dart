@@ -147,7 +147,7 @@ void main(){
     expect(find.text('F4ABC Mobile'),findsOneWidget);
     expect(find.text('Région et préréglage'),findsOneWidget);
     expect(find.text('EU_868 · LongFast'),findsOneWidget);
-    expect(find.text('Canal principal'),findsOneWidget);
+    expect(find.text('Canal principal'),findsNWidgets(2),reason:'line of the diagnostic, and the thread of the channel');
     expect(find.text('18 % · 3.62 V'),findsOneWidget);
     expect(find.text('Heltec V3'),findsOneWidget);
     expect(find.text('!a1b2c3d4'),findsOneWidget);
