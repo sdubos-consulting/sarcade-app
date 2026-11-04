@@ -71,7 +71,8 @@ void main() {
     expect(find.byKey(const ValueKey('auth-signout')), findsNothing);
 
     await account.save(server, const DeviceSession(token: token, email: 'sdubos@gmail.com'));
-    await access.save(server, jwt('sdubos@gmail.com', DateTime.now().toUtc().add(const Duration(days: 19))));
+    // The secure storage answers on the real event loop.
+    await tester.runAsync(() => access.save(server, jwt('sdubos@gmail.com', DateTime.now().toUtc().add(const Duration(days: 19)))));
     await tester.pump();
     expect(find.text('Accès Internet (Cloudflare)'), findsOneWidget);
     expect(find.text('Renouveler l’accès'), findsOneWidget);
@@ -82,6 +83,8 @@ void main() {
     expect(find.text('Se déconnecter de quoi ?'), findsOneWidget);
     expect(find.text('Les deux'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('profile-signout-access')));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
     await tester.pumpAndSettle();
     expect(access.sessionFor(server), isNull);
     expect(account.sessionFor(server)?.email, 'sdubos@gmail.com');
