@@ -201,7 +201,7 @@ MeshtasticPosition readMeshtasticPosition(Uint8List b){
     }
   }
   final none=lat==null||lon==null||(lat==0&&lon==0);
-  return MeshtasticPosition(lat:none?null:lat!/1e7,lon:none?null:lon!/1e7,altitude:alt,
+  return MeshtasticPosition(lat:none?null:lat/1e7,lon:none?null:lon/1e7,altitude:alt,
     time:time==null||time==0?null:DateTime.fromMillisecondsSinceEpoch(time*1000,isUtc:true));
 }
 
