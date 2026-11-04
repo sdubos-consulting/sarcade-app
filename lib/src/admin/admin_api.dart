@@ -91,6 +91,14 @@ class AdminApi {
   Future<Map<String,dynamic>> transition()=>_get('transition','/transition');
   Future<Map<String,dynamic>> setTransition(DateTime? until)=>_send('transition','PUT','/admin/transition',{'until':until?.toUtc().toIso8601String()});
   Future<Map<String,dynamic>> mail()=>_get('mail','/admin/mail');
+  /// « Envoyer un e-mail d'essai » (lot 28): `{status: sent|simulated, to}`.
+  Future<Map<String,dynamic>> mailTest()=>_send('mail_test','POST','/admin/mail/test');
+
+  // Échéances (lot 28): `{items, summary, tls, manual}`.
+  Future<Map<String,dynamic>> deadlines()=>_get('deadlines','/admin/deadlines');
+  Future<Map<String,dynamic>> saveDeadlines(List<Map<String,dynamic>> manual)=>
+    _send('deadlines','PUT','/admin/deadlines',{'items':manual});
+
   /// Codes written in the security journal while the sending is simulated.
   Future<List<Map<String,dynamic>>> simulatedCodes() async=>[
     for(final e in await _getList('journal','/admin/security-journal',{'category':'auth','limit':'50'}))
