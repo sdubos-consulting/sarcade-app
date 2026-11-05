@@ -6,6 +6,7 @@ import '../messages/operator_avatar.dart';
 import '../messages/conversations.dart' show avatarInitials;
 import '../messages/reactions.dart' show Reactions;
 import '../messages/typing.dart' show Typing;
+import '../messages/important.dart' show Important;
 import '../profile/profile_photo.dart' show ProfilePhotos;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -2067,6 +2068,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         await widget.store.setPreference('rail_pins',jsonEncode([for(final x in pins)'$x']));
         if(mounted)setState((){});
       }
+      // « Messages importants » of the person (lot 29, group 7).
+      await Important.instance.fromServer(widget.store,p['important_messages']);
       final remote=p['favourites'];
       if(remote is List){
         await widget.store.setPreference('favourites',encodeFavourites({for(final x in remote)'$x'}));
