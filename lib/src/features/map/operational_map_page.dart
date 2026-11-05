@@ -1335,11 +1335,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         action:SnackBarAction(label:S.t('map.showAll'),onPressed:()=>_fitPoints(f.all))));
     }
   }
-  void _fitPoints(List<LatLng> pts){
-    if(pts.isEmpty)return;
-    if(pts.length==1){_map.move(pts.first,15);return;}
-    _map.fitCamera(CameraFit.coordinates(coordinates:pts,padding:const EdgeInsets.all(90),maxZoom:16));
-  }
   /// Touch on an operator: pins his trace; a second touch removes it.
   void _tapStation(SarcadePosition p){
     final pinned=_traces.togglePin(p.deviceId);
