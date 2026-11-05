@@ -1,13 +1,13 @@
 /// « … écrit » (lot 29, group 7): a very light signal by the real time only,
-/// never by LoRa nor APRS, never written down; at most one every 4 s while
-/// the text changes, forgotten after 6 s without news.
+/// never by LoRa nor APRS, never written down, not in energy saving; at most
+/// one every 5 s while the text changes, forgotten after 6 s without news.
 library;
 
 import 'package:flutter/foundation.dart';
 
 import 'conversations.dart';
 
-const typingEvery=Duration(seconds:4);
+const typingEvery=Duration(seconds:5);
 const typingForget=Duration(seconds:6);
 
 /// Same name on both sides: a direct chat is the pair of people, in order.

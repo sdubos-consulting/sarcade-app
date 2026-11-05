@@ -24,10 +24,10 @@ void main(){
     t.sent('TEL-02');
     expect(t.who('g:pco',now:at),isEmpty);
   });
-  test('at most one signal every 4 s per conversation',(){
+  test('at most one signal every 5 s per conversation',(){
     final s=TypingSender(); final at=DateTime(2026,11,5,23);
     expect(s.shouldSend('g:pco',at),isTrue);
-    expect(s.shouldSend('g:pco',at.add(const Duration(seconds:2))),isFalse);
+    expect(s.shouldSend('g:pco',at.add(const Duration(seconds:4))),isFalse);
     expect(s.shouldSend('g:pco',at.add(const Duration(seconds:5))),isTrue);
     expect(s.shouldSend('u:TEL-02',at.add(const Duration(seconds:5,milliseconds:1))),isTrue);
   });

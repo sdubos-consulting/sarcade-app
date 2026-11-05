@@ -6,6 +6,7 @@ import 'message_edit.dart';
 import 'reactions.dart';
 import 'typing.dart';
 import '../../services/realtime_service.dart' show RealtimeService;
+import '../../services/power_state.dart' show PowerState;
 import '../../ui/menu_entry.dart';
 import '../../ui/keyboard.dart';
 import 'package:image_picker/image_picker.dart';
@@ -611,7 +612,8 @@ class _MessagesPageState extends State<MessagesPage>{
  static bool _typingConv(String conv)=>conv==allKey||groupOf(conv)!=null||peerOf(conv)!=null;
  void _signalTyping(){
    final rt=RealtimeService.active;
-   if(rt==null||!rt.connected||_text.text.trim().isEmpty||!_typingConv(_conv))return;
+   // Never in energy saving (card « en train d'écrire »).
+   if(rt==null||!rt.connected||PowerState.instance.saver||_text.text.trim().isEmpty||!_typingConv(_conv))return;
    if(!_typingSender.shouldSend(_conv,DateTime.now()))return;
    rt.send({'type':'typing','data':{'actor_id':widget.actorId,'conversation':typingWire(_conv,widget.actorId)}});
  }
@@ -622,13 +624,14 @@ class _MessagesPageState extends State<MessagesPage>{
    _typingTimer?.cancel();
    _typingTimer=Timer(typingForget+const Duration(milliseconds:200),(){if(mounted)setState((){});});
  }
- Widget? _typingLine(){
+ /// The name of the conversation, « … écrit » under it.
+ Widget _convTitle(Map<String,CommGroup> by,{TextStyle? style}){
+   final name=Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:style);
    final who=Typing.instance.who(_conv);
-   if(who.isEmpty)return null;
-   final grey=_night?const Color(0xFF8696A0):const Color(0xFF667781);
-   return Padding(key:const ValueKey('typing-line'),padding:const EdgeInsets.fromLTRB(14,2,14,2),
-     child:Text(S.t('messages.typing',{'n':who.length,'who':who.join(', ')}),maxLines:1,overflow:TextOverflow.ellipsis,
-       style:TextStyle(fontSize:12,fontStyle:FontStyle.italic,color:grey)));
+   if(who.isEmpty)return name;
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[name,
+     Text(S.t('messages.typing',{'n':who.length,'who':who.join(', ')}),key:const ValueKey('typing-line'),maxLines:1,overflow:TextOverflow.ellipsis,
+       style:const TextStyle(fontSize:12,fontStyle:FontStyle.italic,fontWeight:FontWeight.normal))]);
  }
 
  /// « Supprimer pour moi »: hidden on this device only.
@@ -888,9 +891,8 @@ class _MessagesPageState extends State<MessagesPage>{
    ]))));
    // Answering (31 Oct 2026): the quoted message above the field, ✕ to cancel.
    final r=_replyTo;
-   final writing=_typingLine();
-   if(r==null&&writing==null)return bar;
-   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[?writing,if(r!=null)_replyBar(r),bar]);
+   if(r==null)return bar;
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[_replyBar(r),bar]);
  }
 
  Widget _chat(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
@@ -983,7 +985,7 @@ class _MessagesPageState extends State<MessagesPage>{
            if(_selection.active)Expanded(child:_selectionBar())
            else...[
              _convIcon(_conv,by),const SizedBox(width:12),
-             Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
+             Flexible(child:_convTitle(by,style:Theme.of(context).textTheme.titleMedium)),
              ?pending,
              const Spacer(),
              ?editGroup,favButton,?close,
@@ -1006,7 +1008,7 @@ class _MessagesPageState extends State<MessagesPage>{
          titleSpacing:back?0:null,
          title:Row(children:[
            if(!wide)...[_convIcon(_conv,by,r:18),const SizedBox(width:10)],
-           Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis)),
+           Flexible(child:_convTitle(by)),
            ?pending,
          ]),
          actions:[?editGroup,favButton,?close]),
