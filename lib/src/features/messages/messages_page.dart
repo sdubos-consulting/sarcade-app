@@ -293,7 +293,9 @@ class _MessagesPageState extends State<MessagesPage>{
    }
    await widget.store.saveGroup(g.toJson());
    await widget.sync.queue(objectId:g.id,objectType:'comm_group',action:initial==null?'create':'update',payload:g.toJson());
-   if(mounted)setState(()=>_conv=g.archived?allKey:groupKey(g.id));
+   if(mounted)setState(()=>_conv=g.kind=='all'?allKey:(g.archived?allKey:groupKey(g.id)));
+   // Saved: said in so many words (lot 29).
+   if(mounted)_snack(S.t('groups.saved'));
  }
 
 
@@ -407,7 +409,10 @@ class _MessagesPageState extends State<MessagesPage>{
  Widget _convIcon(String key,Map<String,CommGroup> by,{double r=18}){
    final g=groupOf(key);
    if(key!=allKey&&g==null)return operatorAvatar(peerOf(key)!,radius:r);
-   final color=key==allKey?const Color(0xFF546E7A):Color(by[g]?.color??0xFF546E7A);
+   // « Tous » shows its saved colour like any group: it was forced to
+   // grey-blue, so changing it had no visible effect (lot 29, 5 Nov 2026).
+   final all=key==allKey?by.values.where((x)=>x.kind=='all').firstOrNull:null;
+   final color=Color(key==allKey?(all?.color??0xFF1565C0):(by[g]?.color??0xFF546E7A));
    return CircleAvatar(radius:r,backgroundColor:color,foregroundColor:Colors.white,
      child:Icon(key==allKey?Icons.campaign_outlined:Icons.forum_outlined,size:r));
  }
