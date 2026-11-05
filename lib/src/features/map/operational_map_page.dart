@@ -983,7 +983,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
     // Main courante and the bearing frequencies, out of Paramètres (lot 19).
-    logbookToolItem(api:widget.api,eventId:widget.eventId,open:_openDesk),
+    logbookToolItem(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,open:_openDesk),
     // Télécommandes, a tool of their own (lot 21).
     remotesToolItem(open:_openDesk),
     if(_adrasec)?signalDefaultsToolItem(api:widget.api,store:widget.store,open:_openDesk),

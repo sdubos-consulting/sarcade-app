@@ -12,7 +12,7 @@ import '../logbook/logbook_page.dart';
 import '../tools/tools_page.dart';
 
 /// [open] shows a page next to the map (computer) or as a screen (phone).
-ToolItem logbookToolItem({required SarcadeApi api,required String eventId,
+ToolItem logbookToolItem({required SarcadeApi api,required String eventId,String? actorId,
     required void Function(String id,Widget Function() build) open})=>
   ToolItem(id:'logbook',icon:Icons.menu_book_outlined,title:S.t('map.logbook'),subtitle:S.t('settings.logbookHelp'),
-    color:Colors.brown,group:ToolGroup.pc,onTap:()=>open('logbook',()=>LogbookPage(api:api,eventId:eventId)));
+    color:Colors.brown,group:ToolGroup.pc,onTap:()=>open('logbook',()=>LogbookPage(api:api,eventId:eventId,actorId:actorId)));
