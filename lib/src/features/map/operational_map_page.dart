@@ -1566,6 +1566,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _followMe=>_meMode!=MeMode.off;
   /// One button, each touch the next mode (locate_cycle.dart, 30 Oct 2026).
   LocateMode _locate=LocateMode.idle;
+  /// « N » (card « petite boussole N », lot 29): north up, centred on my
+  /// position (« centré sur moi ») without starting the following again;
+  /// north up only when my position is unknown. Leaves compass mode.
+  void _northOnMe(){
+    if(_meMode==MeMode.compass)_stopCompass();
+    _map.rotate(0);
+    final me=_me;
+    setState((){_meMode=MeMode.off;_locate=me!=null?LocateMode.me:LocateMode.idle;});
+    if(me!=null)_map.move(me,_map.camera.zoom);
+  }
+
   Future<void> _myPosition() async {
     var next=nextLocateMode(_locate);
     if(next==LocateMode.me){
@@ -1637,26 +1648,25 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     });
   }
 
-  /// Floating buttons on the right of the map: map type, my position, and
-  /// the compass when the map is turned (tap: north up).
+  /// Floating buttons on the right of the map: map type, my position (« N »
+  /// while the map is turned), Écrans, SOS.
   Widget _mapButtons(){
     // The controller is attached once the map is built (first frame).
     double rotation=0; try{rotation=_map.camera.rotation;}catch(_){}
-    final rotated=rotation%360!=0;
+    // Compass mode turns the map by itself: its icon stays so that the
+    // cycle goes on to « Tous les opérateurs ».
+    final rotated=!northUp(rotation)&&_meMode!=MeMode.compass;
     final scheme=Theme.of(context).colorScheme;
     // Right column (decision of 30 Oct 2026, 3 h 05): « Fond et affichage »,
-    // position, SOS; the north arrow only while a navigation turns the map.
+    // position, SOS. No separate north button any more (card « petite
+    // boussole N », lot 29): while the map is turned, « Ma position » shows
+    // « N »; a tap puts north up on my position.
     return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.end,children:[
       // No dot « couche masquée » any more (decision of 30 Oct 2026, 12 h 48).
       // Centres on one axis, regular gaps (lot 25, map_right_column.dart).
       mapColumnSlot(_fab('map-layers',S.t('display.menu'),const Icon(Icons.tune),_chooseBasemap)),
       const SizedBox(height:mapColumnGap),
-      if(rotated&&_meMode!=MeMode.compass)...[
-        mapColumnSlot(_fab('map-north',S.t('map.north'),Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined)),(){
-            _map.rotate(0);setState((){});})),
-        const SizedBox(height:mapColumnGap),
-      ],
-      LocateButton(mode:_locate,fab:(tip,icon,active)=>mapColumnSlot(_fab('map-me',tip,icon,_myPosition,
+      LocateButton(mode:_locate,north:rotated?rotation:null,northTooltip:S.t('map.north'),fab:(tip,icon,active)=>mapColumnSlot(_fab('map-me',tip,icon,rotated?_northOnMe:_myPosition,
         background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null))),
       // « Écrans » (lot 11): shown once a screen is allowed, blue while followed.
       TvScreensButton(controller:_tvScreens,onManage:_openTvScreens,
