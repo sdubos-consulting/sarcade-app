@@ -32,8 +32,11 @@ class SarcadeAck {
 }
 class LogbookEntry {
  final int seq; final String kind,summary; final String? objectId,actorId; final DateTime time;
- const LogbookEntry({required this.seq,required this.kind,required this.summary,required this.time,this.objectId,this.actorId});
- factory LogbookEntry.fromJson(Map<String,dynamic> j)=>LogbookEntry(seq:j['seq'],kind:j['kind'],objectId:j['object_id'],actorId:j['actor_id'],summary:j['summary'],time:DateTime.parse(j['time']));
+ /// Fingerprint of the entry, chained to the previous one (lot 29, group 8).
+ final String? hash;
+ const LogbookEntry({required this.seq,required this.kind,required this.summary,required this.time,this.objectId,this.actorId,this.hash});
+ factory LogbookEntry.fromJson(Map<String,dynamic> j)=>LogbookEntry(seq:j['seq'],kind:j['kind'],objectId:j['object_id'],actorId:j['actor_id'],summary:j['summary'],time:DateTime.parse(j['time']),
+   hash:j['hash'] as String?);
 }
 
 /// Priorities known by the server (revue d'ergonomie n° 35): never the

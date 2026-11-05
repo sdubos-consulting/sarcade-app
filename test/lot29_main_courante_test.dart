@@ -34,10 +34,11 @@ void main(){
     expect(logDayLabel(t0,DateTime(2026,11,5,23)),'Aujourd’hui · 5 novembre');
     expect(logDayLabel(DateTime(2026,10,23,9),DateTime(2026,11,5)),'23 octobre');
   });
-  test('CSV for Excel in French',(){
-    final csv=logbookCsv([all[3]]);
-    expect(csv.startsWith('﻿date;heure;type;operateur;texte;latitude;longitude;identifiant'),isTrue);
-    expect(csv,contains(';SOS;TEL-01;'));
-    expect(csv,contains(';48.80000;2.13000;'));
+  test('CSV in the common event format, same columns as the server',(){
+    final csv=logbookCsv([all[3]],eventId:'e1');
+    expect(csv.startsWith('\ufeffevent.id;@timestamp;event.dataset;event.action;user.id;host.id;sarcade.event_id;geo.location.lat;geo.location.lon;event.outcome;message;event.hash\r\n'),isTrue);
+    expect(csv,contains(';sarcade.logbook;'));
+    expect(csv,contains(';TEL-01;;e1;48.8;2.13;unknown;'));
+    expect(ecsTimestamp(DateTime.utc(2026,11,5,21,17,4,123,456)),'2026-11-05T21:17:04.123Z');
   });
 }
