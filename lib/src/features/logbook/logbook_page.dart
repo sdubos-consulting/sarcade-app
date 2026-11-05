@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/strings.dart';
 import '../../models/message.dart';
+import '../../offline/sync_service.dart';
 import '../../platform/platform_services.dart';
 import '../../services/sarcade_api.dart';
 import '../../ui/link_status.dart';
@@ -18,7 +19,7 @@ import 'logbook_view.dart';
 
 class LogbookPage extends StatefulWidget {
  final SarcadeApi api; final String eventId;
- /// Author of the notes; null: no « + Note ».
+ /// Author of the notes; by default the terminal of the device.
  final String? actorId;
  const LogbookPage({super.key,required this.api,required this.eventId,this.actorId});
  @override State<LogbookPage> createState()=>_LogbookPageState();
@@ -26,6 +27,8 @@ class LogbookPage extends StatefulWidget {
 
 class _LogbookPageState extends State<LogbookPage>{
  List<LogbookEntry> entries=[]; bool loading=true;
+ /// Author of the notes: given, else the terminal kept on the device.
+ String? get _actor=>widget.actorId??OfflineSyncService.active?.store.storedConfig()?['device_id'] as String?;
  LogKind? _filter; String _query='';
  final Set<int> _open={};
  @override void initState(){super.initState();_load();}
@@ -75,7 +78,7 @@ class _LogbookPageState extends State<LogbookPage>{
    if(text==null||text.trim().isEmpty||!mounted)return;
    final messenger=ScaffoldMessenger.of(context);
    try{
-     final e=await widget.api.addLogbookNote(widget.eventId,actorId:widget.actorId!,text:text.trim());
+     final e=await widget.api.addLogbookNote(widget.eventId,actorId:_actor!,text:text.trim());
      if(mounted)setState(()=>entries=[...entries,e]);
    }catch(_){messenger.showSnackBar(SnackBar(content:Text(S.t('logbook.noteFailed'))));}
  }
@@ -130,7 +133,7 @@ class _LogbookPageState extends State<LogbookPage>{
        PopupMenuButton<String>(key:const ValueKey('logbook-menu'),onSelected:(v){if(v=='csv')_exportCsv();},
          itemBuilder:(_)=>[PopupMenuItem(value:'csv',child:ListTile(leading:const Icon(Icons.table_view_outlined),title:Text(S.t('logbook.csv'))))]),
      ]),
-     floatingActionButton:widget.actorId==null?null:FloatingActionButton.extended(key:const ValueKey('logbook-note'),
+     floatingActionButton:_actor==null?null:FloatingActionButton.extended(key:const ValueKey('logbook-note'),
        onPressed:_addNote,icon:const Icon(Icons.add),label:Text(S.t('logbook.note'))),
      body:Column(children:[
        Padding(padding:const EdgeInsets.fromLTRB(12,8,12,4),child:TextField(onChanged:(v)=>setState(()=>_query=v),
