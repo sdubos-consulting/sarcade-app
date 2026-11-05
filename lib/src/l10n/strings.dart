@@ -140,6 +140,7 @@ const Texts _fr={
   'messages.reactions':'Réactions',
   'messages.typing':'{who} {n#écrit…|écrivent…}',
   'profile.photo':'Photo','profile.photoHelp':'À la place des initiales, vue des participants de l’événement seulement. Réduite à 256 px','profile.photoChoose':'Choisir une photo','profile.photoTake':'Prendre une photo','profile.photoRemove':'Retirer la photo','profile.photoTooBig':'Photo trop lourde, essayez-en une autre','profile.photoFailed':'Photo non envoyée : serveur injoignable','profile.photoRemovedByPco':'Votre photo de profil a été retirée par le PCO',
+  'profile.photoRemoveOther':'Retirer la photo de cet opérateur','profile.photoRemoveOtherHelp':'{who} retrouvera ses initiales et en sera prévenu',
   'event.quick':'Messages prédéfinis','event.quickHelp':'{n#aucun message propre à l’événement|# message propre à l’événement|# messages propres à l’événement} ; sinon la liste habituelle','event.quickEdit':'Un message par ligne, 20 au plus','event.edit':'Modifier',
   // Lot 24, messages types de la voiture et réglage SATER (settings/car_quick_messages_editor.dart).
   'eventSettings.quickCar.title':'Messages de la voiture','eventSettings.quickCar.intro':'Envoyés d’un appui depuis Android Auto, 4 au plus','eventSettings.quickCar.hint':'Message (40 caractères au plus)',
@@ -832,6 +833,7 @@ const Texts _en={
   'messages.reactions':'Reactions',
   'messages.typing':'{who} {n#is|are} typing…',
   'profile.photo':'Photo','profile.photoHelp':'In place of the initials, seen by the participants of the event only. Reduced to 256 px','profile.photoChoose':'Choose a photo','profile.photoTake':'Take a photo','profile.photoRemove':'Remove the photo','profile.photoTooBig':'Photo too heavy, try another one','profile.photoFailed':'Photo not sent: server unreachable','profile.photoRemovedByPco':'Your profile photo was removed by the PCO',
+  'profile.photoRemoveOther':'Remove the photo of this operator','profile.photoRemoveOtherHelp':'{who} will see the initials again and will be told',
   'event.quick':'Predefined messages','event.quickHelp':'{n} of the event; else the usual list','event.quickEdit':'One message per line, 20 at most','event.edit':'Edit',
   // Lot 24, quick messages of the car and SATER setting (settings/car_quick_messages_editor.dart).
   'eventSettings.quickCar.title':'Car messages','eventSettings.quickCar.intro':'Sent in one touch from Android Auto, 4 at most','eventSettings.quickCar.hint':'Message (40 characters at most)',

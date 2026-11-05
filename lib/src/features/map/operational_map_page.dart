@@ -491,6 +491,18 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
   }
 
+  /// PCO or administrator: a photo not suitable; the operator is told.
+  Future<void> _removePhotoOf(String deviceId) async {
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('profile.photoRemoveOther')),
+      content:Text(S.t('profile.photoRemoveOtherHelp',{'who':deviceId})),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('profile.photoRemove')))]));
+    if(ok!=true||!mounted)return;
+    try{await ProfilePhotos.instance.remove(widget.api,widget.store,widget.eventId,deviceId);}
+    catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('profile.photoFailed'))));}
+    if(mounted)setState((){});
+  }
+
   void _onRealtime(RealtimeEvent e){
     if(e.type.startsWith('adsb.')){_adsb.onRealtime(e.type,e.data);return;}
     if(e.type=='aprs.class.updated'){unawaited(_applyFixedClass(e.data));}
@@ -2185,7 +2197,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return Container(padding:const EdgeInsets.all(14),decoration:glass(context,radius:18,border:_stationColor(p).withValues(alpha:0.6)),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Row(children:[
-          _stationIcon(p,size:40),const SizedBox(width:10),
+          // The photo of the operator in his sheet (lot 29, group 7); the map keeps the symbols.
+          !p.isAprs&&ProfilePhotos.instance.of(p.deviceId)!=null?operatorAvatar(p.deviceId,label:p.label,radius:20):_stationIcon(p,size:40),const SizedBox(width:10),
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             // APRS station linked to a terminal: its callsign stays visible
             // (« PCO-demo · F4JPO-5 », decision of 28 Oct 2026).
@@ -2196,6 +2209,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])),
           IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
           // « Discuter »: direct chat with this operator (not with myself, not an APRS station).
+          if(!p.isAprs&&p.deviceId!=widget.deviceId&&isPco(widget.deviceId)&&ProfilePhotos.instance.of(p.deviceId)!=null)IconButton(key:const ValueKey('photo-remove-other'),
+            tooltip:S.t('profile.photoRemoveOther'),onPressed:()=>unawaited(_removePhotoOf(p.deviceId)),icon:const Icon(Icons.no_photography_outlined)),
           if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>setState((){_chatPeer=p.deviceId;_deskPage=null;_deskId=null;}),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
