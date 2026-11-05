@@ -799,9 +799,11 @@ class _MessagesPageState extends State<MessagesPage>{
        ?const Padding(padding:EdgeInsets.all(14),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
        :IconButton(tooltip:S.t('messages.photo'),onPressed:_photo,icon:Icon(Icons.photo_camera_outlined,size:26,color:iconColor))),
      const SizedBox(width:4),
-     SizedBox(width:48,height:48,child:empty
+     // The microphone stays while dictating, even once words are written
+     // (it turned into « Envoyer » after 2 or 3 seconds and stopped; lot 29).
+     ValueListenableBuilder<bool>(valueListenable:dictationActive,builder:(c,dictating,w)=>SizedBox(width:48,height:48,child:empty||dictating
        ? DictationButton(controller:_text,filled:true)
-       : IconButton.filled(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send))),
+       : IconButton.filled(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)))),
    ]))));
    // Answering (31 Oct 2026): the quoted message above the field, ✕ to cancel.
    final r=_replyTo;
