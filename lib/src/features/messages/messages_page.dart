@@ -772,7 +772,9 @@ class _MessagesPageState extends State<MessagesPage>{
            // « Message » shown in the empty field (revue d'ergonomie n° 37).
            decoration:InputDecoration(hintText:S.t('messages.hint'),hintStyle:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant),counterText:'',border:InputBorder.none,isDense:true,
              contentPadding:const EdgeInsets.symmetric(vertical:13))))),
-         IconButton(tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
+         // Phone and tablet: the keyboard has its emojis (card « bouton emoji
+         // inutile sur téléphone », lot 29.3); kept on computers and Tesla.
+         if(!touchKeyboard)IconButton(key:const ValueKey('messages-emoji'),tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
        ]))),
      if(empty)SizedBox(height:48,child:_picking
        ?const Padding(padding:EdgeInsets.all(14),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
