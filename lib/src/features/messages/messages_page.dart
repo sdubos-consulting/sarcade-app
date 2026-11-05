@@ -454,8 +454,9 @@ class _MessagesPageState extends State<MessagesPage>{
          onTap:()=>_open(k)));
      }),
      // Threads with MeshCore nodes, kept on this device (lot 17).
-     const MeshCoreThreadTiles(),
-     const MeshtasticThreadTiles()])), // lot 28
+     // They follow the filter, the search and the favourites (lot 29).
+     MeshCoreThreadTiles(filter:_filter,query:_search,favourites:fav,onToggleFavourite:_toggleFavConv),
+     MeshtasticThreadTiles(filter:_filter,query:_search,favourites:fav,onToggleFavourite:_toggleFavConv)])), // lot 28
    ]);
  }
 
