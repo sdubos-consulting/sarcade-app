@@ -159,6 +159,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('messages_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>SarcadeMessage.fromJson(e)).toList();
   }
+  /// « Main courante intègre » or the entry where it breaks (PCO, administrators).
+  Future<Map<String,dynamic>> logbookVerify(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook/verify'));
+    if(r.statusCode!=200) throw SarcadeHttpException('logbook_verify',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   Future<List<LogbookEntry>> logbook(String eventId,{int after=0}) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook?after=$after'));
     if(r.statusCode!=200) throw Exception('logbook_http_${r.statusCode}');

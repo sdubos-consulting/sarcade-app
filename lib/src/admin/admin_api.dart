@@ -93,6 +93,8 @@ class AdminApi {
   Future<Map<String,dynamic>> mail()=>_get('mail','/admin/mail');
   /// « Envoyer un e-mail d'essai » (lot 28): `{status: sent|simulated, to}`.
   Future<Map<String,dynamic>> mailTest()=>_send('mail_test','POST','/admin/mail/test');
+  /// « Envoyer un événement d'essai » to the SIEM (lot 29, group 8).
+  Future<Map<String,dynamic>> siemTest()=>_send('siem_test','POST','/admin/siem/test');
 
   // Échéances (lot 28): `{items, summary, tls, manual}`.
   Future<Map<String,dynamic>> deadlines()=>_get('deadlines','/admin/deadlines');
