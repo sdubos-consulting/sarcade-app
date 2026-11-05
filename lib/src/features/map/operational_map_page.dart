@@ -1962,7 +1962,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       alert:alert?vigilanceColor(r!.vigilance!.colorId):null,
       weatherStale:_mapWeather.stale,
       // Stale weather: a touch loads it again (lot 29.2); else the screen.
-      onLinks:_openDiagnostics,onWeather:()=>_mapWeather.stale?unawaited(_mapWeather.refresh()):_openWeather()));
+      onLinks:_openDiagnostics,onWeather:(){if(_mapWeather.stale){unawaited(_mapWeather.refresh());}else{_openWeather();}}));
   }
 
   /// « Suivi actif · 30 s » always in sight (aprs.fi « Beacon »); a tap
