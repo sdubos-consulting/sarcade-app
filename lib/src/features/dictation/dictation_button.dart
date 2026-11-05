@@ -75,8 +75,7 @@ class _DictationButtonState extends State<DictationButton> {
   Future<void> _listen() async {
     _before=widget.controller.text;
     await _speech.listen(
-      listenFor:dictationMaxLength,pauseFor:dictationPause,
-      listenOptions:SpeechListenOptions(localeId:dictationLocale(S.lang),partialResults:true,cancelOnError:true,listenMode:ListenMode.dictation),
+      listenOptions:SpeechListenOptions(listenFor:dictationMaxLength,pauseFor:dictationPause,localeId:dictationLocale(S.lang),partialResults:true,cancelOnError:true,listenMode:ListenMode.dictation),
       onResult:(r){
         if(!_wanted)return;
         final c=widget.controller;
