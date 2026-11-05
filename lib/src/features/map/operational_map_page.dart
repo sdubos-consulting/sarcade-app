@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
 import '../messages/conversations.dart' show avatarInitials;
+import '../messages/reactions.dart' show Reactions;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -487,6 +488,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='message.created'){_receiveMessage(e.data);}
     if(e.type=='message.deleted'){unawaited(widget.store.cacheMessage(Map<String,dynamic>.from(e.data)));}
     if(e.type=='message.updated'){unawaited(widget.store.cacheMessage(Map<String,dynamic>.from(e.data)));}
+    if(e.type=='reaction.updated'){unawaited(Reactions.instance.apply(widget.store,widget.eventId,e.data));}
     if(e.type=='map_feature.upserted'||e.type=='map_feature.deleted'){_applyRemoteFeature(e.data,persist:true);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
     if(e.type=='group.upserted'&&!_sync.isPending('${e.data['id']}')){widget.store.saveGroup(e.data);}
