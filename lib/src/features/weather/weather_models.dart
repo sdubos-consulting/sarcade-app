@@ -142,3 +142,40 @@ List<String> hourDetailLines(WeatherHour h){
 /// (revue d'ergonomie n° 50: « Prévision du - » was shown without any).
 bool weatherShowsStale(WeatherReport? r,{required bool offline})=>
   r!=null&&r.fetchedAt!=null&&(r.hours.isNotEmpty||r.days.isNotEmpty)&&(r.stale||offline);
+
+/// « 21 h » (card « Météo : écran plus lisible », lot 29.5).
+String hourShort(DateTime t)=>'${t.toLocal().hour} h';
+
+/// One day of the next days: minimum, maximum, the most frequent sky by day.
+typedef DaySummary=({DateTime day,double min,double max,int? code});
+
+/// Days from today, from the hourly forecast (local days).
+List<DaySummary> dailySummaries(List<WeatherHour> hours,DateTime now){
+  final by=<DateTime,List<WeatherHour>>{};
+  final today=DateTime(now.year,now.month,now.day);
+  for(final h in hours){
+    final l=h.time.toLocal(); final d=DateTime(l.year,l.month,l.day);
+    if(d.isBefore(today)||h.temperatureC==null)continue;
+    (by[d]??=[]).add(h);
+  }
+  final out=<DaySummary>[];
+  for(final d in by.keys.toList()..sort()){
+    final list=by[d]!;
+    final temps=[for(final h in list)h.temperatureC!];
+    final day=list.where((h){final x=h.time.toLocal().hour;return x>=8&&x<=20;}).toList();
+    final counts=<int,int>{};
+    for(final h in day.isEmpty?list:day){final c=h.weatherCode;if(c!=null)counts[c]=(counts[c]??0)+1;}
+    final code=counts.isEmpty?null:(counts.entries.toList()..sort((a,b)=>b.value.compareTo(a.value))).first.key;
+    out.add((day:d,min:temps.reduce((a,b)=>a<b?a:b),max:temps.reduce((a,b)=>a>b?a:b),code:code));
+  }
+  return out;
+}
+
+/// « Aujourd'hui », « Demain », then « jeu. 7 ».
+String dayShort(DateTime day,DateTime now){
+  final today=DateTime(now.year,now.month,now.day);
+  final diff=DateTime(day.year,day.month,day.day).difference(today).inDays;
+  if(diff==0)return S.t('weather.today');
+  if(diff==1)return S.t('weather.tomorrow');
+  return '${S.t('weekday.short.${day.weekday}')} ${day.day}';
+}
