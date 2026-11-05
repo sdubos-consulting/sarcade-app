@@ -8,6 +8,7 @@ import 'important.dart';
 import 'forward.dart';
 import 'mute.dart';
 import 'mentions.dart';
+import 'conversation_search.dart';
 import 'typing.dart';
 import '../../services/realtime_service.dart' show RealtimeService;
 import '../../services/power_state.dart' show PowerState;
@@ -335,7 +336,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){Mutes.instance.removeListener(_onSelection);Important.instance.removeListener(_onSelection);_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){_findCtl.dispose();Mutes.instance.removeListener(_onSelection);Important.instance.removeListener(_onSelection);_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -356,6 +357,7 @@ class _MessagesPageState extends State<MessagesPage>{
  void _open(String key){
    if(!_chatOpen)setState(()=>_chatOpen=true);
    if(key==_conv)return;
+   _closeFind();
    _selection.clear(notify:false);
    _drafts.keep(_conv,_text.text); _text.text=_drafts.take(key);
    setState((){_conv=key;_maxBuilt=-1;_separator=SeparatorWatch();_atBottom=true;});
@@ -732,6 +734,33 @@ class _MessagesPageState extends State<MessagesPage>{
      &&!(acks[m.id]??const []).any((a)=>a.actorId==widget.actorId&&a.status!='received'));
  }
 
+ // --- « Recherche dans une conversation » (lot 29, group 7) ---
+ bool _finding=false; String _findQ=''; int _findAt=0;
+ final _findCtl=TextEditingController();
+ Widget _findButton()=>IconButton(key:const ValueKey('conv-find'),tooltip:S.t('messages.find'),
+   onPressed:()=>setState((){_finding=true;_findQ='';_findCtl.clear();}),icon:const Icon(Icons.search));
+ void _closeFind(){_finding=false;_findQ='';_findAt=0;_findCtl.clear();}
+ void _findMove(List<String> hits,int step){
+   if(hits.isEmpty)return;
+   setState(()=>_findAt=(_findAt+step)%hits.length);
+   unawaited(_goToMessage(hits[_findAt]));
+ }
+ Widget _findBar(List<SarcadeMessage> messages){
+   final hits=searchHits(messages,_findQ);
+   final at=hits.isEmpty?0:_findAt.clamp(0,hits.length-1);
+   return Material(key:const ValueKey('find-bar'),color:Theme.of(context).colorScheme.surfaceContainerHigh,child:Padding(padding:const EdgeInsets.fromLTRB(12,2,4,2),child:Row(children:[
+     Expanded(child:TextField(key:const ValueKey('find-field'),controller:_findCtl,autofocus:true,textInputAction:TextInputAction.search,
+       decoration:InputDecoration(hintText:S.t('messages.findHint'),border:InputBorder.none,isDense:true),
+       onChanged:(v){setState((){_findQ=v;_findAt=0;});final h=searchHits(messages,v);if(h.isNotEmpty)unawaited(_goToMessage(h.first));},
+       onSubmitted:(_)=>_findMove(hits,1))),
+     if(_findQ.trim().isNotEmpty)Text(hits.isEmpty?S.t('messages.findNone'):'${at+1} / ${hits.length}',key:const ValueKey('find-count'),
+       style:Theme.of(context).textTheme.bodySmall),
+     IconButton(key:const ValueKey('find-prev'),tooltip:S.t('messages.findPrev'),onPressed:hits.isEmpty?null:()=>_findMove(hits,-1),icon:const Icon(Icons.keyboard_arrow_up)),
+     IconButton(key:const ValueKey('find-next'),tooltip:S.t('messages.findNext'),onPressed:hits.isEmpty?null:()=>_findMove(hits,1),icon:const Icon(Icons.keyboard_arrow_down)),
+     IconButton(key:const ValueKey('find-close'),tooltip:S.t('common.close'),onPressed:()=>setState(_closeFind),icon:const Icon(Icons.close)),
+   ])));
+ }
+
  /// « Supprimer pour moi »: hidden on this device only.
  Future<void> _hideForMe(Iterable<String> ids) async {
    await widget.store.setPreference(hiddenMessagesKey(widget.eventId),formatHidden({..._hidden,...ids}));
@@ -807,7 +836,9 @@ class _MessagesPageState extends State<MessagesPage>{
      if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
        for(final p in photos)_PhotoThumb(key:ValueKey(p.fileId),attachment:p,api:widget.api,store:widget.store,eventId:widget.eventId),
      ])),
-     MentionText(m.body,color:s.primary,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
+     _finding&&_findQ.trim().isNotEmpty
+       ?HighlightText(m.body,query:_findQ,background:const Color(0xFFFFE082),style:TextStyle(fontSize:15,height:1.3,color:s.onSurface))
+       :MentionText(m.body,color:s.primary,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
      const SizedBox(height:2),
      Align(alignment:Alignment.bottomRight,widthFactor:1,child:meta),
      ReactionChips(of:Reactions.instance.value[m.id],me:widget.actorId,onTap:()=>_showReactions(m)),
@@ -1007,6 +1038,7 @@ class _MessagesPageState extends State<MessagesPage>{
    final group=_group;
    final showAuthor=peerOf(_conv)==null;
    return Column(children:[
+     if(_finding)_findBar(messages),
      if(group!=null&&(group.description.isNotEmpty||group.managers.isNotEmpty))Padding(padding:const EdgeInsets.fromLTRB(14,4,14,4),child:Align(alignment:Alignment.centerLeft,child:Text(
        [if(group.description.isNotEmpty)group.description,if(group.radioChannel.isNotEmpty)group.radioChannel,S.t('groups.managers',{'names':group.managers.join(', ')})].join(' · '),
        style:Theme.of(context).textTheme.bodySmall))),
@@ -1096,7 +1128,7 @@ class _MessagesPageState extends State<MessagesPage>{
              Flexible(child:_convTitle(by,style:Theme.of(context).textTheme.titleMedium)),
              ?pending,
              const Spacer(),
-             ?editGroup,favButton,_convMenu(),?close,
+             ?editGroup,_findButton(),favButton,_convMenu(),?close,
            ],
            const LinkStatusPill(),const SizedBox(width:4),
          ])),
@@ -1119,7 +1151,7 @@ class _MessagesPageState extends State<MessagesPage>{
            Flexible(child:_convTitle(by)),
            ?pending,
          ]),
-         actions:[?editGroup,favButton,_convMenu(),?close]),
+         actions:[?editGroup,_findButton(),favButton,_convMenu(),?close]),
        body:_chat(by,acks),
      );
    }));
