@@ -57,7 +57,9 @@ void main() {
     expect(find.text('Notifications'), findsNothing);
     await tester.tap(find.text('À propos'));
     await tester.pumpAndSettle();
-    expect(find.text('Édité par SDUBOS Consulting'), findsOneWidget);
+    // Lot 29.4: « SDUBOS Consulting › » with its site under it.
+    expect(find.text('SDUBOS Consulting'), findsOneWidget);
+    expect(find.text('sdubos.com'), findsOneWidget);
   });
 
   testWidgets('theme: day, night or automatic, from « Fond et affichage » of the map', (tester) async {
@@ -185,7 +187,7 @@ void main() {
       home: const SarcadeAboutPage(),
     ));
     expect(find.text('About SARCADE'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Credits and component licences'), 300, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(find.text('Component credits'), 300, scrollable: find.byType(Scrollable).first);
     expect(tester.takeException(), isNull);
   });
 }

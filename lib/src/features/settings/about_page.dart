@@ -5,6 +5,8 @@ import '../../config/version.dart';
 import '../../l10n/strings.dart';
 import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart' show basemapNotices;
+import '../../operations/event_settings.dart' show StoreRelease;
+import '../../operations/version_state.dart';
 import 'notifications_panel.dart' show VersionStatus;
 import 'windows_update_box.dart';
 import '../../ui/link_status.dart';
@@ -38,75 +40,95 @@ class SarcadeAboutContent extends StatelessWidget {
     }
   }
 
-  Widget _link(BuildContext context, IconData icon, String label, String url) => ListTile(
-    leading: Icon(icon),
-    title: Text(S.t(label)),
-    trailing: const Icon(Icons.open_in_new),
-    onTap: () => _open(context, url),
-  );
+  /// One link (card « À propos : liens avec chevron et adresse », lot
+  /// 29.4): the whole line touchable, the site in small grey under the
+  /// title, « › »; no square « external link » icon any more.
+  Widget _link(BuildContext context, IconData icon, String label, String url, {String? site}) {
+    final s = Theme.of(context).colorScheme;
+    return ListTile(
+      dense: true, visualDensity: const VisualDensity(vertical: -2), contentPadding: EdgeInsets.zero,
+      leading: Icon(icon),
+      title: Text(S.t(label), maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(site ?? linkSite(url), style: TextStyle(color: s.onSurfaceVariant)),
+      trailing: Icon(Icons.chevron_right, color: s.onSurfaceVariant),
+      onTap: () => _open(context, url),
+    );
+  }
+
+  /// « Version 0.1.0 (2003) · À jour », copied with the build and the
+  /// reference version on a touch.
+  Widget _versionLine(BuildContext context) {
+    final t = Theme.of(context);
+    final version = aboutVersionLine();
+    final details = [
+      S.t('about.version', {'version': appVersion}),
+      if (appBuild.isNotEmpty) S.t('about.build', {'build': appBuild}),
+      S.t('version.referenceLine', {'ref': appReference()}),
+      S.t('about.publisher'),
+    ].join('\n');
+    return InkWell(key: const ValueKey('about-version'), borderRadius: BorderRadius.circular(8), onTap: () async {
+      await Clipboard.setData(ClipboardData(text: details));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(S.t('common.copied'))));
+    }, child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: ValueListenableBuilder<StoreRelease?>(
+      valueListenable: latestRelease, builder: (context, r, _) {
+        final upToDate = VersionStatus.shown && r != null && !r.newerThan(appVersion, appBuildNumber);
+        return Text(upToDate ? '$version · ${S.t('version.upToDate')}' : version, textAlign: TextAlign.center,
+          style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant));
+      })));
+  }
 
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // Windows: « Mise à jour » box first (card « Windows : menu Mise à
         // jour », lot 25; SARCADE has no « Aide » menu bar).
         if (WindowsUpdateBox.shown) const Padding(padding: EdgeInsets.only(bottom: 16), child: WindowsUpdateBox()),
-        // SARCADE logo above the name, version and publisher, adapted to the
-        // theme (card « Paramètres › À propos, logo SARCADE », 30 Oct 2026, 13 h 27).
-        // Aligned on the left with the title and the text (revue n° 67).
-        Align(alignment: Alignment.centerLeft, child: Image.asset(
+        // Top of the page (lot 29.4): logo of about 96 px, name and
+        // description centred, one line for the version.
+        Center(child: Image.asset(
           Theme.of(context).brightness == Brightness.dark ? 'assets/logo/sarcade-logo-dark.png' : 'assets/logo/sarcade-logo-light.png',
           height: 96, semanticLabel: 'SARCADE',
           errorBuilder: (_, _, _) => const SizedBox.shrink(),
         )),
-        const SizedBox(height: 12),
-        Text('SARCADE', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 8),
-        Text(S.t('about.description')),
-        const SizedBox(height: 16),
-        // Version, build and publisher copied in one go (29 Oct 2026).
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SelectableText(S.t('about.version', {'version': appVersion})),
-            if (appBuild.isNotEmpty) SelectableText(S.t('about.build', {'build': appBuild})),
-            // Reference version (lot 28): the label, else « main@commit ».
-            SelectableText(S.t('version.referenceLine', {'ref': appReference()})),
-            const SizedBox(height: 8),
-            Text(S.t('about.publisher')),
-          ])),
-          IconButton(
-            tooltip: S.t('common.copy'),
-            icon: const Icon(Icons.copy_outlined),
-            onPressed: () async {
-              final text = [
-                S.t('about.version', {'version': appVersion}),
-                if (appBuild.isNotEmpty) S.t('about.build', {'build': appBuild}),
-                S.t('version.referenceLine', {'ref': appReference()}),
-                S.t('about.publisher'),
-              ].join('\n');
-              await Clipboard.setData(ClipboardData(text: text));
-              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(S.t('common.copied'))));
-            },
-          ),
-        ]),
-        if (VersionStatus.shown) const Padding(padding: EdgeInsets.only(top: 12), child: VersionStatus()),
-        const Divider(height: 32),
-        _link(context, Icons.language, 'about.website', 'https://www.sdubos.com/'),
-        _link(context, Icons.code, 'about.source', 'https://github.com/sdubos-consulting/sarcade-app'),
-        _link(context, Icons.feedback_outlined, 'about.feedback', 'https://github.com/sdubos-consulting/sarcade-app/issues'),
+        Text('SARCADE', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 4),
+        Text(S.t('about.descriptionShort'), textAlign: TextAlign.center),
+        const SizedBox(height: 6),
+        _versionLine(context),
+        // An update available: the line and its button (store).
+        if (VersionStatus.shown) Center(child: ValueListenableBuilder<StoreRelease?>(valueListenable: latestRelease,
+          builder: (context, r, _) => r != null && r.newerThan(appVersion, appBuildNumber) ? const VersionStatus() : const SizedBox.shrink())),
+        const Divider(height: 24),
+        _link(context, Icons.business_outlined, 'about.publisherShort', 'https://www.sdubos.com/'),
+        _link(context, Icons.code, 'about.sourceShort', 'https://github.com/sdubos-consulting/sarcade-app'),
+        _link(context, Icons.feedback_outlined, 'about.feedbackShort', 'https://github.com/sdubos-consulting/sarcade-app/issues'),
         _link(context, Icons.privacy_tip_outlined, 'about.privacy', 'https://sdubos-consulting.github.io/sarcade-app/confidentialite/'),
-        _link(context, Icons.description_outlined, 'about.license', 'https://github.com/sdubos-consulting/sarcade-app/blob/main/LICENSE'),
+        _link(context, Icons.description_outlined, 'about.licenseShort', 'https://github.com/sdubos-consulting/sarcade-app/blob/main/LICENSE'),
         ListTile(
+          dense: true, visualDensity: const VisualDensity(vertical: -2), contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.favorite_outline),
-          title: Text(S.t('about.credits')),
-          trailing: const Icon(Icons.chevron_right),
+          title: Text(S.t('about.creditsShort')),
+          subtitle: Text(S.t('about.inApp'), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          trailing: Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.onSurfaceVariant),
           onTap: () => showLicensePage(context: context, applicationName: 'SARCADE', applicationVersion: appVersion),
         ),
         // Licence notices of the base maps, also behind the ⓘ of the map
         // (card « Panneau Fond de carte », 30 Oct 2026, 1 h 35).
         ListTile(
+          contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.map_outlined),
           title: Text(S.t('about.mapNotices')),
           subtitle: Text(basemapNotices(builtInBasemaps).join('\n')),
         ),
       ]);
 }
+
+/// « github.com », « sdubos.com »: the site of a link, without « www. ».
+String linkSite(String url) {
+  final host = Uri.tryParse(url)?.host ?? '';
+  return host.startsWith('www.') ? host.substring(4) : host;
+}
+
+/// « Version 0.1.0 (2003) »; the build number only when there is one.
+String aboutVersionLine({String version = appVersion, String build = appBuildNumber}) =>
+    build.isEmpty ? S.t('about.versionLine', {'version': version}) : S.t('about.versionLineBuild', {'version': version, 'build': build});
