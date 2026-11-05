@@ -9,6 +9,7 @@ import 'forward.dart';
 import 'mute.dart';
 import 'mentions.dart';
 import 'conversation_search.dart';
+import 'swipe_reply.dart';
 import 'typing.dart';
 import '../../services/realtime_service.dart' show RealtimeService;
 import '../../services/power_state.dart' show PowerState;
@@ -853,7 +854,6 @@ class _MessagesPageState extends State<MessagesPage>{
    // A simple touch opens the actions (decision of 30 Oct 2026, 22 h 37);
    // long press and right click stay; swiping right answers.
    final bubble=GestureDetector(onTap:()=>_actions(m,ma,mine),onLongPress:()=>_actions(m,ma,mine),onSecondaryTap:()=>_actions(m,ma,mine),
-     onHorizontalDragEnd:(d){if((d.primaryVelocity??0)>300&&_canWrite)_startReply(m);},
      child:AnimatedContainer(duration:const Duration(milliseconds:250),margin:EdgeInsets.fromLTRB(mine?56:0,1,mine?0:56,1),padding:const EdgeInsets.fromLTRB(9,6,9,5),
        decoration:BoxDecoration(color:_flashId==m.id?Color.alphaBlend(s.primary.withValues(alpha:0.25),mine?_mineBg:_otherBg):(mine?_mineBg:_otherBg),
          // Small tail on the first bubble of a series.
@@ -869,7 +869,8 @@ class _MessagesPageState extends State<MessagesPage>{
    return Padding(key:_keyFor(m.id),padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
      child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:600),child:MergeSemantics(child:Row(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
        ?avatar,
-       Flexible(child:bubble),
+       // Sliding to the right answers (lot 29, group 7); arrow on hover on a computer.
+       Flexible(child:SwipeReply(onReply:_canWrite&&!_selection.active?()=>_startReply(m):null,hoverArrow:!touchKeyboard,child:bubble)),
      ])))));
  }
 
