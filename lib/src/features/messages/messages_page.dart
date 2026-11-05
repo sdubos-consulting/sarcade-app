@@ -29,6 +29,7 @@ import 'chat_bottom.dart';
 import '../../services/notification_keys.dart';
 import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
 import '../dictation/dictation_button.dart';
+import '../../ui/bottom_menu.dart';
 import '../../ui/action_buttons.dart';
 import '../tv/tv_nearby.dart';
 import '../../ui/link_status.dart';
@@ -487,17 +488,24 @@ class _MessagesPageState extends State<MessagesPage>{
 
  /// Long press (phone) or right click (computer): actions on a message.
  Future<void> _actions(SarcadeMessage m,List<SarcadeAck> acks,bool mine) async {
-   final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+   // Card « menu d'un message trop haut » (lot 29.3): « Répondre en privé »
+   // second, dense rows (about 44 px), the safe area plus 16 px under the
+   // last row so that it never falls in the gesture bar of the iPhone.
+   final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c){
+     Widget item(String id,IconData icon,String label,{Key? key})=>ListTile(key:key,dense:true,visualDensity:const VisualDensity(vertical:-1),
+       minTileHeight:44,leading:Icon(icon,size:22),title:Text(label,style:const TextStyle(fontSize:15)),onTap:()=>Navigator.pop(c,id));
+     return Padding(padding:EdgeInsets.only(bottom:bottomMenuMargin(c)),
+     child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
      // « Répondre » first (31 Oct 2026): the answer quotes this message.
-     if(!m.deleted&&_canWrite)ListTile(key:const ValueKey('msg-reply'),leading:const Icon(Icons.reply),title:Text(S.t('messages.replyQuote')),onTap:()=>Navigator.pop(c,'reply')),
-     if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])ListTile(leading:Icon(s=='rejected'?Icons.close:Icons.check),title:Text(S.t('ack.$s')),onTap:()=>Navigator.pop(c,s)),
-     if(!m.deleted)ListTile(leading:const Icon(Icons.copy),title:Text(S.t('messages.copy')),onTap:()=>Navigator.pop(c,'copy')),
-     ListTile(leading:const Icon(Icons.info_outline),title:Text(S.t('messages.info')),onTap:()=>Navigator.pop(c,'info')),
-     if(!mine&&peerOf(_conv)==null)ListTile(leading:const Icon(Icons.chat_outlined),title:Text(S.t('messages.reply',{'who':m.senderId})),onTap:()=>Navigator.pop(c,'direct')),
+     if(!m.deleted&&_canWrite)item('reply',Icons.reply,S.t('messages.replyQuote'),key:const ValueKey('msg-reply')),
+     if(!mine&&peerOf(_conv)==null)item('direct',Icons.chat_outlined,S.t('messages.reply',{'who':m.senderId}),key:const ValueKey('msg-direct')),
+     if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])item(s,s=='rejected'?Icons.close:Icons.check,S.t('ack.$s')),
+     if(!m.deleted)item('copy',Icons.copy,S.t('messages.copy')),
+     item('info',Icons.info_outline,S.t('messages.info')),
      // Several messages at once (lot 21): this one already checked.
-     ListTile(key:const ValueKey('msg-select'),leading:const Icon(Icons.check_circle_outline),title:Text(S.t('messages.select')),onTap:()=>Navigator.pop(c,'select')),
-     ListTile(leading:const Icon(Icons.delete_outline),title:Text(S.t('messages.delete')),onTap:()=>Navigator.pop(c,'delete')),
-   ])));
+     item('select',Icons.check_circle_outline,S.t('messages.select'),key:const ValueKey('msg-select')),
+     item('delete',Icons.delete_outline,S.t('messages.delete')),
+   ])));});
    if(choice==null||!mounted)return;
    if(choice=='reply'){_startReply(m);return;}
    if(choice=='copy'){await Clipboard.setData(ClipboardData(text:m.body));_snack(S.t('messages.copied'));return;}
