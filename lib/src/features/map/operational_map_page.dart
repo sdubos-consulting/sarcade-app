@@ -2158,6 +2158,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Marker _stationMarker(SarcadePosition p,DateTime now){
     final s=mapMarkerScheme;
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
+    // Car (lot 29.6): initials only, the name on a touch (selected).
+    if(carMode&&_selectedDevice!=p.deviceId){
+      return Marker(point:LatLng(p.lat,p.lon),width:56,height:56,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_tapStation(p),
+        child:Opacity(opacity:f==Freshness.ageing?0.75:1,child:Column(mainAxisSize:MainAxisSize.min,children:[
+          _stationIcon(p),const SizedBox(height:2),
+          Container(padding:const EdgeInsets.symmetric(horizontal:5,vertical:1),
+            decoration:BoxDecoration(color:s.surface.withValues(alpha:0.85),borderRadius:BorderRadius.circular(6)),
+            child:Text(carInitials(p.label),style:TextStyle(fontSize:12,fontWeight:FontWeight.w800,color:s.onSurface))),
+        ]))));
+    }
     return Marker(point:LatLng(p.lat,p.lon),width:170,height:64,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_tapStation(p),
       child:Opacity(opacity:f==Freshness.ageing?0.75:1,child:Column(mainAxisSize:MainAxisSize.min,children:[
         _stationIcon(p),const SizedBox(height:2),
@@ -2903,7 +2913,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ),children:[
           // Night: street maps darkened; aerial photos stay as they are.
           TileLayer(key:ValueKey('$_tileUrl|${_darkTiles(context)}'),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble(),
-            tileBuilder:_darkTiles(context)?darkModeTileBuilder:null),
+            // Car (lot 29.6): a sober map, colours toned down.
+            tileBuilder:_darkTiles(context)?darkModeTileBuilder:carMode?carTileBuilder:null),
           if(traced.isNotEmpty)_faded('traces',PolylineLayer(polylines:_traces.polylines(traced,windowMin:_traceWindow))),
           if(traced.isNotEmpty)_faded('traces',CircleLayer(circles:traceDots(_traces,traced,windowMin:_traceWindow,zoom:_mapZoomOr(0)))),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Theme.of(context).colorScheme.secondary)).toList()),

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sarcade_app/src/features/map/locate_cycle.dart';
 import 'package:sarcade_app/src/l10n/strings.dart';
+import 'package:sarcade_app/src/ui/car_mode.dart';
 
 void main(){
   setUp(()=>S.setLanguage('fr'));
@@ -13,5 +14,11 @@ void main(){
     expect(locateLabel(LocateMode.follow),'Suivi · nord en haut');
     expect(locateLabel(LocateMode.course),'Cap de route');
     expect(locateLabel(LocateMode.compass),'Boussole');
+  });
+  test('car screen: initials only',(){
+    expect(carInitials('PCO-iphone'),'PI');
+    expect(carInitials('tesla-demo'),'TD');
+    expect(carInitials('PIA'),'PIA');
+    expect(carInitials('Thiméo'),'THI');
   });
 }
