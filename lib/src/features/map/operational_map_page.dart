@@ -1392,6 +1392,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _drawing.poiHooks=poiSelectionHooks(pois:_pois,store:widget.store,sync:_sync,actor:widget.deviceId,
       format:(p)=>formatCoordinates(p,_coordFormat,mgrsDigits:_mgrsDigits),refresh:(){if(mounted)setState((){});});
     _drawing.addListener(_onDrawingChanged);
+    _drawing.addListener(_closePaletteAfterShape);
+  }
+  /// The palette closes at the end of a shape (lot 29.2): the new shape
+  /// stays selected with its card.
+  FeatureKind? _lastTool;
+  void _closePaletteAfterShape(){
+    final was=_lastTool; _lastTool=_drawing.tool;
+    if(was!=null&&_drawing.tool==null&&_drawing.hasSelection&&_drawingTools&&mounted)setState(()=>_drawingTools=false);
   }
   /// Colour of new drawings chosen in the profile (Paramètres).
   /// Without a chosen colour, one given automatically for the event: the
@@ -1536,6 +1544,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Ctrl / Maj + clic, or « Sélection » on a phone: adds or removes an object.
     final keys=HardwareKeyboard.instance;
     if(hit!=null&&(_drawing.selectMode||keys.isControlPressed||keys.isMetaPressed||keys.isShiftPressed)){_drawing.toggle(hit.id);return;}
+    // A touch on the map with no tool closes the palette (lot 29.2).
+    if(hit==null&&_drawingTools&&_drawing.selection.isEmpty){_toggleDrawingTools();return;}
     if(hit==null&&_closeOpenItems())return;
     _drawing.select(hit?.id);
   }
