@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:geolocator/geolocator.dart' show Position;
 import '../../ui/car_mode.dart';
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
@@ -1569,8 +1570,21 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _followMe=>_meMode!=MeMode.off;
   /// One button, each touch the next mode (locate_cycle.dart, 30 Oct 2026).
   LocateMode _locate=LocateMode.idle;
+  /// « Cap de route » on (lot 29.6): the map turns with the direction of
+  /// travel above 10 km/h, north up when stopped.
+  bool _course=false;
+  /// Course of the GPS when moving fast enough, else null.
+  static double? courseOf(Position p)=>p.speed*3.6>=10&&p.heading>=0?p.heading:null;
+  void _applyCourse(Position p){
+    if(!_course)return;
+    final c=courseOf(p);
+    final next=c??0.0;
+    if(headingChanged(_heading,next)){_heading=next;_map.rotate(-next);}
+  }
   Future<void> _myPosition() async {
-    var next=nextLocateMode(_locate);
+    // Tesla: no compass, « Cap de route » in its place, without trying.
+    var next=nextLocateMode(_locate,compass:!carMode,course:carMode);
+    if(_course&&next!=LocateMode.course){_course=false;_heading=null;_map.rotate(0);}
     if(next==LocateMode.me){
       if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
       _meMode=MeMode.off;
@@ -1595,14 +1609,31 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       return;
     }
     if(next==LocateMode.compass){
-      if(await _startCompass()){if(mounted)setState((){_meMode=MeMode.compass;_locate=LocateMode.compass;});return;}
-      next=LocateMode.all;
+      if(await _startCompass()){
+        if(mounted)setState((){_meMode=MeMode.compass;_locate=LocateMode.compass;});
+        // No reading within 2 s (browser, car): « Cap de route » instead.
+        Future.delayed(const Duration(seconds:2),(){
+          if(!mounted||_locate!=LocateMode.compass||SharedCompass.instance.heading!=null)return;
+          _stopCompass();
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('map.noCompass'))));
+          _startCourse();
+        });
+        return;
+      }
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('map.noCompass'))));
+      next=LocateMode.course;
     }
+    if(next==LocateMode.course){_startCourse();return;}
     // Every operator framed; the following of the map stops (the map stays
     // put), the dot keeps moving (lot 29).
     if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
     setState((){_meMode=MeMode.off;_locate=LocateMode.all;});
     _fitOperators();
+  }
+  void _startCourse(){
+    setState((){_meMode=MeMode.follow;_locate=LocateMode.course;_course=true;_heading=null;});
+    final me=_me; if(me!=null)_map.move(me,_map.camera.zoom);
+    _startFollowingMe();
   }
   void _startFollowingMe(){
     if(_meSub!=null)return;
@@ -1610,6 +1641,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(!mounted)return;
       setState((){_me=LatLng(p.latitude,p.longitude);_meLost=false;});
       if(_followMe)_map.move(_me!,_map.camera.zoom);
+      _applyCourse(p);
     },onError:(_){if(mounted)setState(()=>_meLost=true);},
       // Positions no longer given (service turned off): grey dot, and the
       // next press on « Ma position » starts again.
@@ -1634,6 +1666,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _stopCompass(){if(_compassOn){_compassOn=false;SharedCompass.instance.removeListener(_onMapCompass);SharedCompass.instance.stop();}_heading=null;}
   void _stopFollowing(){
     if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
+    if(_course){_course=false;_heading=null;_map.rotate(0);}
     // Only the map stops following: the dot keeps moving (lot 29).
     setState((){_meMode=MeMode.off;_locate=LocateMode.idle;});
   }
