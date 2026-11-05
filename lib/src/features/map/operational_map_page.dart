@@ -486,6 +486,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='poi.created'||e.type=='poi.updated'||e.type=='poi.deleted'){unawaited(applyRemotePoi(_pois,widget.store,Map<String,dynamic>.from(e.data),widget.eventId).then((c){if(c&&mounted)setState((){});}));}
     if(e.type=='message.created'){_receiveMessage(e.data);}
     if(e.type=='message.deleted'){unawaited(widget.store.cacheMessage(Map<String,dynamic>.from(e.data)));}
+    if(e.type=='message.updated'){unawaited(widget.store.cacheMessage(Map<String,dynamic>.from(e.data)));}
     if(e.type=='map_feature.upserted'||e.type=='map_feature.deleted'){_applyRemoteFeature(e.data,persist:true);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
     if(e.type=='group.upserted'&&!_sync.isPending('${e.data['id']}')){widget.store.saveGroup(e.data);}
