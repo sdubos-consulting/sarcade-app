@@ -183,11 +183,13 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('diag-line-narrow')), findsNWidgets(lines.length));
     expect(find.text('Renouveler l’accès'), findsOneWidget);
-    // The value of the Cloudflare line under its label, the button under the value.
+    // Lot 29.4: the value of the Cloudflare line on the right of its label,
+    // sharing the width (never a letter per line), the button under the value.
     final label = tester.getRect(find.text(S.t('diag.access')));
     final value = tester.getRect(find.byWidgetPredicate((w) => w is SelectableText && (w.data ?? '').contains('stephane.dubos')));
     final button = tester.getRect(find.text('Renouveler l’accès'));
-    expect(value.top, greaterThanOrEqualTo(label.bottom));
+    expect(value.left, greaterThan(label.right));
+    expect((value.top - label.top).abs(), lessThan(8));
     expect(button.top, greaterThanOrEqualTo(value.bottom));
     expect(value.width, greaterThan(150));
     expectReadable(tester);

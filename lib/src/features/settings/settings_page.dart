@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
 import '../../access/access_session.dart';
@@ -10,7 +9,6 @@ import '../../account/rights.dart' show RightsState;
 import '../../admin/admin_section.dart' show AdminSection;
 import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
-import '../../config/version.dart';
 import 'about_page.dart';
 import 'windows_update.dart' show WindowsUpdates, windowsUpdateAlert;
 import 'notifications_panel.dart';
@@ -554,15 +552,7 @@ class _SettingsPageState extends State<SettingsPage> {
     // Événement, Serveur and Terminal are in Général, not repeated here; they
     // stay in the copied report. Main courante moved to Outils › Au PC
     // (22 h 18, points 6 and 8).
-    // « Copier » at the far right (29 Oct 2026).
-    _row(S.t('diagnostics.version'),child:Builder(builder:(c){
-      final v='SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}';
-      return Row(children:[Expanded(child:SelectableText(v)),
-        IconButton(tooltip:S.t('common.copy'),icon:const Icon(Icons.copy_outlined),onPressed:() async {
-          await Clipboard.setData(ClipboardData(text:v));
-          if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
-        })]);
-    })),
+    // The version is only in « Cet appareil » of the panel (lot 29.4).
     if(VersionStatus.shown)const Padding(padding:EdgeInsets.only(bottom:12),child:VersionStatus()),
     // Battery card (30 Oct 2026, point F).
     _row(S.t('power.consumption'),child:Builder(builder:(_){final p=PowerState.instance;
