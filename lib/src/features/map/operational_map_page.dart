@@ -1691,9 +1691,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Round floating button of 44 px (lot 29, card « boutons ronds plus
   /// petits »); a car screen (Tesla) keeps big ones (56 px).
   Widget _fab(String tag,String tooltip,Widget icon,VoidCallback onPressed,{Color? background,Color? foreground}){
-    final size=mapButtonSize();
+    final size=mapButtonSize(); final scheme=Theme.of(context).colorScheme;
+    // White with a light shadow, dark in dark mode (like Snapchat).
     return withId('map.$tag',SizedBox(width:size,height:size,child:FloatingActionButton(heroTag:tag,tooltip:tooltip,onPressed:onPressed,
-      backgroundColor:background,foregroundColor:foreground,shape:const CircleBorder(),child:IconTheme.merge(data:IconThemeData(size:size>=56?28:22),child:icon))));
+      backgroundColor:background??scheme.surface,foregroundColor:foreground??scheme.onSurface,elevation:2,shape:const CircleBorder(),child:IconTheme.merge(data:IconThemeData(size:size>=56?28:22),child:icon))));
   }
 
   /// Map search (request of 26 Oct 2026): what the device knows, then the
