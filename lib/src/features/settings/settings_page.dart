@@ -35,6 +35,7 @@ import '../../ui/link_status.dart';
 import '../../ui/text_fields_dialog.dart';
 import '../measure/external_maps.dart' show openInChoices, navAppMineKey;
 import '../map/operator_icons.dart';
+import '../profile/profile_photo_row.dart';
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -500,6 +501,9 @@ class _SettingsPageState extends State<SettingsPage> {
       for(final id in operatorIconIds)ChoiceChip(key:ValueKey('icon-$id'),tooltip:S.t('icon.$id'),showCheckmark:false,
         label:Icon(operatorIcon(id),size:20),selected:widget.store!.preference(operatorIconKey)==id,onSelected:(_)=>_setOperatorIcon(id)),
     ])),
+    // Photo in place of the initials (lot 29, group 7), applied at once.
+    if(widget.store!=null&&widget.api!=null&&!widget.firstRun)_row(S.t('profile.photo'),help:S.t('profile.photoHelp'),
+      child:ProfilePhotoRow(api:widget.api!,store:widget.store!,eventId:widget.initial.eventId,deviceId:widget.initial.deviceId)),
     // Language of the person (22 h 17, choice 1), « Langue de l'appareil »
     // by default. Kept on this device: the server has no personal language.
     _row(S.t('settings.languageRow'),child:_compact(DropdownButtonFormField<String>(

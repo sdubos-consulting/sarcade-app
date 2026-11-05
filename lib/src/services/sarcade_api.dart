@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' show LatLng;
 import '../access/access_manager.dart';
@@ -164,6 +165,30 @@ class SarcadeApi {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/messages/$messageId/versions'));
     if(r.statusCode!=200) throw SarcadeHttpException('message_versions',r.statusCode);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Profile photos (lot 29, group 7): who has one and since when.
+  Future<List<Map>> photos(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/photos'));
+    if(r.statusCode!=200) throw SarcadeHttpException('photos',r.statusCode);
+    return (jsonDecode(r.body) as List).whereType<Map>().toList();
+  }
+  /// The photo itself, or null when it was removed meanwhile.
+  Future<Uint8List?> photo(String eventId,String deviceId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/${Uri.encodeComponent(deviceId)}/photo'));
+    if(r.statusCode==404)return null;
+    if(r.statusCode!=200) throw SarcadeHttpException('photo',r.statusCode);
+    return r.bodyBytes;
+  }
+  /// Returns the time kept by the server.
+  Future<String> putPhoto(String eventId,String deviceId,Uint8List bytes) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/${Uri.encodeComponent(deviceId)}/photo'),
+      headers:{'content-type':'application/octet-stream'},body:bytes);
+    if(r.statusCode!=200) throw SarcadeHttpException('photo_put',r.statusCode,r.body);
+    return '${(jsonDecode(r.body) as Map)['updated_at']??''}';
+  }
+  Future<void> deletePhoto(String eventId,String deviceId) async {
+    final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/${Uri.encodeComponent(deviceId)}/photo'));
+    if(r.statusCode!=200&&r.statusCode!=404) throw SarcadeHttpException('photo_delete',r.statusCode,r.body);
   }
   /// Reactions of the event (lot 29, group 7), for a device back online.
   Future<List<Map>> reactions(String eventId) async {
