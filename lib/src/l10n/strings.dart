@@ -138,6 +138,7 @@ const Texts _fr={
   'messages.edit':'Modifier','messages.editTitle':'Modifier le message','messages.edited':'modifié','messages.editTooLate':'Plus modifiable : 15 minutes après l’envoi',
   'messages.editedAfterAck':'modifié après accusé','messages.history':'Historique','messages.historyNow':'Maintenant','messages.historyBefore':'Avant','messages.historyOffline':'Historique indisponible hors ligne',
   'messages.reactions':'Réactions',
+  'messages.typing':'{who} {n#écrit…|écrivent…}',
   'event.quick':'Messages prédéfinis','event.quickHelp':'{n#aucun message propre à l’événement|# message propre à l’événement|# messages propres à l’événement} ; sinon la liste habituelle','event.quickEdit':'Un message par ligne, 20 au plus','event.edit':'Modifier',
   // Lot 24, messages types de la voiture et réglage SATER (settings/car_quick_messages_editor.dart).
   'eventSettings.quickCar.title':'Messages de la voiture','eventSettings.quickCar.intro':'Envoyés d’un appui depuis Android Auto, 4 au plus','eventSettings.quickCar.hint':'Message (40 caractères au plus)',
@@ -828,6 +829,7 @@ const Texts _en={
   'messages.edit':'Edit','messages.editTitle':'Edit the message','messages.edited':'edited','messages.editTooLate':'No longer editable: 15 minutes after sending',
   'messages.editedAfterAck':'edited after acknowledgement','messages.history':'History','messages.historyNow':'Now','messages.historyBefore':'Before','messages.historyOffline':'History not available offline',
   'messages.reactions':'Reactions',
+  'messages.typing':'{who} {n#is|are} typing…',
   'event.quick':'Predefined messages','event.quickHelp':'{n} of the event; else the usual list','event.quickEdit':'One message per line, 20 at most','event.edit':'Edit',
   // Lot 24, quick messages of the car and SATER setting (settings/car_quick_messages_editor.dart).
   'eventSettings.quickCar.title':'Car messages','eventSettings.quickCar.intro':'Sent in one touch from Android Auto, 4 at most','eventSettings.quickCar.hint':'Message (40 characters at most)',

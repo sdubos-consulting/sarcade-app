@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'conversation_row.dart';
 import 'message_edit.dart';
 import 'reactions.dart';
+import 'typing.dart';
+import '../../services/realtime_service.dart' show RealtimeService;
 import '../../ui/menu_entry.dart';
 import '../../ui/keyboard.dart';
 import 'package:image_picker/image_picker.dart';
@@ -87,6 +89,7 @@ class _MessagesPageState extends State<MessagesPage>{
    _selection.addListener(_onSelection);
    Reactions.instance.load(widget.store,widget.eventId);
    Reactions.instance.addListener(_onSelection);
+   Typing.instance.addListener(_onTyping);
    unawaited(_loadReactions());
    _refreshGroups();
    _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
@@ -310,7 +313,7 @@ class _MessagesPageState extends State<MessagesPage>{
 
  /// The round button switches between the microphone and « Envoyer ».
  bool _wasEmpty=true;
- void _onTextChanged(){final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
+ void _onTextChanged(){_signalTyping();final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
 
  late final bool Function() _backFn=_backToList;
  bool _wide=false;
@@ -323,7 +326,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -603,6 +606,31 @@ class _MessagesPageState extends State<MessagesPage>{
    ])));
  }
 
+ // --- « … écrit » (lot 29, group 7): by the real time only ---
+ final _typingSender=TypingSender(); Timer? _typingTimer;
+ static bool _typingConv(String conv)=>conv==allKey||groupOf(conv)!=null||peerOf(conv)!=null;
+ void _signalTyping(){
+   final rt=RealtimeService.active;
+   if(rt==null||!rt.connected||_text.text.trim().isEmpty||!_typingConv(_conv))return;
+   if(!_typingSender.shouldSend(_conv,DateTime.now()))return;
+   rt.send({'type':'typing','data':{'actor_id':widget.actorId,'conversation':typingWire(_conv,widget.actorId)}});
+ }
+ /// Shown at once, hidden again once the signal is too old.
+ void _onTyping(){
+   if(!mounted)return;
+   setState((){});
+   _typingTimer?.cancel();
+   _typingTimer=Timer(typingForget+const Duration(milliseconds:200),(){if(mounted)setState((){});});
+ }
+ Widget? _typingLine(){
+   final who=Typing.instance.who(_conv);
+   if(who.isEmpty)return null;
+   final grey=_night?const Color(0xFF8696A0):const Color(0xFF667781);
+   return Padding(key:const ValueKey('typing-line'),padding:const EdgeInsets.fromLTRB(14,2,14,2),
+     child:Text(S.t('messages.typing',{'n':who.length,'who':who.join(', ')}),maxLines:1,overflow:TextOverflow.ellipsis,
+       style:TextStyle(fontSize:12,fontStyle:FontStyle.italic,color:grey)));
+ }
+
  /// « Supprimer pour moi »: hidden on this device only.
  Future<void> _hideForMe(Iterable<String> ids) async {
    await widget.store.setPreference(hiddenMessagesKey(widget.eventId),formatHidden({..._hidden,...ids}));
@@ -860,8 +888,9 @@ class _MessagesPageState extends State<MessagesPage>{
    ]))));
    // Answering (31 Oct 2026): the quoted message above the field, ✕ to cancel.
    final r=_replyTo;
-   if(r==null)return bar;
-   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[_replyBar(r),bar]);
+   final writing=_typingLine();
+   if(r==null&&writing==null)return bar;
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[?writing,if(r!=null)_replyBar(r),bar]);
  }
 
  Widget _chat(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
