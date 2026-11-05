@@ -69,8 +69,10 @@ void main() {
       child: const Text('open'))))));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    // « Affichage » open by default, the theme at its top.
+    // One panel « Carte » (lot 29.2): base maps, then the theme.
     expect(find.byKey(const ValueKey('display-theme')), findsOneWidget);
+    await tester.ensureVisible(find.text('Nuit'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Nuit'));
     await tester.pumpAndSettle();
     expect(themeMode.value, ThemeMode.dark);
