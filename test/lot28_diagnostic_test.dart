@@ -191,7 +191,9 @@ void main() {
     expect(value.left, greaterThan(label.right));
     expect((value.top - label.top).abs(), lessThan(8));
     expect(button.top, greaterThanOrEqualTo(value.bottom));
-    expect(value.width, greaterThan(150));
+    // Side by side at 320 px, the value keeps three fifths of the line
+    // (about 20 characters): never a letter per line.
+    expect(value.width, greaterThan(110));
     expectReadable(tester);
   });
 
