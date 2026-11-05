@@ -47,6 +47,7 @@ import 'cinematique_touch.dart';
 import 'layer_opacity.dart';
 import 'map_bottom_line.dart';
 import 'map_right_column.dart';
+import 'map_scale.dart';
 import 'sos_placement.dart';
 import '../../modules/adrasec/bearings/bearing_aim.dart';
 import '../../ui/escape_stack.dart';
@@ -1980,16 +1981,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   /// Scale bar (OsmAnd), from the current zoom and latitude.
-  Widget _scaleBar(){
-    final b=scaleBar(_camZoom,_camLat);
-    // Own light background, dark ink, whatever the theme (revue n° 5).
-    const c=mapInkText;
-    return Container(padding:const EdgeInsets.fromLTRB(6,2,6,4),decoration:BoxDecoration(color:mapInkBackground,borderRadius:BorderRadius.circular(6)),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
-        Text(b.label,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:c)),
-        Container(width:b.px,height:6,decoration:const BoxDecoration(border:Border(left:BorderSide(color:c,width:2),right:BorderSide(color:c,width:2),bottom:BorderSide(color:c,width:2)))),
-      ]));
-  }
+  /// Scale like Google Maps (lot 29.2, map_scale.dart).
+  Widget _scaleBar()=>FadingScale(zoom:_camZoom,latitude:_camLat);
 
   // --- Stations V2: freshness, source, APRS symbols, favourites, trace, proximity ---
   bool _withoutInternetOnly=false;
@@ -2922,7 +2915,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         // Scale first: behind every panel, never over a button (decision of
         // 30 Oct 2026, 16 h 25; revue n° 14, 18, 31); above the ⓘ.
         // Phone: on the line of « Suivi de position » (map_bottom_line.dart).
-        if(!compact||_bearings.taking||selected!=null)Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
+        // Scale at the bottom right, left of the round buttons (lot 29.2).
+        if(!compact||_bearings.taking||selected!=null)Positioned(right:12+mapColumnWidth+8,bottom:mapScaleBottom(compact:compact),child:_scaleBar()),
         MeshCoreNodeOverlay(map:_map,me:_me,compact:compact),
         MeshtasticNodeOverlay(map:_map,me:_me,compact:compact), // lot 28
         if(_inDistress)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:Material(color:Theme.of(context).colorScheme.error,
@@ -2998,7 +2992,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           panel:_measure.target!=null||_nav.state!=NavState.idle||_nav.notice!=null,
           rightSheet:!compact&&_bearings.taking&&_aim!=null?bearingSheetWidth:0,child:_mapButtons()),
         // Phone: « Suivi actif » just above the tab bar, the scale on its right.
-        if(compact&&!_bearings.taking&&selected==null)phoneBottomLine(badge:_trackingBadge(),scale:IgnorePointer(child:_scaleBar())),
+        if(compact&&!_bearings.taking&&selected==null)phoneBottomLine(badge:_trackingBadge(),scale:_scaleBar()),
         if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:bearingSheetWidth,child:_bearingTakeSheet())
         else if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
