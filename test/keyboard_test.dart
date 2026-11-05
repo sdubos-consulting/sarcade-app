@@ -1,5 +1,6 @@
 // Lot 29 (5 Nov 2026): a touch outside a text field closes the keyboard on
 // phones too.
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sarcade_app/src/ui/keyboard.dart';
