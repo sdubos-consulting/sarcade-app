@@ -16,15 +16,15 @@ class SarcadeMessage {
  /// Quoted message (« Répondre », 31 Oct 2026).
  final String? replyTo;
  /// Changed by its author within 15 min (lot 29, group 7): « modifié ».
- final bool edited;
- const SarcadeMessage({this.replyTo,required this.id,required this.eventId,required this.senderId,required this.recipientIds,required this.priority,required this.body,required this.createdAt,this.attachments=const [],this.deleted=false,this.deletedByPco=false,this.edited=false});
+ final bool edited; final DateTime? editedAt;
+ const SarcadeMessage({this.replyTo,required this.id,required this.eventId,required this.senderId,required this.recipientIds,required this.priority,required this.body,required this.createdAt,this.attachments=const [],this.deleted=false,this.deletedByPco=false,this.edited=false,this.editedAt});
  factory SarcadeMessage.fromJson(Map<String,dynamic> j)=>SarcadeMessage(id:j['id'],eventId:j['event_id'],senderId:j['sender_id'],recipientIds:List<String>.from(j['recipient_ids']??[]),priority:j['priority']??'routine',body:(j['body']??'') as String,createdAt:DateTime.parse(j['created_at']),
    attachments:[for(final a in (j['attachments'] as List?)??const []) if(a is Map) SarcadeAttachment.fromJson(a)],
-   deleted:j['deleted']==true,deletedByPco:j['deleted_by_pco']==true,edited:j['edited']==true,
+   deleted:j['deleted']==true,deletedByPco:j['deleted_by_pco']==true,edited:j['edited']==true,editedAt:j['edited_at'] is String?DateTime.tryParse(j['edited_at'] as String):null,
    replyTo:j['reply_to'] is String&&(j['reply_to'] as String).isNotEmpty?j['reply_to'] as String:null);
  Map<String,dynamic> toJson()=>{'id':id,'event_id':eventId,'sender_id':senderId,'recipient_ids':recipientIds,'priority':priority,'body':body,'created_at':createdAt.toUtc().toIso8601String(),
    if(attachments.isNotEmpty)'attachments':[for(final a in attachments)a.toJson()],
-   if(deleted)'deleted':true,if(deletedByPco)'deleted_by_pco':true,if(replyTo!=null)'reply_to':replyTo,if(edited)'edited':true};
+   if(deleted)'deleted':true,if(deletedByPco)'deleted_by_pco':true,if(replyTo!=null)'reply_to':replyTo,if(edited)'edited':true,if(editedAt!=null)'edited_at':editedAt!.toUtc().toIso8601String()};
 }
 class SarcadeAck {
  final String id,eventId,messageId,actorId,status; final DateTime time;

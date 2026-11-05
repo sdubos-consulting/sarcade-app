@@ -38,4 +38,17 @@ void main(){
     expect(mergeCachedMessage(null,{'id':'m1','body':'x','edited':true}),isNull);
     expect(mergeCachedMessage({..._m().toJson(),'deleted':true,'body':''},{'id':'m1','body':'x','edited':true}),isNull);
   });
+  test('« modifié après accusé » when an acknowledgement came before',(){
+    final m=SarcadeMessage.fromJson({..._m().toJson(),'edited':true,'edited_at':'2026-11-05T20:05:00Z'});
+    SarcadeAck ack(String who,int min)=>SarcadeAck(id:'a$who',eventId:'e1',messageId:'m1',actorId:who,status:'read',time:DateTime.utc(2026,11,5,20,min));
+    expect(editedAfterAck(m,[ack('TEL-02',3)]),isTrue);
+    expect(editedAfterAck(m,[ack('TEL-02',8)]),isFalse);
+    expect(editedAfterAck(m,[ack('TEL-01',3)]),isFalse);
+    expect(editedAfterAck(_m(),[ack('TEL-02',3)]),isFalse);
+  });
+  test('« Historique »: versions before, then the text now',(){
+    final l=versionsOf({'body':'C','edited_at':'2026-11-05T20:09:00Z','versions':[{'body':'A','at':'2026-11-05T20:00:00Z'},{'body':'B','at':'2026-11-05T20:05:00Z'}]});
+    expect(l.map((v)=>v.body),['A','B','C']);
+    expect(l.last.at,DateTime.utc(2026,11,5,20,9));
+  });
 }

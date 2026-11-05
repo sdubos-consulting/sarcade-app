@@ -27,7 +27,26 @@ Map<String,dynamic> editPayload(SarcadeMessage m,String body,String actorId)=>
   {'id':m.id,'event_id':m.eventId,'body':body,'edited_by':actorId};
 
 /// Shown at once on this device, before the server answers.
-Map<String,dynamic> editedLocally(SarcadeMessage m,String body)=>{...m.toJson(),'body':body,'edited':true};
+Map<String,dynamic> editedLocally(SarcadeMessage m,String body,{DateTime? now})=>
+  {...m.toJson(),'body':body,'edited':true,'edited_at':(now??DateTime.now()).toUtc().toIso8601String()};
+
+/// « modifié après accusé »: an acknowledgement given before the change
+/// stays, the bubble says so.
+bool editedAfterAck(SarcadeMessage m,List<SarcadeAck> acks){
+  final at=m.editedAt;
+  if(!m.edited||at==null)return false;
+  return acks.any((a)=>a.actorId!=m.senderId&&a.time.isBefore(at));
+}
+
+/// « Historique » (PCO): the versions before, oldest first, then the text now.
+List<({String body,DateTime? at})> versionsOf(Map j){
+  final out=<({String body,DateTime? at})>[];
+  for(final v in (j['versions'] as List?)??const []){
+    if(v is Map)out.add((body:'${v['body']??''}',at:DateTime.tryParse('${v['at']??''}')));
+  }
+  out.add((body:'${j['body']??''}',at:DateTime.tryParse('${j['edited_at']??''}')));
+  return out;
+}
 
 /// The text in a dialog; the controller lives as long as the dialog.
 class EditMessageDialog extends StatefulWidget {
