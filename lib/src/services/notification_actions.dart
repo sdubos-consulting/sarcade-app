@@ -29,11 +29,13 @@ const soundDefaults={'routine':soundNormal,'urgent':soundNormal,'immediate':soun
 bool isSosBody(String body)=>body.trimLeft().startsWith('🆘');
 
 /// Sound applied to a notification; an unknown preference keeps the default.
-String soundFor(String priority,Map<String,String> prefs,{bool sos=false}){
+/// A mention « @ » of the operator rings even in Routine (lot 29, group 7).
+String soundFor(String priority,Map<String,String> prefs,{bool sos=false,bool mention=false}){
   if(sos)return soundAlarm;
   final p=soundChoices.containsKey(priority)?priority:'routine';
   final v=prefs[p];
-  return v!=null&&soundChoices[p]!.contains(v)?v:soundDefaults[p]!;
+  final s=v!=null&&soundChoices[p]!.contains(v)?v:soundDefaults[p]!;
+  return mention&&(s==soundSilent||s==soundDiscreet)?soundNormal:s;
 }
 
 /// Buttons shown on the notification of a message, in order.
