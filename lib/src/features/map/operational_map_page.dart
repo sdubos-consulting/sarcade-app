@@ -47,6 +47,7 @@ import 'cinematique_touch.dart';
 import 'layer_opacity.dart';
 import 'map_bottom_line.dart';
 import 'map_right_column.dart';
+import 'operators_frame.dart';
 import 'sos_placement.dart';
 import '../../modules/adrasec/bearings/bearing_aim.dart';
 import '../../ui/escape_stack.dart';
@@ -1320,13 +1321,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   void _openTracking()=>showTrackingSheet(context,tracking:_tracking,settings:_ops.settings,onChange:(enabled,interval)=>_setTracking(enabled,interval));
 
+  /// « Tous les opérateurs » (lot 29.2, operators_frame.dart): the
+  /// operators within 50 km of me (of the centre of the map without my
+  /// position); « n hors zone » shows all of them on a touch.
   void _fitOperators(){
-    if(_positions.isEmpty)return;
-    final pts=_positions.values.map((p)=>LatLng(p.lat,p.lon)).toList();
+    LatLng centre; try{centre=_me??_map.camera.center;}catch(_){return;}
+    final radius=frameRadiusFrom(widget.store.preference('fit_radius_km'));
+    final f=operatorsFrame(_positions.values,centre,DateTime.now().toUtc(),radiusKm:radius);
+    _fitPoints(f.inside.isEmpty?radiusBox(centre,radius):f.inside);
+    if(f.outside>0&&mounted){
+      ScaffoldMessenger.of(context)..hideCurrentSnackBar()..showSnackBar(SnackBar(duration:const Duration(seconds:4),
+        content:Text(S.t('map.outsideZone').replaceAll('{n}','${f.outside}')),
+        action:SnackBarAction(label:S.t('map.showAll'),onPressed:()=>_fitPoints(f.all))));
+    }
+  }
+  void _fitPoints(List<LatLng> pts){
+    if(pts.isEmpty)return;
     if(pts.length==1){_map.move(pts.first,15);return;}
-    var minLat=pts.first.latitude,maxLat=pts.first.latitude,minLon=pts.first.longitude,maxLon=pts.first.longitude;
-    for(final p in pts){if(p.latitude<minLat)minLat=p.latitude;if(p.latitude>maxLat)maxLat=p.latitude;if(p.longitude<minLon)minLon=p.longitude;if(p.longitude>maxLon)maxLon=p.longitude;}
-    _map.fitCamera(CameraFit.bounds(bounds:LatLngBounds(LatLng(minLat,minLon),LatLng(maxLat,maxLon)),padding:const EdgeInsets.all(90),maxZoom:16));
+    _map.fitCamera(CameraFit.coordinates(coordinates:pts,padding:const EdgeInsets.all(90),maxZoom:16));
   }
   /// Touch on an operator: pins his trace; a second touch removes it.
   void _tapStation(SarcadePosition p){
