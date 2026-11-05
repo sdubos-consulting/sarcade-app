@@ -173,3 +173,41 @@ List<DiagLevelLine> versionLines(String block,Map<String,dynamic>? server,{Strin
       },state:switch(match){'same'=>'green','different'=>'orange',_=>null}),
   ];
 }
+
+/// Section « SIEM » of the administrator (card « Diagnostic : ligne SIEM »,
+/// lot 29, group 8): state, destination, entries sent and waiting, last
+/// error. Orange when entries wait for more than 15 min, red after 24 h
+/// (the colour computed by the server).
+List<DiagLevelLine> siemLines(Map<String,dynamic> m){
+  final block=S.t('diag.siem');
+  final st='${m['state']??'off'}';
+  final tone=m['tone'] as String?;
+  final waiting=(m['waiting'] as num?)?.toInt()??0;
+  final dest=m['host']!=null
+    ?S.t('diag.siemDest',{'host':'${m['host']}:${m['port']??''}','tls':S.t(m['tls']==true?'diag.siemTlsOn':'diag.siemTlsOff'),'format':'${m['format']??''}'})
+    :m['file']==true?S.t('diag.siemFile',{'format':'${m['format']??''}'}):'—';
+  return [
+    (block:block,label:S.t('diag.siemState'),value:S.t('diag.siemState.$st'),state:st=='off'?'off':tone??(st=='connected'?'green':'orange')),
+    if(st!='off')...[
+      (block:block,label:S.t('diag.siemDestination'),value:dest,state:null),
+      (block:block,label:S.t('diag.siemSent'),value:'${m['sent']??0}',state:null),
+      (block:block,label:S.t('diag.siemWaiting'),
+        value:waiting==0?'0':S.t('diag.siemWaitingSince',{'n':waiting,'when':diagWhen(m['oldest_waiting_at'])}),
+        state:waiting==0?'green':tone),
+      (block:block,label:S.t('diag.siemLastError'),
+        value:m['last_error']==null?S.t('diag.noFailure'):'${diagWhen(m['last_error_at'])} · ${m['last_error']}',
+        state:st=='unreachable'?'orange':null),
+    ],
+  ];
+}
+
+/// « Main courante intègre », or the entry where it breaks (card « Main
+/// courante infalsifiable », lot 29, group 8).
+DiagLevelLine logbookLine(Map<String,dynamic> v){
+  final block=S.t('diag.logbook');
+  if(v['ok']==true){
+    return (block:block,label:S.t('diag.logbookChain'),
+      value:S.t('diag.logbookOk',{'n':(v['chained'] as num?)?.toInt()??0,'before':(v['before_chaining'] as num?)?.toInt()??0}),state:'green');
+  }
+  return (block:block,label:S.t('diag.logbookChain'),value:S.t('diag.logbookBroken',{'seq':'${v['broken_at']??'?'}'}),state:'red');
+}
