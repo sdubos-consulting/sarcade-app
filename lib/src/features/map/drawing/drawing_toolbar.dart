@@ -73,7 +73,7 @@ class DrawingToolbar extends StatelessWidget {
       for(final k in drawingPaletteOrder)Padding(
         padding:const EdgeInsets.symmetric(horizontal:2),
         // Stable identifier for the CI journeys (card L1, lot 17).
-        child:withId('map.draw-${k.name}',_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:()=>c.tool==k?onClose():c.selectTool(k))),
+        child:withId('map.draw-${k.name}',_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:(){if(c.tool==k){onClose();}else{c.selectTool(k);}})),
       ),
     ];
     // Two rows everywhere, five columns (card « palette d'outils
