@@ -1331,7 +1331,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _fitPoints(f.inside.isEmpty?radiusBox(centre,radius):f.inside);
     if(f.outside>0&&mounted){
       ScaffoldMessenger.of(context)..hideCurrentSnackBar()..showSnackBar(SnackBar(duration:const Duration(seconds:4),
-        content:Text(S.t('map.outsideZone').replaceAll('{n}','${f.outside}')),
+        content:Text(S.t('map.outsideZone',{'n':f.outside})),
         action:SnackBarAction(label:S.t('map.showAll'),onPressed:()=>_fitPoints(f.all))));
     }
   }
