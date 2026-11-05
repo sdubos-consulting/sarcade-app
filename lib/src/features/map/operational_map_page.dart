@@ -3,10 +3,11 @@ import 'dart:convert';
 import 'dart:math' as math;
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
-import '../messages/conversations.dart' show avatarInitials;
+import '../messages/conversations.dart' show avatarInitials, conversationOf;
 import '../messages/reactions.dart' show Reactions;
 import '../messages/typing.dart' show Typing;
 import '../messages/important.dart' show Important;
+import '../messages/mute.dart' show Mutes, ringsThroughMute;
 import '../profile/profile_photo.dart' show ProfilePhotos;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -564,7 +565,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       }
       // Realtime and synchronisation may both bring the message: only the
       // first arrival notifies; an old message caught up later stays silent.
-      if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
+      // « Sourdine » (lot 29, group 7): silent, except distress, IMMÉDIAT and orders.
+      Mutes.instance.load(widget.store,widget.eventId);
+      final muted=Mutes.instance.muted(conversationOf(m,widget.deviceId,groups))&&!ringsThroughMute(m);
+      if(!muted&&shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
         // Conversation format for Android Auto (lot 1b): the channel by its name.
         final gid=m.recipientIds.where((r)=>r.startsWith('group:')).map((r)=>r.substring(6)).firstOrNull;
         final g=gid==null?null:groups[gid];
