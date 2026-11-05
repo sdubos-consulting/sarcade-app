@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'conversation_row.dart';
+import '../../ui/menu_entry.dart';
 import '../../ui/keyboard.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -861,8 +862,11 @@ class _MessagesPageState extends State<MessagesPage>{
      final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
      // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
      // ADRASEC channel models only when the event has the module.
-     final adrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec')?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
-       PopupMenuItem(value:'adrasec',child:Text(S.t('groups.addAdrasec')))]):null;
+     final adrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec')?PopupMenuButton<String>(key:const ValueKey('messages-more'),icon:const Icon(Icons.more_horiz),tooltip:S.t('messages.more'),
+       onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
+       // Round coloured icon, short label, detail under it (lot 29.3).
+       PopupMenuItem(value:'adrasec',child:menuEntry(context,icon:Icons.shield_outlined,color:const Color(0xFF1565C0),
+         title:S.t('groups.addAdrasecShort'),detail:S.t('groups.addAdrasecDetail')))]):null;
      final editGroup=group!=null&&group.canManage(widget.actorId)
        ?RoundIconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:Icons.edit_outlined):null;
      final pending=_pendingPill();

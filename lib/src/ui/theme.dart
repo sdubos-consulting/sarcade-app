@@ -81,6 +81,10 @@ ThemeData _base(ColorScheme scheme){
   textButtonTheme:TextButtonThemeData(style:TextButton.styleFrom(foregroundColor:scheme.primary)),
   segmentedButtonTheme:SegmentedButtonThemeData(style:SegmentedButton.styleFrom(selectedBackgroundColor:scheme.secondaryContainer,selectedForegroundColor:scheme.onSecondaryContainer)),
   tabBarTheme:TabBarThemeData(labelColor:scheme.primary,indicatorColor:scheme.primary,unselectedLabelColor:scheme.onSurfaceVariant),
+  // « … » menus (card « menu … plus soigné », lot 29.3): round corners,
+  // a light shadow, under their button.
+  popupMenuTheme:PopupMenuThemeData(shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(12)),elevation:3,color:scheme.surface,
+    surfaceTintColor:Colors.transparent,position:PopupMenuPosition.under),
   badgeTheme:const BadgeThemeData(backgroundColor:Color(0xFFD93025)),
   floatingActionButtonTheme:FloatingActionButtonThemeData(backgroundColor:day?Colors.white:scheme.surfaceContainerHigh,foregroundColor:scheme.onSurface,
     shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14),side:BorderSide(color:scheme.outlineVariant))),
