@@ -8,8 +8,10 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../l10n/strings.dart';
+import '../../services/location_service.dart';
 import '../../ui/link_status.dart';
 import '../../ui/overlay_page.dart';
 import '../lora/lora_battery_view.dart' show LoraBatteryThresholdsTile;
@@ -70,65 +72,102 @@ class MeshCorePage extends StatefulWidget {
 
 class _MeshCorePageState extends State<MeshCorePage> {
   final link=MeshCoreLink.instance;
+  LatLng? _me;
   // Lot 25: one bar on this screen, the one above the map hides meanwhile.
-  @override void initState(){super.initState();meshCoreScreensOpen.value++;link.addListener(_changed);unawaited(link.refresh());}
+  @override void initState(){super.initState();meshCoreScreensOpen.value++;link.addListener(_changed);unawaited(link.refresh());unawaited(_locate());}
   @override void dispose(){meshCoreScreensOpen.value--;link.removeListener(_changed);super.dispose();}
   void _changed(){if(mounted)setState((){});}
+  /// My position for « 10 km N » and the order by distance (lot 29.5).
+  Future<void> _locate() async {
+    final p=await LocationService().current();
+    if(p!=null&&mounted)setState(()=>_me=LatLng(p.latitude,p.longitude));
+  }
 
   Widget _metric(String label,String value)=>Padding(padding:const EdgeInsets.symmetric(vertical:3),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
     SizedBox(width:150,child:Text(label,style:Theme.of(context).textTheme.bodySmall)),Expanded(child:Text(value))]));
 
+  /// The detail of the module, opened from its summary line.
+  void _moduleDetail(){
+    final now=DateTime.now();
+    showModalBottomSheet<void>(context:context,showDragHandle:true,isScrollControlled:true,builder:(c)=>SafeArea(child:ListenableBuilder(listenable:link,
+      builder:(c,_)=>ListView(shrinkWrap:true,padding:const EdgeInsets.fromLTRB(16,0,16,16),children:[
+        Text(link.info.name??link.deviceName??link.deviceId??'',style:Theme.of(c).textTheme.titleMedium),
+        _metric(S.t('mesh.field.state'),meshCoreStateText(link.state)),
+        for(final (k,v) in meshCoreLines(link.info))if(k!='name')_metric(S.t('mesh.field.$k'),v),
+        if(link.linkRssi!=null)_metric(S.t('mesh.field.link'),'${link.linkRssi} dBm'),
+        if(link.connectedSince!=null)_metric(S.t('mesh.field.since'),meshCoreAge(link.connectedSince,now)),
+        _metric(S.t('mesh.field.frames'),S.t('mesh.framesValue',{'in':'${link.framesIn}','out':'${link.framesOut}'})),
+        if(link.lastFrameAt!=null)_metric(S.t('mesh.field.lastFrame'),meshCoreAge(link.lastFrameAt,now)),
+        // Lot 19: « Déconnecter » / « Se connecter ».
+        const Padding(padding:EdgeInsets.only(top:10),child:Align(alignment:Alignment.centerLeft,child:MeshCoreConnectButton())),
+      ]))));
+  }
+
+  /// « FR78 T1000e · connecté · -72 dBm › » on one coloured line.
+  Widget _moduleLine(){
+    final t=Theme.of(context);
+    final ok=link.state==MeshCoreState.connected;
+    final color=ok?Colors.green.shade700:switch(link.state){MeshCoreState.none||MeshCoreState.disconnected=>Colors.grey,MeshCoreState.failed||MeshCoreState.unavailable=>Colors.red.shade700,_=>Colors.orange.shade800};
+    final text=[link.info.name??link.deviceName??link.deviceId??'',meshCoreStateText(link.state),if(link.linkRssi!=null)'${link.linkRssi} dBm'].join(' · ');
+    return Card(key:const ValueKey('mesh-module-line'),elevation:0,color:color.withValues(alpha:0.12),margin:const EdgeInsets.symmetric(vertical:4),
+      child:ListTile(dense:true,leading:Icon(Icons.circle,size:12,color:color),
+        title:Text(text,maxLines:1,overflow:TextOverflow.ellipsis,style:t.textTheme.bodyMedium?.copyWith(fontWeight:FontWeight.w600)),
+        trailing:const Icon(Icons.chevron_right),onTap:_moduleDetail));
+  }
+
+  /// One node on two lines (lot 29.5): name, then « type · 10 km N · age »;
+  /// the route only when known; message and map as icons.
+  Widget _node(MeshCoreContact n,DateTime now){
+    final me=_me;
+    final rel=me!=null&&n.lat!=null&&n.lon!=null?meshCoreRelative(me.latitude,me.longitude,n.lat!,n.lon!):null;
+    return ListTile(key:ValueKey('mesh-node-${n.shortKey}'),dense:true,contentPadding:const EdgeInsets.symmetric(horizontal:4),
+      leading:Icon(meshCoreKindIcon(n.kind)),
+      title:Text(n.name.isEmpty?n.shortKey:n.name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:15,fontWeight:FontWeight.w600)),
+      subtitle:Text([S.t('mesh.kind.${n.kind}'),?rel,if(n.hops!=null)meshCoreHops(n.hops),meshCoreAge(n.lastAdvert,now)].join(' · '),maxLines:1,overflow:TextOverflow.ellipsis),
+      trailing:Row(mainAxisSize:MainAxisSize.min,children:[
+        if(meshCoreWritable(n))IconButton(key:ValueKey('mesh-write-${n.shortKey}'),tooltip:S.t('mesh.write'),visualDensity:VisualDensity.compact,
+          onPressed:()=>unawaited(openMeshCoreChat(context,n.key,n.name)),icon:const Icon(Icons.chat_bubble_outline)),
+        if(meshCoreHasPosition(n)&&widget.onShowOnMap!=null)IconButton(key:ValueKey('mesh-see-${n.shortKey}'),tooltip:S.t('mesh.seeOnMap'),visualDensity:VisualDensity.compact,
+          onPressed:()=>widget.onShowOnMap!(n),icon:const Icon(Icons.map_outlined)),
+      ]),
+      onTap:meshCoreHasPosition(n)&&widget.onShowOnMap!=null?()=>widget.onShowOnMap!(n):null);
+  }
+
   @override Widget build(BuildContext context){
     final t=Theme.of(context), now=DateTime.now();
     final nodes=link.contacts;
+    final connected=link.state==MeshCoreState.connected;
     return Scaffold(
       appBar:LinkedAppBar(title:Text(S.t('mesh.tool')),actions:[
-        IconButton(tooltip:S.t('mesh.refresh'),onPressed:link.state==MeshCoreState.connected?()=>unawaited(link.refresh()):null,icon:const Icon(Icons.refresh)),
-        // Everything about the module in one place (1 Nov 2026, 8 h 17):
-        // search, choose, journal, forget.
-        TextButton.icon(key:const ValueKey('meshcore-diagnostic'),onPressed:()=>openMeshCoreDiagnostic(context),
-          icon:const Icon(Icons.troubleshoot),label:Text(S.t('mesh.diagnostic'))),
+        // Diagnostic and refresh in the ⋮ (lot 29.5).
+        PopupMenuButton<String>(key:const ValueKey('meshcore-menu'),onSelected:(v){
+            if(v=='diag')unawaited(openMeshCoreDiagnostic(context));
+            if(v=='refresh'&&connected)unawaited(link.refresh());
+          },
+          itemBuilder:(_)=>[
+            PopupMenuItem(key:const ValueKey('meshcore-diagnostic'),value:'diag',child:ListTile(leading:const Icon(Icons.troubleshoot),title:Text(S.t('mesh.diagnostic')))),
+            PopupMenuItem(value:'refresh',enabled:connected,child:ListTile(leading:const Icon(Icons.refresh),title:Text(S.t('mesh.refresh')))),
+          ]),
       ]),
-      body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),child:ListView(padding:const EdgeInsets.all(16),children:[
+      body:RefreshIndicator(onRefresh:()async{if(connected)await link.refresh();},child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),
+        child:ListView(physics:const AlwaysScrollableScrollPhysics(),padding:const EdgeInsets.fromLTRB(12,8,12,16),children:[
         // Web (lot 17): the browser waits for a click to join the module.
         const MeshCoreReconnectBanner(inScreen:true),
-        // Lot 21: a link to Outils › Télécommandes.
-        const MeshCoreRemotesTile(),
+        // « Télécommandes » left MeshCore: a tool of its own (lot 29.5).
         if(!link.remembered)...[
           Text(S.t('mesh.noModule')),
           const MeshCoreLinkCard(),
-        ]else Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Text(link.info.name??link.deviceName??link.deviceId??'',style:t.textTheme.titleMedium),
-          _metric(S.t('mesh.field.state'),meshCoreStateText(link.state)),
-          for(final (k,v) in meshCoreLines(link.info))if(k!='name')_metric(S.t('mesh.field.$k'),v),
-          if(link.linkRssi!=null)_metric(S.t('mesh.field.link'),'${link.linkRssi} dBm'),
-          if(link.connectedSince!=null)_metric(S.t('mesh.field.since'),meshCoreAge(link.connectedSince,now)),
-          _metric(S.t('mesh.field.frames'),S.t('mesh.framesValue',{'in':'${link.framesIn}','out':'${link.framesOut}'})),
-          if(link.lastFrameAt!=null)_metric(S.t('mesh.field.lastFrame'),meshCoreAge(link.lastFrameAt,now)),
-          // Lot 19: « Déconnecter » / « Se connecter ».
-          const Padding(padding:EdgeInsets.only(top:10),child:Align(alignment:Alignment.centerLeft,child:MeshCoreConnectButton())),
-        ]))),
+        ]else _moduleLine(),
         if(link.remembered)...[
-          // Lot 17: the nodes on the map, also under Fond et affichage.
-          SwitchListTile(key:const ValueKey('mesh-show-map'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
+          // Lot 17: the nodes on the map, also under the panel « Carte ».
+          SwitchListTile(key:const ValueKey('mesh-show-map'),dense:true,contentPadding:const EdgeInsets.symmetric(horizontal:4),
             title:Text(S.t('mesh.showOnMap')),value:link.showOnMap,onChanged:(v)=>unawaited(link.setShowOnMap(v))),
           // Lot 25: thresholds of the low battery alert.
           const LoraBatteryThresholdsTile(),
-          // Lot 19: search field and filters above the nodes.
-          MeshCoreNodeList(nodes:nodes,initialQuery:meshCoreFocusQuery(widget.focus),tile:(n)=>ListTile(key:ValueKey('mesh-node-${n.shortKey}'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
-            leading:Icon(meshCoreKindIcon(n.kind)),
-            title:Text(n.name.isEmpty?n.shortKey:n.name),
-            subtitle:Text([S.t('mesh.kind.${n.kind}'),meshCoreHops(n.hops),meshCoreAge(n.lastAdvert,now),
-              n.lat!=null?'${n.lat!.toStringAsFixed(4)}, ${n.lon!.toStringAsFixed(4)}':S.t('mesh.noPosition')].join(' · ')),
-            trailing:Row(mainAxisSize:MainAxisSize.min,children:[
-              if(meshCoreWritable(n))TextButton(key:ValueKey('mesh-write-${n.shortKey}'),
-                onPressed:()=>unawaited(openMeshCoreChat(context,n.key,n.name)),child:Text(S.t('mesh.write'))),
-              if(meshCoreHasPosition(n)&&widget.onShowOnMap!=null)TextButton(key:ValueKey('mesh-see-${n.shortKey}'),
-                onPressed:()=>widget.onShowOnMap!(n),child:Text(S.t('mesh.seeOnMap'))),
-            ]))),
+          MeshCoreNodeList(nodes:nodes,me:_me,initialQuery:meshCoreFocusQuery(widget.focus),tile:(n)=>_node(n,now)),
           Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.local'),style:t.textTheme.bodySmall)),
         ],
-      ]))),
+      ]))))),
     );
   }
 }
