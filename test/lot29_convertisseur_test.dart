@@ -13,7 +13,7 @@ void main(){
     await t.pumpWidget(MaterialApp(home:CoordinateConverterPage(initial:const LatLng(48.8,2.13),
       describe:(p) async {asked.add(p);return '850 m au nord-est de Marnes-la-Coquette';},
       actions:ConverterActions(message:(_){},show:(_){}))));
-    expect(find.text('Coordonnées'),findsOneWidget);
+    expect(find.descendant(of:find.byType(AppBar),matching:find.text('Coordonnées')),findsOneWidget);
     expect(find.byKey(const ValueKey('converter-input')),findsOneWidget);
     expect(find.byKey(const ValueKey('converter-paste')),findsNothing);
     expect(find.text('…'),findsOneWidget,reason:'« En clair » waits 0.5 s');
