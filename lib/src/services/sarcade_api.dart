@@ -159,6 +159,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('messages_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>SarcadeMessage.fromJson(e)).toList();
   }
+  /// Reactions of the event (lot 29, group 7), for a device back online.
+  Future<List<Map>> reactions(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/reactions'));
+    if(r.statusCode!=200) throw SarcadeHttpException('reactions',r.statusCode);
+    return (jsonDecode(r.body) as List).whereType<Map>().toList();
+  }
   Future<List<LogbookEntry>> logbook(String eventId,{int after=0}) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook?after=$after'));
     if(r.statusCode!=200) throw Exception('logbook_http_${r.statusCode}');
