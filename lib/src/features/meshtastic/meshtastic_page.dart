@@ -60,49 +60,77 @@ class _MeshtasticPageState extends State<MeshtasticPage> {
   Widget _metric(String label,String value)=>Padding(padding:const EdgeInsets.symmetric(vertical:3),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
     SizedBox(width:150,child:Text(label,style:Theme.of(context).textTheme.bodySmall)),Expanded(child:Text(value))]));
 
+  /// The module on one coloured line (card « MeshCore (et Meshtastic) :
+  /// écran compact », lot 29.5); its detail in a sheet.
+  Widget _moduleLine(){
+    final t=Theme.of(context); final me=link.me;
+    final ok=link.connected;
+    final color=ok?Colors.green.shade700:switch(link.state){LoraLinkState.none||LoraLinkState.disconnected=>Colors.grey,
+      LoraLinkState.failed||LoraLinkState.unavailable=>Colors.red.shade700,_=>Colors.orange.shade800};
+    final name=me!=null&&me.longName.isNotEmpty?me.longName:link.deviceName??link.deviceId??'';
+    return Card(key:const ValueKey('meshtastic-module'),elevation:0,color:color.withValues(alpha:0.12),margin:const EdgeInsets.symmetric(vertical:4),
+      child:ListTile(dense:true,leading:Icon(Icons.circle,size:12,color:color),
+        title:Text([name,loraStateText(link.state),if(link.linkRssi!=null)'${link.linkRssi} dBm'].join(' · '),maxLines:1,overflow:TextOverflow.ellipsis,
+          style:t.textTheme.bodyMedium?.copyWith(fontWeight:FontWeight.w600)),
+        trailing:const Icon(Icons.chevron_right),onTap:_moduleDetail));
+  }
+
+  void _moduleDetail(){
+    showModalBottomSheet<void>(context:context,showDragHandle:true,isScrollControlled:true,builder:(c)=>SafeArea(child:ListenableBuilder(listenable:link,
+      builder:(c,_){final me=link.me;final now=DateTime.now();
+        return ListView(shrinkWrap:true,padding:const EdgeInsets.fromLTRB(16,0,16,16),children:[
+        Text(me!=null&&me.longName.isNotEmpty?me.longName:link.deviceName??link.deviceId??'',style:Theme.of(c).textTheme.titleMedium),
+        for(final (k,v) in meshtasticModuleLines(link,now))_metric(k,v),
+        const Padding(padding:EdgeInsets.only(top:10),child:Align(alignment:Alignment.centerLeft,child:MeshtasticConnectButton())),
+      ]);})));
+  }
+
   @override Widget build(BuildContext context){
     final t=Theme.of(context), now=DateTime.now();
-    final me=link.me;
     return Scaffold(
       appBar:LinkedAppBar(title:Text(S.t('meshtastic.tool')),actions:[
-        IconButton(tooltip:S.t('mesh.refresh'),onPressed:link.connected?()=>unawaited(link.refresh()):null,icon:const Icon(Icons.refresh)),
-        TextButton.icon(key:const ValueKey('meshtastic-diagnostic'),onPressed:()=>openMeshtasticDiagnostic(context),
-          icon:const Icon(Icons.troubleshoot),label:Text(S.t('mesh.diagnostic'))),
+        // Diagnostic and refresh in the ⋮ (lot 29.5).
+        PopupMenuButton<String>(key:const ValueKey('meshtastic-menu'),onSelected:(v){
+            if(v=='diag')unawaited(openMeshtasticDiagnostic(context));
+            if(v=='refresh'&&link.connected)unawaited(link.refresh());
+          },
+          itemBuilder:(_)=>[
+            PopupMenuItem(key:const ValueKey('meshtastic-diagnostic'),value:'diag',child:ListTile(leading:const Icon(Icons.troubleshoot),title:Text(S.t('mesh.diagnostic')))),
+            PopupMenuItem(value:'refresh',enabled:link.connected,child:ListTile(leading:const Icon(Icons.refresh),title:Text(S.t('mesh.refresh')))),
+          ]),
       ]),
-      body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),child:ListView(padding:const EdgeInsets.all(16),children:[
+      body:RefreshIndicator(onRefresh:()async{if(link.connected)await link.refresh();},child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:760),
+        child:ListView(physics:const AlwaysScrollableScrollPhysics(),padding:const EdgeInsets.fromLTRB(12,8,12,16),children:[
         const MeshtasticReconnectBanner(inScreen:true),
         if(!link.remembered)...[
           Text(S.t('meshtastic.noModule')),
           const MeshtasticLinkCard(),
-        ]else Card(key:const ValueKey('meshtastic-module'),child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Text(me!=null&&me.longName.isNotEmpty?me.longName:link.deviceName??link.deviceId??'',style:t.textTheme.titleMedium),
-          for(final (k,v) in meshtasticModuleLines(link,now))_metric(k,v),
-          const Padding(padding:EdgeInsets.only(top:10),child:Align(alignment:Alignment.centerLeft,child:MeshtasticConnectButton())),
-        ]))),
+        ]else _moduleLine(),
         if(link.remembered)...[
           // Same thresholds as MeshCore (lot 25): one setting per device.
           const LoraBatteryThresholdsTile(),
           // Point 3: the primary channel.
-          Card(child:ListTile(key:const ValueKey('meshtastic-channel'),leading:const Icon(Icons.groups_outlined),
+          ListTile(key:const ValueKey('meshtastic-channel'),dense:true,contentPadding:const EdgeInsets.symmetric(horizontal:4),leading:const Icon(Icons.groups_outlined),
             title:Text(S.t('meshtastic.channel')),subtitle:link.channelName==null?null:Text(link.channelName!),
-            trailing:const Icon(Icons.chevron_right),onTap:()=>unawaited(openMeshtasticChannel(context)))),
-          // Point 2: the nodes on the map, also under Fond et affichage.
-          SwitchListTile(key:const ValueKey('meshtastic-show-map'),contentPadding:const EdgeInsets.symmetric(horizontal:4),
+            trailing:const Icon(Icons.chevron_right),onTap:()=>unawaited(openMeshtasticChannel(context))),
+          // Point 2: the nodes on the map, also under the panel « Carte ».
+          SwitchListTile(key:const ValueKey('meshtastic-show-map'),dense:true,contentPadding:const EdgeInsets.symmetric(horizontal:4),
             title:Text(S.t('mesh.showOnMap')),value:link.showOnMap,onChanged:(v)=>unawaited(link.setShowOnMap(v))),
           MeshtasticNodeList(nodes:link.others,initialQuery:meshtasticFocusQuery(widget.focus),tile:(n)=>ListTile(key:ValueKey('meshtastic-node-${n.id}'),
-            contentPadding:const EdgeInsets.symmetric(horizontal:4),
+            dense:true,contentPadding:const EdgeInsets.symmetric(horizontal:4),
             leading:Icon(meshtasticKindIcon(n.kind)),
-            title:Text(n.name),
-            subtitle:Text(meshtasticNodeSubtitle(n,now)),
+            title:Text(n.name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:15,fontWeight:FontWeight.w600)),
+            subtitle:Text(meshtasticNodeSubtitle(n,now),maxLines:1,overflow:TextOverflow.ellipsis),
             trailing:Row(mainAxisSize:MainAxisSize.min,children:[
-              TextButton(key:ValueKey('meshtastic-write-${n.id}'),
-                onPressed:()=>unawaited(openMeshtasticNodeChat(context,n)),child:Text(S.t('mesh.write'))),
-              if(n.placed&&widget.onShowOnMap!=null)TextButton(key:ValueKey('meshtastic-see-${n.id}'),
-                onPressed:()=>widget.onShowOnMap!(n),child:Text(S.t('mesh.seeOnMap'))),
-            ]))),
+              IconButton(key:ValueKey('meshtastic-write-${n.id}'),tooltip:S.t('mesh.write'),visualDensity:VisualDensity.compact,
+                onPressed:()=>unawaited(openMeshtasticNodeChat(context,n)),icon:const Icon(Icons.chat_bubble_outline)),
+              if(n.placed&&widget.onShowOnMap!=null)IconButton(key:ValueKey('meshtastic-see-${n.id}'),tooltip:S.t('mesh.seeOnMap'),visualDensity:VisualDensity.compact,
+                onPressed:()=>widget.onShowOnMap!(n),icon:const Icon(Icons.map_outlined)),
+            ]),
+            onTap:n.placed&&widget.onShowOnMap!=null?()=>widget.onShowOnMap!(n):null)),
           Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.local'),style:t.textTheme.bodySmall)),
         ],
-      ]))),
+      ]))))),
     );
   }
 }
