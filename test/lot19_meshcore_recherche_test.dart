@@ -19,6 +19,9 @@ final nodes=[
   node('9988776655','Capteur météo',4,advert:200,lat:48.9,lon:1.7),
 ];
 
+/// Lot 29.5: every node heard « today » for these widget tests.
+final _now=DateTime.fromMillisecondsSinceEpoch(600*1000,isUtc:true);
+
 void main(){
   setUp(()=>S.setLanguage('fr'));
 
@@ -53,7 +56,7 @@ void main(){
   });
 
   testWidgets('the field, the filters, the count and the cross',(t) async {
-    await t.pumpWidget(MaterialApp(home:Scaffold(body:SingleChildScrollView(child:MeshCoreNodeList(nodes:nodes,
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:SingleChildScrollView(child:MeshCoreNodeList(nodes:nodes,now:_now,
       tile:(n)=>ListTile(key:ValueKey('tile-${n.shortKey}'),title:Text(n.name)))))));
     expect(find.text('Nœuds connus (5)'),findsOneWidget);
     expect(find.byType(ListTile),findsNWidgets(5));
@@ -79,7 +82,7 @@ void main(){
   });
 
   testWidgets('opened on a node: its name already in the field',(t) async {
-    await t.pumpWidget(MaterialApp(home:Scaffold(body:SingleChildScrollView(child:MeshCoreNodeList(nodes:nodes,initialQuery:'Capteur',
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:SingleChildScrollView(child:MeshCoreNodeList(nodes:nodes,now:_now,initialQuery:'Capteur',
       tile:(n)=>ListTile(title:Text(n.name)))))));
     expect(find.text('Nœuds connus (1 sur 5)'),findsOneWidget);
     expect(find.text('Capteur météo'),findsNWidgets(1));
