@@ -254,7 +254,7 @@ const Texts _fr={
   'priority.routine':'Routine','priority.urgent':'Urgent','priority.immediate':'Immédiat','priority.distress':'Détresse',
   'ack.received':'Reçu','ack.read':'Lu','ack.accepted':'Accepté','ack.rejected':'Refusé','messages.to':'À : {to}',
   // Groups
-  'groups.new':'Nouveau groupe','groups.edit':'Modifier le groupe','groups.name':'Nom','groups.description':'Description',
+  'groups.new':'Nouveau groupe','groups.edit':'Modifier le groupe','groups.saved':'Groupe enregistré','groups.name':'Nom','groups.description':'Description',
   'groups.listenOnly':'Écoute seule','groups.listenOnlyHelp':'Seuls les émetteurs désignés, les responsables et le PCO écrivent',
   'groups.members':'Membres','groups.membersHelp':'Identifiants séparés par des virgules','groups.senders':'Émetteurs désignés',
   'groups.radio':'Canal radio associé (facultatif)','groups.color':'Couleur','groups.archived':'Groupe archivé',
@@ -931,7 +931,7 @@ const Texts _en={
   'messages.photoDownloaded':'Photo downloaded','messages.saveFailed':'Saving failed: {error}',
   'priority.routine':'Routine','priority.urgent':'Urgent','priority.immediate':'Immediate','priority.distress':'Distress',
   'ack.received':'Received','ack.read':'Read','ack.accepted':'Accepted','ack.rejected':'Refused','messages.to':'To: {to}',
-  'groups.new':'New group','groups.edit':'Edit group','groups.name':'Name','groups.description':'Description',
+  'groups.new':'New group','groups.edit':'Edit group','groups.saved':'Group saved','groups.name':'Name','groups.description':'Description',
   'groups.listenOnly':'Listen only','groups.listenOnlyHelp':'Only designated senders, managers and the command post write',
   'groups.members':'Members','groups.membersHelp':'Comma separated identifiers','groups.senders':'Designated senders',
   'groups.radio':'Associated radio channel (optional)','groups.color':'Colour','groups.archived':'Archived group',

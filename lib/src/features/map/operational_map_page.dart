@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import '../../ui/car_mode.dart';
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
 import '../messages/conversations.dart' show avatarInitials;
@@ -1563,10 +1564,23 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// like the phone (compass, true north with the WMM declination); a press
   /// goes back to follow, north up. Moving the map by hand stops it all.
   LatLng? _me; MeMode _meMode=MeMode.off; StreamSubscription? _meSub; StreamSubscription? _mapEvents;
+  /// The device no longer gives its position: the dot turns grey (lot 29).
+  bool _meLost=false;
   double? _heading;
   bool get _followMe=>_meMode!=MeMode.off;
   /// One button, each touch the next mode (locate_cycle.dart, 30 Oct 2026).
   LocateMode _locate=LocateMode.idle;
+  /// « N » (card « petite boussole N », lot 29): north up, centred on my
+  /// position (« centré sur moi ») without starting the following again;
+  /// north up only when my position is unknown. Leaves compass mode.
+  void _northOnMe(){
+    if(_meMode==MeMode.compass)_stopCompass();
+    _map.rotate(0);
+    final me=_me;
+    setState((){_meMode=MeMode.off;_locate=me!=null?LocateMode.me:LocateMode.idle;});
+    if(me!=null)_map.move(me,_map.camera.zoom);
+  }
+
   Future<void> _myPosition() async {
     var next=nextLocateMode(_locate);
     if(next==LocateMode.me){
@@ -1578,9 +1592,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       }
       final p=await _location.current();
       if(p==null||!mounted){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('map.noPosition'))));return;}
-      setState((){_me=LatLng(p.latitude,p.longitude);_locate=LocateMode.me;});
+      setState((){_me=LatLng(p.latitude,p.longitude);_meLost=false;_locate=LocateMode.me;});
       _map.move(_me!,_map.camera.zoom<15?16:_map.camera.zoom);
       _watchMapMoves();
+      // The dot follows the device from now on, whatever the mode; the map
+      // stays put (card « point bleu figé », lot 29, 5 Nov 2026).
+      _startFollowingMe();
       return;
     }
     if(next==LocateMode.follow){
@@ -1593,9 +1610,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(await _startCompass()){if(mounted)setState((){_meMode=MeMode.compass;_locate=LocateMode.compass;});return;}
       next=LocateMode.all;
     }
-    // Every operator framed; the following stops (the map stays put).
+    // Every operator framed; the following of the map stops (the map stays
+    // put), the dot keeps moving (lot 29).
     if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
-    _meSub?.cancel(); _meSub=null;
     setState((){_meMode=MeMode.off;_locate=LocateMode.all;});
     _fitOperators();
   }
@@ -1603,9 +1620,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_meSub!=null)return;
     _meSub=_location.positions().listen((p){
       if(!mounted)return;
-      setState(()=>_me=LatLng(p.latitude,p.longitude));
+      setState((){_me=LatLng(p.latitude,p.longitude);_meLost=false;});
       if(_followMe)_map.move(_me!,_map.camera.zoom);
-    },onError:(_){});
+    },onError:(_){if(mounted)setState(()=>_meLost=true);},
+      // Positions no longer given (service turned off): grey dot, and the
+      // next press on « Ma position » starts again.
+      onDone:(){_meSub=null;if(mounted)setState(()=>_meLost=true);});
   }
   /// Compass of the phone (shared_compass.dart); false without one
   /// (computer) or when refused.
@@ -1626,7 +1646,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _stopCompass(){if(_compassOn){_compassOn=false;SharedCompass.instance.removeListener(_onMapCompass);SharedCompass.instance.stop();}_heading=null;}
   void _stopFollowing(){
     if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
-    setState((){_meMode=MeMode.off;_locate=LocateMode.idle;}); _meSub?.cancel(); _meSub=null;
+    // Only the map stops following: the dot keeps moving (lot 29).
+    setState((){_meMode=MeMode.off;_locate=LocateMode.idle;});
   }
   /// Moving the map by hand stops the following.
   void _watchMapMoves(){
@@ -1638,26 +1659,25 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     });
   }
 
-  /// Floating buttons on the right of the map: map type, my position, and
-  /// the compass when the map is turned (tap: north up).
+  /// Floating buttons on the right of the map: map type, my position (« N »
+  /// while the map is turned), Écrans, SOS.
   Widget _mapButtons(){
     // The controller is attached once the map is built (first frame).
     double rotation=0; try{rotation=_map.camera.rotation;}catch(_){}
-    final rotated=rotation%360!=0;
+    // Compass mode turns the map by itself: its icon stays so that the
+    // cycle goes on to « Tous les opérateurs ».
+    final rotated=!northUp(rotation)&&_meMode!=MeMode.compass;
     final scheme=Theme.of(context).colorScheme;
     // Right column (decision of 30 Oct 2026, 3 h 05): « Fond et affichage »,
-    // position, SOS; the north arrow only while a navigation turns the map.
+    // position, SOS. No separate north button any more (card « petite
+    // boussole N », lot 29): while the map is turned, « Ma position » shows
+    // « N »; a tap puts north up on my position.
     return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.end,children:[
       // No dot « couche masquée » any more (decision of 30 Oct 2026, 12 h 48).
       // Centres on one axis, regular gaps (lot 25, map_right_column.dart).
       mapColumnSlot(_fab('map-layers',S.t('display.menu'),const Icon(Icons.tune),_chooseBasemap)),
       const SizedBox(height:mapColumnGap),
-      if(rotated&&_meMode!=MeMode.compass)...[
-        mapColumnSlot(_fab('map-north',S.t('map.north'),Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined)),(){
-            _map.rotate(0);setState((){});})),
-        const SizedBox(height:mapColumnGap),
-      ],
-      LocateButton(mode:_locate,fab:(tip,icon,active)=>mapColumnSlot(_fab('map-me',tip,icon,_myPosition,
+      LocateButton(mode:_locate,north:rotated?rotation:null,northTooltip:S.t('map.north'),fab:(tip,icon,active)=>mapColumnSlot(_fab('map-me',tip,icon,rotated?_northOnMe:_myPosition,
         background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null))),
       // « Écrans » (lot 11): shown once a screen is allowed, blue while followed.
       TvScreensButton(controller:_tvScreens,onManage:_openTvScreens,
@@ -1688,10 +1708,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _sosVisible=>true;
   Widget _sosButton()=>withId('map.sos',SosButton(inDistress:_inDistress,onTriggered:_sendDistress,onEnd:_distress));
 
-  /// Floating button of 48 × 48 px (the small ones were 40 px).
-  Widget _fab(String tag,String tooltip,Widget icon,VoidCallback onPressed,{Color? background,Color? foreground})=>
-    withId('map.$tag',SizedBox(width:48,height:48,child:FloatingActionButton(heroTag:tag,tooltip:tooltip,onPressed:onPressed,
-      backgroundColor:background,foregroundColor:foreground,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),child:icon)));
+  /// Round floating button of 44 px (lot 29, card « boutons ronds plus
+  /// petits »); a car screen (Tesla) keeps big ones (56 px).
+  Widget _fab(String tag,String tooltip,Widget icon,VoidCallback onPressed,{Color? background,Color? foreground}){
+    final size=mapButtonSize(); final scheme=Theme.of(context).colorScheme;
+    // White with a light shadow, dark in dark mode (like Snapchat).
+    return withId('map.$tag',SizedBox(width:size,height:size,child:FloatingActionButton(heroTag:tag,tooltip:tooltip,onPressed:onPressed,
+      backgroundColor:background??scheme.surface,foregroundColor:foreground??scheme.onSurface,elevation:2,shape:const CircleBorder(),child:IconTheme.merge(data:IconThemeData(size:size>=56?28:22),child:icon))));
+  }
 
   /// Map search (request of 26 Oct 2026): what the device knows, then the
   /// addresses from the server. The chosen result gets a red pin; a tap on
@@ -2886,7 +2910,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           IgnorePointer(ignoring:_placingOnMap,child:_faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList())))),
           if(_me!=null)touchableMarkers(ignoring:_placingOnMap,child:MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
             onTap:()=>openMyPositionInfo(context,location:_location,places:_places,fallback:_me,onSendMessage:_sendText),
-            child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)]))))])),
+            child:Container(decoration:BoxDecoration(color:_meLost?Colors.grey:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)]))))])),
           if(_trace.isNotEmpty)MarkerLayer(markers:[for(final t in _trace)Marker(point:LatLng(t.lat,t.lon),width:8,height:8,
             child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.secondary,shape:BoxShape.circle)))]),
           if(_scrub!=null)MarkerLayer(markers:[Marker(point:LatLng(_scrub!.lat,_scrub!.lon),width:22,height:22,
