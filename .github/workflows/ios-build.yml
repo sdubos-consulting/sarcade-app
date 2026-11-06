@@ -39,6 +39,20 @@ jobs:
       ASC_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      # The newest Xcode of the machine, not the image default: on the Intel
+      # Mac (macos-15-intel) the default is Xcode 16.4 (iOS 18.5 SDK), too old
+      # for device_info_plus 12.4 (brought by livekit_client, PTT #308).
+      # Card « iPhone : la compilation de secours (Mac Intel) échoue depuis
+      # le PTT », 6 Nov 2026.
+      - name: Newest Xcode
+        shell: bash
+        run: |
+          best=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -viE 'beta' \
+            | sed -E 's#^/Applications/Xcode_([0-9.]+)\.app$#\1 &#' | grep -E '^[0-9]' \
+            | sort -t. -k1,1n -k2,2n -k3,3n | tail -1 | cut -d' ' -f2)
+          if [ -n "$best" ]; then sudo xcode-select -s "$best/Contents/Developer"; fi
+          xcodebuild -version
+          echo "::notice::$(xcodebuild -version | head -1) on ${{ inputs.runs-on }}"
       - name: Build number
         shell: bash
         run: |
