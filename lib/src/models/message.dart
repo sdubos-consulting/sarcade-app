@@ -15,14 +15,22 @@ class SarcadeMessage {
  final bool deleted, deletedByPco;
  /// Quoted message (« Répondre », 31 Oct 2026).
  final String? replyTo;
- const SarcadeMessage({this.replyTo,required this.id,required this.eventId,required this.senderId,required this.recipientIds,required this.priority,required this.body,required this.createdAt,this.attachments=const [],this.deleted=false,this.deletedByPco=false});
+ /// Changed by its author within 15 min (lot 29, group 7): « modifié ».
+ final bool edited; final DateTime? editedAt;
+ /// Forwarded (lot 29, group 7): author and time of the original, written
+ /// by the server.
+ final String? forwardedId,forwardedSender; final DateTime? forwardedAt;
+ const SarcadeMessage({this.replyTo,required this.id,required this.eventId,required this.senderId,required this.recipientIds,required this.priority,required this.body,required this.createdAt,this.attachments=const [],this.deleted=false,this.deletedByPco=false,this.edited=false,this.editedAt,this.forwardedId,this.forwardedSender,this.forwardedAt});
  factory SarcadeMessage.fromJson(Map<String,dynamic> j)=>SarcadeMessage(id:j['id'],eventId:j['event_id'],senderId:j['sender_id'],recipientIds:List<String>.from(j['recipient_ids']??[]),priority:j['priority']??'routine',body:(j['body']??'') as String,createdAt:DateTime.parse(j['created_at']),
    attachments:[for(final a in (j['attachments'] as List?)??const []) if(a is Map) SarcadeAttachment.fromJson(a)],
-   deleted:j['deleted']==true,deletedByPco:j['deleted_by_pco']==true,
+   deleted:j['deleted']==true,deletedByPco:j['deleted_by_pco']==true,edited:j['edited']==true,editedAt:j['edited_at'] is String?DateTime.tryParse(j['edited_at'] as String):null,
+   forwardedId:(j['forwarded_from'] as Map?)?['message_id'] as String?,forwardedSender:(j['forwarded_from'] as Map?)?['sender_id'] as String?,
+   forwardedAt:DateTime.tryParse('${(j['forwarded_from'] as Map?)?['created_at']??''}'),
    replyTo:j['reply_to'] is String&&(j['reply_to'] as String).isNotEmpty?j['reply_to'] as String:null);
  Map<String,dynamic> toJson()=>{'id':id,'event_id':eventId,'sender_id':senderId,'recipient_ids':recipientIds,'priority':priority,'body':body,'created_at':createdAt.toUtc().toIso8601String(),
    if(attachments.isNotEmpty)'attachments':[for(final a in attachments)a.toJson()],
-   if(deleted)'deleted':true,if(deletedByPco)'deleted_by_pco':true,if(replyTo!=null)'reply_to':replyTo};
+   if(deleted)'deleted':true,if(deletedByPco)'deleted_by_pco':true,if(replyTo!=null)'reply_to':replyTo,if(edited)'edited':true,if(editedAt!=null)'edited_at':editedAt!.toUtc().toIso8601String(),
+   if(forwardedId!=null)'forwarded_from':{'message_id':forwardedId,'sender_id':?forwardedSender,if(forwardedAt!=null)'created_at':forwardedAt!.toUtc().toIso8601String()}};
 }
 class SarcadeAck {
  final String id,eventId,messageId,actorId,status; final DateTime time;
@@ -32,8 +40,11 @@ class SarcadeAck {
 }
 class LogbookEntry {
  final int seq; final String kind,summary; final String? objectId,actorId; final DateTime time;
- const LogbookEntry({required this.seq,required this.kind,required this.summary,required this.time,this.objectId,this.actorId});
- factory LogbookEntry.fromJson(Map<String,dynamic> j)=>LogbookEntry(seq:j['seq'],kind:j['kind'],objectId:j['object_id'],actorId:j['actor_id'],summary:j['summary'],time:DateTime.parse(j['time']));
+ /// Fingerprint of the entry, chained to the previous one (lot 29, group 8).
+ final String? hash;
+ const LogbookEntry({required this.seq,required this.kind,required this.summary,required this.time,this.objectId,this.actorId,this.hash});
+ factory LogbookEntry.fromJson(Map<String,dynamic> j)=>LogbookEntry(seq:j['seq'],kind:j['kind'],objectId:j['object_id'],actorId:j['actor_id'],summary:j['summary'],time:DateTime.parse(j['time']),
+   hash:j['hash'] as String?);
 }
 
 /// Priorities known by the server (revue d'ergonomie n° 35): never the

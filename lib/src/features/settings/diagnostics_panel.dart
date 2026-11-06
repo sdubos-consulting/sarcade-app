@@ -186,11 +186,11 @@ class DiagnosticsPanel extends StatefulWidget {
 }
 
 class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
-  List<DiagLine> _device=[], _links=[], _server=[], _mail=[], _deadlines=[]; bool _loading=true; String? _serverError;
+  List<DiagLine> _device=[], _links=[], _server=[], _mail=[], _deadlines=[], _siem=[], _logbook=[]; bool _loading=true; String? _serverError;
   /// Level computed by the server (lot 28), see [diagLevel].
   String _level='legacy';
   Map<String,dynamic>? _deadlineData;
-  bool _mailSending=false;
+  bool _mailSending=false, _siemSending=false;
 
   bool get _pco=>myRoles.contains('pco')||myRoles.contains('admin');
   /// Block « Serveur »: administrator, or the view of before for the PCO.
@@ -310,9 +310,32 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     ];
     final mail=level=='admin'&&srv?['mail'] is Map?mailLines(Map<String,dynamic>.from(srv!['mail'] as Map)):<DiagLine>[];
     final deadlineData=level=='admin'&&srv?['deadlines'] is Map?Map<String,dynamic>.from(srv!['deadlines'] as Map):null;
+    // SIEM and Main courante of the event (lot 29, group 8).
+    final siem=level=='admin'&&srv?['siem'] is Map?siemLines(Map<String,dynamic>.from(srv!['siem'] as Map)):<DiagLine>[];
+    var logbook=<DiagLine>[];
+    if(level=='admin'||level=='organizer'){
+      try{logbook=[logbookLine(await widget.api.logbookVerify(widget.eventId))];}catch(_){/* older server or offline */}
+    }
     if(!mounted)return;
     setState((){_device=device;_links=links;_server=server;_serverError=srv==null?err:null;_level=level;
-      _mail=mail;_deadlineData=deadlineData;_deadlines=deadlineLines(deadlineData);_loading=false;});
+      _mail=mail;_deadlineData=deadlineData;_deadlines=deadlineLines(deadlineData);_siem=siem;_logbook=logbook;_loading=false;});
+  }
+
+  /// « Envoyer un événement d'essai » to the SIEM (lot 29, group 8).
+  Future<void> _siemTest() async {
+    final m=ScaffoldMessenger.of(context);
+    setState(()=>_siemSending=true);
+    final api=AdminApi(widget.server);
+    try{
+      await api.siemTest();
+      m.showSnackBar(SnackBar(content:Text(S.t('diag.siemTestSent'))));
+    }catch(e){
+      m.showSnackBar(SnackBar(content:Text(S.t('diag.siemTestFailed',{'e':adminErrorText(e)}))));
+    }finally{
+      api.close();
+      if(mounted)setState(()=>_siemSending=false);
+    }
+    await _load();
   }
 
   /// « Envoyer un e-mail d'essai » to the address of the administrator.
@@ -478,6 +501,11 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       if(_mail.isNotEmpty)(problem:diagnosticProblems(_mail).isNotEmpty,w:_block('mail',S.t('diag.mail'),_mail,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),child:Align(alignment:Alignment.centerLeft,
         child:TextButton.icon(key:const ValueKey('diag-mail-test'),onPressed:_mailSending?null:_mailTest,
           icon:const Icon(Icons.outgoing_mail),label:Text(S.t('diag.mailTest'))))))),
+      if(_siem.isNotEmpty)(problem:diagnosticProblems(_siem).isNotEmpty,w:_block('siem',S.t('diag.siem'),_siem,
+        footer:_siem.first.state=='off'?null:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),child:Align(alignment:Alignment.centerLeft,
+          child:TextButton.icon(key:const ValueKey('diag-siem-test'),onPressed:_siemSending?null:_siemTest,
+            icon:const Icon(Icons.send_outlined),label:Text(S.t('diag.siemTest'))))))),
+      if(_logbook.isNotEmpty)(problem:diagnosticProblems(_logbook).isNotEmpty,w:_block('logbook',S.t('diag.logbook'),_logbook)),
       if(_level=='admin'&&_deadlineData!=null)(problem:diagnosticProblems(_deadlines).isNotEmpty,w:_block('deadlines',S.t('deadline.title'),_deadlines,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),
         child:Align(alignment:Alignment.centerLeft,child:TextButton.icon(key:const ValueKey('deadline-edit'),onPressed:_editDeadlines,
           icon:const Icon(Icons.edit_calendar_outlined),label:Text(S.t('deadline.edit'))))))),

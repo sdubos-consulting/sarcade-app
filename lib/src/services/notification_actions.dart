@@ -21,19 +21,23 @@ bool isUrgentPriority(String priority)=>priority=='urgent'||priority=='immediate
 /// Sound by priority, local preference of the device (Paramètres ›
 /// Notifications, 29 Oct 2026): routine silent / discreet (vibration only)
 /// / normal; urgent and immediate normal or alarm; SOS always the alarm.
+/// Routine arrives without sound nor vibration by default (lot 29, group 7:
+/// silence is a property of the priority); each device may set a sound back.
 const soundSilent='silent', soundDiscreet='discreet', soundNormal='normal', soundAlarm='alarm';
 const soundChoices={'routine':[soundSilent,soundDiscreet,soundNormal],'urgent':[soundNormal,soundAlarm],'immediate':[soundNormal,soundAlarm]};
-const soundDefaults={'routine':soundNormal,'urgent':soundNormal,'immediate':soundAlarm};
+const soundDefaults={'routine':soundSilent,'urgent':soundNormal,'immediate':soundAlarm};
 
 /// A distress message (« 🆘 DÉTRESSE … », « 🆘 DISTRESS … »).
 bool isSosBody(String body)=>body.trimLeft().startsWith('🆘');
 
 /// Sound applied to a notification; an unknown preference keeps the default.
-String soundFor(String priority,Map<String,String> prefs,{bool sos=false}){
+/// A mention « @ » of the operator rings even in Routine (lot 29, group 7).
+String soundFor(String priority,Map<String,String> prefs,{bool sos=false,bool mention=false}){
   if(sos)return soundAlarm;
   final p=soundChoices.containsKey(priority)?priority:'routine';
   final v=prefs[p];
-  return v!=null&&soundChoices[p]!.contains(v)?v:soundDefaults[p]!;
+  final s=v!=null&&soundChoices[p]!.contains(v)?v:soundDefaults[p]!;
+  return mention&&(s==soundSilent||s==soundDiscreet)?soundNormal:s;
 }
 
 /// Buttons shown on the notification of a message, in order.

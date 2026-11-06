@@ -8,6 +8,7 @@ import 'local_store.dart';
 import 'outbox_policy.dart';
 import 'sync_operation.dart';
 import 'unsent_summary.dart';
+import '../features/messages/reactions.dart' show Reactions;
 
 /// Object types of routes and navigation, cached in one box.
 const routeObjectKinds={'route','route_waypoint','route_passage','road_closure','itinerary','move_order'};
@@ -125,6 +126,7 @@ class OfflineSyncService {
         }
         if(c['object_type']=='message') await store.cacheMessage(p);
         if(c['object_type']=='ack') await store.cacheAck(p);
+        if(c['object_type']=='reaction'&&!isPending(c['object_id'] as String)) await Reactions.instance.apply(store,eventId,p);
         // A pending local change wins locally until the server has ruled on it.
         if(c['object_type']=='map_feature'&&!isPending(c['object_id'] as String)){
           if(p['deleted']==true){await store.deleteMapFeature(c['object_id'] as String);}
