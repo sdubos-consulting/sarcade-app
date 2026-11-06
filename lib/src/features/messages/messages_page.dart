@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../ui/keyboard.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../l10n/strings.dart';
@@ -228,6 +229,9 @@ class _MessagesPageState extends State<MessagesPage>{
  }
  Future<void> _send() async {
    final body=_text.text.trim(); if(body.isEmpty)return;
+   // Phone, tablet: the keyboard closes after sending, the bottom menu is
+   // visible again (lot 29); computer: the cursor stays to go on writing.
+   if(touchKeyboard)closeKeyboard();
    await _post(body);
  }
 
@@ -289,7 +293,9 @@ class _MessagesPageState extends State<MessagesPage>{
    }
    await widget.store.saveGroup(g.toJson());
    await widget.sync.queue(objectId:g.id,objectType:'comm_group',action:initial==null?'create':'update',payload:g.toJson());
-   if(mounted)setState(()=>_conv=g.archived?allKey:groupKey(g.id));
+   if(mounted)setState(()=>_conv=g.kind=='all'?allKey:(g.archived?allKey:groupKey(g.id)));
+   // Saved: said in so many words (lot 29).
+   if(mounted)_snack(S.t('groups.saved'));
  }
 
 
@@ -308,7 +314,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -388,6 +394,7 @@ class _MessagesPageState extends State<MessagesPage>{
 
  /// Conversation list filters and search (computer).
  String _filter='all'; String _search=''; String? _hovered;
+ final _searchCtl=TextEditingController();
  Set<String> get _favConvs=>(widget.store.preference('msg_fav:${widget.eventId}')??'').split('|').where((s)=>s.isNotEmpty).toSet();
  Future<void> _toggleFavConv(String k) async {
    final f=_favConvs; if(!f.remove(k))f.add(k);
@@ -402,7 +409,10 @@ class _MessagesPageState extends State<MessagesPage>{
  Widget _convIcon(String key,Map<String,CommGroup> by,{double r=18}){
    final g=groupOf(key);
    if(key!=allKey&&g==null)return operatorAvatar(peerOf(key)!,radius:r);
-   final color=key==allKey?const Color(0xFF546E7A):Color(by[g]?.color??0xFF546E7A);
+   // « Tous » shows its saved colour like any group: it was forced to
+   // grey-blue, so changing it had no visible effect (lot 29, 5 Nov 2026).
+   final all=key==allKey?by.values.where((x)=>x.kind=='all').firstOrNull:null;
+   final color=Color(key==allKey?(all?.color??0xFF1565C0):(by[g]?.color??0xFF546E7A));
    return CircleAvatar(radius:r,backgroundColor:color,foregroundColor:Colors.white,
      child:Icon(key==allKey?Icons.campaign_outlined:Icons.forum_outlined,size:r));
  }
@@ -462,8 +472,13 @@ class _MessagesPageState extends State<MessagesPage>{
 
  Widget _searchField(){
    final s=Theme.of(context).colorScheme;
-   return TextField(onChanged:(v)=>setState(()=>_search=v),
+   // ✓ of the keyboard closes it and keeps the results; ✕ clears and closes
+   // (lot 29: the porter was stuck in this field on 5 Nov 2026, 18 h 54).
+   return TextField(controller:_searchCtl,onChanged:(v)=>setState(()=>_search=v),
+     textInputAction:TextInputAction.search,onSubmitted:(_)=>closeKeyboard(),
      decoration:InputDecoration(isDense:true,prefixIcon:const Icon(Icons.search),hintText:S.t('messages.search'),filled:true,
+       suffixIcon:_search.isEmpty?null:IconButton(tooltip:S.t('search.clear'),icon:const Icon(Icons.close),
+         onPressed:(){_searchCtl.clear();setState(()=>_search='');closeKeyboard();}),
        fillColor:s.surfaceContainerHigh,border:OutlineInputBorder(borderRadius:BorderRadius.circular(24),borderSide:BorderSide.none)));
  }
 
@@ -807,7 +822,7 @@ class _MessagesPageState extends State<MessagesPage>{
        style:Theme.of(context).textTheme.bodySmall))),
      Expanded(child:Container(color:_chatBg,child:Stack(children:[
        if(messages.isEmpty)Center(child:Text(S.t('messages.empty'),style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))),
-       StickToBottom(controller:_scroll,stick:()=>_atBottom,child:ListView.builder(controller:_scroll,padding:const EdgeInsets.symmetric(vertical:8),itemCount:messages.length,itemBuilder:(c,i){
+       StickToBottom(controller:_scroll,stick:()=>_atBottom,child:ListView.builder(controller:_scroll,keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,padding:const EdgeInsets.symmetric(vertical:8),itemCount:messages.length,itemBuilder:(c,i){
          final m=messages[i], ma=acks[m.id]??[];
          if(i>_maxBuilt)_maxBuilt=i;
          if(m.senderId!=widget.actorId)_autoRead(m,ma);
