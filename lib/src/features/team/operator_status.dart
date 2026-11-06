@@ -180,6 +180,30 @@ class MyStatusPicker extends StatelessWidget {
   }
 }
 
+/// « ● Disponible · 16 h 38 ▾ » on the title line of Équipes (card « Mon
+/// statut en une seule pastille déroulante », lot 29.4): a touch opens the
+/// four statuses, the current one checked; touching it again removes it.
+class MyStatusPill extends StatelessWidget {
+  final String? status; final DateTime? since;
+  final ValueChanged<String?> onChanged;
+  const MyStatusPill({super.key,required this.status,required this.onChanged,this.since});
+  @override Widget build(BuildContext context){
+    final t=Theme.of(context); final s=t.colorScheme;
+    final label=status==null?S.t('team.status.mine'):since==null?operatorStatusLabel(status!):'${operatorStatusLabel(status!)} · ${statusClock(since!)}';
+    return PopupMenuButton<String>(key:const ValueKey('my-status-pill'),tooltip:S.t('team.status.mine'),
+      onSelected:(v)=>onChanged(v==status?null:v),
+      itemBuilder:(_)=>[for(final x in operatorStatuses)CheckedPopupMenuItem(key:ValueKey('my-status-$x'),value:x,checked:x==status,
+        child:Row(children:[StatusDot(status:x),const SizedBox(width:8),Text(operatorStatusLabel(x))]))],
+      child:Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:6),
+        decoration:BoxDecoration(color:s.surfaceContainerHigh,borderRadius:BorderRadius.circular(16)),
+        child:Row(mainAxisSize:MainAxisSize.min,children:[
+          if(status!=null)...[StatusDot(status:status),const SizedBox(width:6)],
+          Text(label,style:t.textTheme.labelLarge),
+          const Icon(Icons.arrow_drop_down,size:18),
+        ])));
+  }
+}
+
 /// Choice of « Mon statut » on the phone or the PC: sent, and a short note
 /// when it waits in the Outbox or could not leave.
 Future<void> chooseMyStatus(BuildContext context,{required SarcadeApi api,required String eventId,required String deviceId,

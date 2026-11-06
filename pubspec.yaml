@@ -51,6 +51,8 @@ dependencies:
   # Bluetooth LE, MeshCore trial (BSD-3; flutter_blue_plus now needs a paid licence).
   # 3.1.1+ needs dbus 0.8, flutter_local_notifications 19 (Linux) dbus 0.7.
   universal_ble: '>=3.0.0 <3.1.1'
+  # PTT natif (lot 29): WebRTC with the LiveKit server of the NAS (Apache 2.0).
+  livekit_client: ^2.6.3
 dependency_overrides:
   # Windows storage of the Access session without the native ATL part
   # (third_party/flutter_secure_storage_windows/README.md).

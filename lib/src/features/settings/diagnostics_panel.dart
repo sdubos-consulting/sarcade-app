@@ -75,6 +75,20 @@ typedef DiagLine=({String block,String label,String value,String? state});
 /// Lines in red or orange: the problems of the summary at the top.
 List<DiagLine> diagnosticProblems(Iterable<DiagLine> lines)=>[for(final l in lines)if(l.state=='red'||l.state=='orange')l];
 
+/// Colour of a section (card « Diagnostic : page plus courte, sections
+/// repliables », lot 29.4): red, then orange, then green; null without state.
+String? sectionState(Iterable<DiagLine> lines){
+  final st={for(final l in lines)l.state};
+  if(st.contains('red'))return 'red';
+  if(st.contains('orange'))return 'orange';
+  if(st.contains('green'))return 'green';
+  return null;
+}
+
+/// Open by default only when something is to check; the choice of the
+/// person wins ([stored] '1' or '0').
+bool sectionOpen({required String? stored,required bool problem})=>stored=='1'?true:stored=='0'?false:problem;
+
 /// Items not sent: Paramètres opens on the Diagnostic.
 bool unsentAlert()=>(OfflineSyncService.active?.unsent??0)>0;
 
@@ -369,15 +383,26 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     if(mounted)setState((){});
   }
 
-  /// « Tout fonctionne » in green, or the problems with their action.
+  /// « Tout fonctionne » in green, or the problems with their action;
+  /// « Copier » and « Actualiser » as icons on its right (lot 29.4).
   Widget _summary(List<DiagLine> all){
     final t=Theme.of(context);
     final problems=diagnosticProblems(all);
+    final tools=Row(mainAxisSize:MainAxisSize.min,children:[
+      if(_loading)const Padding(padding:EdgeInsets.all(8),child:SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2))),
+      IconButton(key:const ValueKey('diag-copy'),tooltip:S.t('diag.copyReport'),onPressed:all.isEmpty?null:() async {
+        final messenger=ScaffoldMessenger.of(context);
+        await Clipboard.setData(ClipboardData(text:diagnosticsReport(reportLines([...all,..._deadlines],server:widget.server,device:widget.actorId))));
+        messenger.showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
+      },icon:const Icon(Icons.copy_all)),
+      IconButton(key:const ValueKey('diag-refresh'),tooltip:S.t('diag.refresh'),onPressed:_loading?null:_load,icon:const Icon(Icons.refresh)),
+    ]);
     if(problems.isEmpty){
       return Card(key:const ValueKey('diag-all-good'),elevation:0,margin:const EdgeInsets.only(top:12),color:Colors.green.withValues(alpha:0.14),
-        child:Padding(padding:const EdgeInsets.all(14),child:Row(children:[
+        child:Padding(padding:const EdgeInsets.fromLTRB(14,4,4,4),child:Row(children:[
           const Icon(Icons.check_circle,color:Colors.green),const SizedBox(width:12),
-          Expanded(child:Text(S.t('diag.allGood'),style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
+          Expanded(child:Text(S.t(_loading&&all.isEmpty?'diag.checking':'diag.allGood'),style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
+          tools,
         ])));
     }
     final pending=S.t('diag.pending'), access=S.t('diag.access');
@@ -385,59 +410,84 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       ?TextButton(onPressed:_retryAll,child:Text(S.t('unsent.retryAll')))
       :l.label==access?_reconnectButton():_linkAction(l);
     return Card(key:const ValueKey('diag-problems'),elevation:0,margin:const EdgeInsets.only(top:12),color:t.colorScheme.errorContainer.withValues(alpha:0.5),
-      child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        Padding(padding:const EdgeInsets.fromLTRB(14,6,14,4),child:Text(S.t('diag.problems',{'n':problems.length}),
-          style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
+      child:Padding(padding:const EdgeInsets.symmetric(vertical:2),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Padding(padding:const EdgeInsets.fromLTRB(14,0,4,0),child:Row(children:[
+          Expanded(child:Text(S.t('diag.problems',{'n':problems.length}),style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
+          tools,
+        ])),
         for(final l in problems)DiagLineRow(line:l,action:action(l),dense:true),
       ])));
   }
 
-  Widget _block(String title,List<DiagLine> lines,{Widget? footer,Widget? Function(DiagLine)? action}){
+  /// Open or folded sections, kept on the device (lot 29.4).
+  static final Map<String,bool> _openMem={};
+  String _openKey(String id)=>'diag_open:$id';
+  bool _isOpen(String id,bool problem){
+    final mem=_openMem[id];
+    final stored=mem==null?OfflineSyncService.active?.store.preference(_openKey(id)):(mem?'1':'0');
+    return sectionOpen(stored:stored,problem:problem);
+  }
+  void _toggle(String id,bool open){
+    setState(()=>_openMem[id]=!open);
+    unawaited(OfflineSyncService.active?.store.setPreference(_openKey(id),open?'0':'1'));
+  }
+
+  /// A section that folds (lot 29.4): coloured dot, title, one line of
+  /// summary when folded; label on the left, value on the right when open.
+  Widget _block(String id,String title,List<DiagLine> lines,{Widget? footer,Widget? Function(DiagLine)? action}){
     final t=Theme.of(context);
-    return Card(elevation:0,margin:const EdgeInsets.only(top:12),color:t.colorScheme.surfaceContainerLow,child:Padding(
-      padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        Padding(padding:const EdgeInsets.fromLTRB(14,6,14,4),child:Text(title,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
-        // Stacked on a narrow screen (lot 28): see [DiagLineRow].
-        for(final l in lines)DiagLineRow(line:l,action:action?.call(l)),
-        ?footer,
-      ])));
+    final state=sectionState(lines); final problems=diagnosticProblems(lines);
+    final open=_isOpen(id,problems.isNotEmpty);
+    final summary=problems.isEmpty?S.t('diag.sectionGood',{'n':lines.length}):'${problems.first.label} : ${problems.first.value}';
+    return Card(key:ValueKey('diag-section-$id'),elevation:0,margin:const EdgeInsets.only(top:10),color:t.colorScheme.surfaceContainerLow,
+      clipBehavior:Clip.antiAlias,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        InkWell(key:ValueKey('diag-toggle-$id'),onTap:()=>_toggle(id,open),child:Padding(padding:const EdgeInsets.fromLTRB(14,10,8,10),child:Row(children:[
+          Icon(Icons.circle,size:12,color:stateColor(state)),const SizedBox(width:10),
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(title,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700)),
+            if(!open)Text(summary,maxLines:1,overflow:TextOverflow.ellipsis,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
+          ])),
+          Icon(open?Icons.expand_less:Icons.expand_more,color:t.colorScheme.onSurfaceVariant),
+        ]))),
+        if(open)...[
+          for(final l in lines)DiagLineRow(line:l,action:action?.call(l),dense:true),
+          ?footer,
+          const SizedBox(height:6),
+        ],
+      ]));
   }
 
   @override Widget build(BuildContext context){
     final sync=OfflineSyncService.active;
     final links=_links.isEmpty?_links:[_pendingLine(),..._liveLines(),..._links];
     final all=[..._device,...links,..._server,..._mail];
-    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
-        // A discreet pill, as « Actualiser » (revue n° 65).
-        OutlinedButton.icon(key:const ValueKey('diag-copy'),onPressed:all.isEmpty?null:() async {
-          final messenger=ScaffoldMessenger.of(context);
-          await Clipboard.setData(ClipboardData(text:diagnosticsReport(reportLines([...all,..._deadlines],server:widget.server,device:widget.actorId))));
-          messenger.showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
-        },icon:const Icon(Icons.copy_all),label:Text(S.t('diag.copyReport'))),
-        OutlinedButton.icon(onPressed:_loading?null:_load,icon:const Icon(Icons.refresh),label:Text(S.t('diag.refresh'))),
-        if(_loading)const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)),
-      ])),
-      if(!_loading||all.isNotEmpty)_summary(all),
-      ?_deadlineBanner(),
-      if(_device.isNotEmpty)_block(S.t('diag.device'),_device),
-      if(links.isNotEmpty)_block(S.t('diag.links'),links,
+    final sections=<({bool problem,Widget w})>[
+      if(_device.isNotEmpty)(problem:diagnosticProblems(_device).isNotEmpty,w:_block('device',S.t('diag.device'),_device)),
+      if(links.isNotEmpty)(problem:diagnosticProblems(links).isNotEmpty,w:_block('links',S.t('diag.links'),links,
         action:(l)=>l.label==S.t('diag.access')&&showsAccessReconnect(l,web:isWebPlatform)?_reconnectButton():_linkAction(l),
         footer:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           if(MeshCoreLink.instance.supported)Align(alignment:Alignment.centerLeft,child:Padding(padding:const EdgeInsets.symmetric(horizontal:8),
             child:TextButton.icon(key:const ValueKey('diag-open-meshcore'),onPressed:()=>showOverlayPage<void>(context,(_)=>const MeshCorePage()),
               icon:const Icon(Icons.hub_outlined),label:Text(S.t('mesh.openTool'))))),
           if(sync!=null)UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});}),
-        ])),
-      if(_showsServer&&(_server.isNotEmpty||_serverError!=null))_block(S.t(_level=='organizer'?'diag.eventServices':'diag.server'),_server,
-        footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!))),
+        ]))),
+      if(_showsServer&&(_server.isNotEmpty||_serverError!=null))(problem:_serverError!=null||diagnosticProblems(_server).isNotEmpty,
+        w:_block('server',S.t(_level=='organizer'?'diag.eventServices':'diag.server'),_server,
+          footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!)))),
       // Administrator (lot 28): Brevo, then the deadlines.
-      if(_mail.isNotEmpty)_block(S.t('diag.mail'),_mail,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),child:Align(alignment:Alignment.centerLeft,
+      if(_mail.isNotEmpty)(problem:diagnosticProblems(_mail).isNotEmpty,w:_block('mail',S.t('diag.mail'),_mail,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),child:Align(alignment:Alignment.centerLeft,
         child:TextButton.icon(key:const ValueKey('diag-mail-test'),onPressed:_mailSending?null:_mailTest,
-          icon:const Icon(Icons.outgoing_mail),label:Text(S.t('diag.mailTest')))))),
-      if(_level=='admin'&&_deadlineData!=null)_block(S.t('deadline.title'),_deadlines,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),
+          icon:const Icon(Icons.outgoing_mail),label:Text(S.t('diag.mailTest'))))))),
+      if(_level=='admin'&&_deadlineData!=null)(problem:diagnosticProblems(_deadlines).isNotEmpty,w:_block('deadlines',S.t('deadline.title'),_deadlines,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),
         child:Align(alignment:Alignment.centerLeft,child:TextButton.icon(key:const ValueKey('deadline-edit'),onPressed:_editDeadlines,
-          icon:const Icon(Icons.edit_calendar_outlined),label:Text(S.t('deadline.edit')))))),
+          icon:const Icon(Icons.edit_calendar_outlined),label:Text(S.t('deadline.edit'))))))),
+    ];
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      _summary(all),
+      ?_deadlineBanner(),
+      // A section with something to check comes first (lot 29.4).
+      for(final x in sections)if(x.problem)x.w,
+      for(final x in sections)if(!x.problem)x.w,
       // Every « Connexion requise » of Cloudflare on this device (1 Nov 2026).
       if(AccessManager.instance.challenges.isNotEmpty)Card(key:const ValueKey('diag-access'),margin:const EdgeInsets.only(top:12),child:Padding(padding:const EdgeInsets.all(14),
         child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -467,10 +517,16 @@ class DiagLineRow extends StatelessWidget {
     final dot=SizedBox(width:24,child:line.state==null?null:Padding(padding:const EdgeInsets.only(top:4),
       child:Icon(Icons.circle,size:12,color:stateColor(line.state))));
     if(c.maxWidth<narrowWidth){
+      // Lot 29.4: label on the left, value on the right on a phone too; the
+      // two share the width (never a letter per line), the button under.
       return Padding(key:const ValueKey('diag-line-narrow'),padding:pad,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        Row(crossAxisAlignment:CrossAxisAlignment.start,children:[dot,Expanded(child:Text(line.label,style:const TextStyle(fontWeight:FontWeight.w600)))]),
-        Padding(padding:const EdgeInsets.only(left:24,top:2),child:SelectableText(line.value)),
-        if(action!=null)Padding(padding:const EdgeInsets.only(left:12),child:Align(alignment:Alignment.centerLeft,child:action)),
+        Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          dot,
+          Expanded(flex:2,child:Text(line.label)),
+          const SizedBox(width:8),
+          Expanded(flex:3,child:SelectableText(line.value,textAlign:TextAlign.end)),
+        ]),
+        if(action!=null)Align(alignment:Alignment.centerRight,child:action),
       ]));
     }
     return Padding(padding:pad,child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[

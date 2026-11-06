@@ -37,6 +37,8 @@ Map<String,dynamic> deletedMessage(Map<String,dynamic> message,{required String 
 /// message; a deleted message never comes back with its text.
 Map<String,dynamic>? mergeCachedMessage(Map<String,dynamic>? existing,Map<String,dynamic> incoming){
   final deleting=incoming['deleted']==true;
+  // A change (« message.updated »): only the text and its marks.
+  if(incoming['sender_id']==null&&incoming['edited']==true)return existing==null||existing['deleted']==true?null:{...existing,...incoming};
   if(existing==null)return incoming['sender_id']==null?null:(deleting?{...incoming,'body':'','attachments':const []}:incoming);
   if(deleting)return {...existing,...incoming,'body':'','attachments':const []};
   if(existing['deleted']==true){

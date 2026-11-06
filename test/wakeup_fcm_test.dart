@@ -8,7 +8,7 @@ void main() {
     expect(wakeTitle({'type': 'wake', 'kind': 'test', 'priority': 'immediate'}), 'SARCADE : réveil reçu');
     expect(wakeChannel({'priority': 'immediate'}), 'sarcade_immediate');
     expect(wakeChannel({'priority': 'urgent'}), 'sarcade_urgent');
-    expect(wakeChannel({}), 'sarcade_routine');
+    expect(wakeChannel({}), 'sarcade_routine_silent');
   });
 
   test('no Firebase without the build-time project', () {

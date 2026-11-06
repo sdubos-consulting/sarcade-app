@@ -144,6 +144,11 @@ void main(){
     addTearDown(()=>t.binding.setSurfaceSize(null));
     await t.pumpWidget(const MaterialApp(home:MeshtasticPage()));
     await t.pump();
+    // Lot 29.5: the module on one line, its detail in a sheet.
+    expect(find.byKey(const ValueKey('meshtastic-module')),findsOneWidget);
+    expect(find.textContaining('F4ABC Mobile'),findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('meshtastic-module')));
+    await t.pumpAndSettle();
     expect(find.text('F4ABC Mobile'),findsOneWidget);
     expect(find.text('Région et préréglage'),findsOneWidget);
     expect(find.text('EU_868 · LongFast'),findsOneWidget);
@@ -153,6 +158,8 @@ void main(){
     expect(find.text('!a1b2c3d4'),findsOneWidget);
     expect(find.byKey(const ValueKey('meshtastic-disconnect')),findsOneWidget);
     expect(find.byKey(const ValueKey('lora-battery-thresholds')),findsOneWidget);
+    Navigator.of(t.element(find.byKey(const ValueKey('meshtastic-disconnect')))).pop();
+    await t.pumpAndSettle();
     expect(find.text('Nœuds connus (2)'),findsOneWidget);
     await t.pumpWidget(const SizedBox());
   });

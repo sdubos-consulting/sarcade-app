@@ -1,6 +1,22 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'conversation_row.dart';
+import 'message_edit.dart';
+import 'reactions.dart';
+import 'important.dart';
+import 'forward.dart';
+import 'mute.dart';
+import 'mentions.dart';
+import 'conversation_search.dart';
+import 'swipe_reply.dart';
+import 'pdf_export.dart';
+import '../ptt/ptt.dart';
+import '../ptt/ptt_bar.dart';
+import 'typing.dart';
+import '../../services/realtime_service.dart' show RealtimeService;
+import '../../services/power_state.dart' show PowerState;
+import '../../ui/menu_entry.dart';
 import '../../ui/keyboard.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -32,9 +48,10 @@ import '../../ui/bottom_menu.dart';
 import '../../ui/action_buttons.dart';
 import '../tv/tv_nearby.dart';
 import '../../ui/link_status.dart';
-import '../../ui/text_fields_dialog.dart';
-import '../meshcore/meshcore_chat_page.dart' show MeshCoreThreadTiles;
-import '../meshtastic/meshtastic_chat_page.dart' show MeshtasticThreadTiles;
+import '../meshcore/meshcore_chat.dart' show MeshCoreChats;
+import '../meshcore/meshcore_chat_page.dart' show MeshCoreThreadTiles, meshCoreThreadTitle, openMeshCoreChat;
+import '../meshtastic/meshtastic_chat.dart' show MeshtasticChats;
+import '../meshtastic/meshtastic_chat_page.dart' show MeshtasticThreadTiles, meshtasticThreadTitle, openMeshtasticChat;
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -80,6 +97,15 @@ class _MessagesPageState extends State<MessagesPage>{
    _text.addListener(_onTextChanged);
    widget.navigator?.attach(_backFn);
    _selection.addListener(_onSelection);
+   Reactions.instance.load(widget.store,widget.eventId);
+   Reactions.instance.addListener(_onSelection);
+   Important.instance.load(widget.store);
+   Mutes.instance.load(widget.store,widget.eventId);
+   unawaited(Ptt.instance.load(widget.api,widget.eventId,widget.actorId));
+   Mutes.instance.addListener(_onSelection);
+   Important.instance.addListener(_onSelection);
+   Typing.instance.addListener(_onTyping);
+   unawaited(_loadReactions());
    _refreshGroups();
    _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
      deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
@@ -302,7 +328,7 @@ class _MessagesPageState extends State<MessagesPage>{
 
  /// The round button switches between the microphone and « Envoyer ».
  bool _wasEmpty=true;
- void _onTextChanged(){final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
+ void _onTextChanged(){_signalTyping();_onMentionQuery();final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
 
  late final bool Function() _backFn=_backToList;
  bool _wide=false;
@@ -315,7 +341,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){_findCtl.dispose();Mutes.instance.removeListener(_onSelection);Important.instance.removeListener(_onSelection);_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -333,35 +359,10 @@ class _MessagesPageState extends State<MessagesPage>{
  final _drafts=ConversationDrafts();
  late bool _chatOpen=widget.initialPeer!=null||widget.initialText!=null;
 
- /// « Nouvelle discussion »: a direct chat with an operator of the list.
- Future<void> _pickDirect() async {
-   final all=directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId);
-   final id=await showModalBottomSheet<String>(context:context,showDragHandle:true,isScrollControlled:true,builder:(_)=>TextFieldsHost(initial:const [''],builder:(c,f,set){
-     final filter=f[0];
-     final q=filter.text.trim().toLowerCase();
-     final shown=all.where((x)=>q.isEmpty||x.toLowerCase().contains(q)).toList();
-     final typed=filter.text.trim().toUpperCase();
-     return SafeArea(child:Padding(padding:EdgeInsets.only(bottom:MediaQuery.viewInsetsOf(c).bottom),child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(c).height*0.7),
-       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-         Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Text(S.t('messages.newDirect'),style:Theme.of(c).textTheme.titleMedium)),
-         Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:TextField(key:const ValueKey('direct-filter'),controller:filter,autofocus:all.length>8,
-           decoration:InputDecoration(prefixIcon:const Icon(Icons.search),hintText:S.t('messages.directFilter')),onChanged:(_)=>set((){}),
-           onSubmitted:(_){if(shown.length==1){Navigator.pop(c,shown.first);}else if(typed.isNotEmpty&&shown.isEmpty){Navigator.pop(c,typed);}})),
-         Flexible(child:ListView(shrinkWrap:true,children:[
-           for(final x in shown)ListTile(key:ValueKey('direct-$x'),leading:_personAvatar(x),title:Text(x),onTap:()=>Navigator.pop(c,x)),
-           // Someone not seen yet: the identifier typed.
-           if(typed.isNotEmpty&&typed!=widget.actorId&&!all.contains(typed))ListTile(leading:const Icon(Icons.person_add_alt),
-             title:Text(S.t('messages.directTyped',{'id':typed})),onTap:()=>Navigator.pop(c,typed)),
-           if(all.isEmpty&&typed.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('messages.directNone'))),
-         ])),
-       ]))));
-   }));
-   if(id!=null&&mounted)_open(directKey(id));
- }
-
  void _open(String key){
    if(!_chatOpen)setState(()=>_chatOpen=true);
    if(key==_conv)return;
+   _closeFind();
    _selection.clear(notify:false);
    _drafts.keep(_conv,_text.text); _text.text=_drafts.take(key);
    setState((){_conv=key;_maxBuilt=-1;_separator=SeparatorWatch();_atBottom=true;});
@@ -394,7 +395,7 @@ class _MessagesPageState extends State<MessagesPage>{
  Color get _otherBg=>_night?const Color(0xFF202C33):Colors.white;
 
  /// Conversation list filters and search (computer).
- String _filter='all'; String _search=''; String? _hovered;
+ String _search=''; String? _hovered;
  final _searchCtl=TextEditingController();
  Set<String> get _favConvs=>(widget.store.preference('msg_fav:${widget.eventId}')??'').split('|').where((s)=>s.isNotEmpty).toSet();
  Future<void> _toggleFavConv(String k) async {
@@ -418,58 +419,61 @@ class _MessagesPageState extends State<MessagesPage>{
      child:Icon(key==allKey?Icons.campaign_outlined:Icons.forum_outlined,size:r));
  }
 
- /// Computer: list of the conversations on the left (WhatsApp Web): chips
- /// Toutes / Non lues / Favoris and a round search on top; pastille, name,
- /// « Auteur : texte », time on the right, unread count in SARCADE blue.
+ /// List of the conversations (lot 29.3): no chips any more; favourites
+ /// first, then unread, then the others, the MeshCore and Meshtastic threads
+ /// among them; lines like WhatsApp. A search also shows « Personnes · pas
+ /// encore de conversation » (the « Nouvelle discussion » screen is gone).
  Widget _convList(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks,{bool search=true}){
-   final t=Theme.of(context); final s=t.colorScheme;
+   final s=Theme.of(context).colorScheme;
+   return ListenableBuilder(listenable:Listenable.merge([MeshCoreChats.instance,MeshtasticChats.instance]),builder:(context,_){
    final lastBy=<String,SarcadeMessage>{};
    for(final m in _eventMessages){final k=conversationOf(m,widget.actorId,by);final l=lastBy[k];if(l==null||m.createdAt.isAfter(l.createdAt))lastBy[k]=m;}
    final fav=_favConvs; final q=_search.trim().toLowerCase();
+   bool match(String title,String preview)=>q.isEmpty||title.toLowerCase().contains(q)||preview.toLowerCase().contains(q);
    Widget star(String k)=>InkWell(onTap:()=>_toggleFavConv(k),customBorder:const CircleBorder(),child:Tooltip(message:S.t(fav.contains(k)?'messages.unfav':'messages.fav'),
-     child:Icon(fav.contains(k)?Icons.star:Icons.star_border,size:18,color:fav.contains(k)?Colors.amber:s.onSurfaceVariant)));
-   final keys=_conversations(by).where((k){
-     if(_filter=='unread'&&_unreadIn(k,by,acks)==0)return false;
-     if(_filter=='fav'&&!fav.contains(k))return false;
-     if(q.isEmpty)return true;
-     return _convName(k,by).toLowerCase().contains(q)||(lastBy[k]?.body.toLowerCase().contains(q)??false);
-   }).toList();
-   Widget chip(String id,String label)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(key:ValueKey('msg-filter-$id'),label:Text(label),selected:_filter==id,showCheckmark:false,
-     // 48 px touch area, the drawn pill unchanged (revue d'ergonomie n° 39).
-     materialTapTargetSize:MaterialTapTargetSize.padded,
-     onSelected:(_)=>setState(()=>_filter=id)));
+     child:Padding(padding:const EdgeInsets.only(left:4),child:Icon(fav.contains(k)?Icons.star:Icons.star_border,size:16,color:fav.contains(k)?Colors.amber:s.onSurfaceVariant))));
+   final convs=_conversations(by);
+   final entries=<ConvEntry>[
+     for(final k in convs)_sarcadeEntry(k,lastBy[k],by,acks,fav),
+     for(final t in MeshCoreChats.instance.threads)if(t.messages.isNotEmpty)(favKey:MeshCoreThreadTiles.favouriteKey(t.prefix),title:meshCoreThreadTitle(t),
+       preview:t.last?.text??'',at:t.last?.at,unread:t.unread,fav:fav.contains(MeshCoreThreadTiles.favouriteKey(t.prefix)),
+       avatar:const CircleAvatar(radius:22,backgroundColor:Color(0xFF00838F),foregroundColor:Colors.white,child:Icon(Icons.hub_outlined)),
+       onTap:()=>unawaited(openMeshCoreChat(context,t.prefix,t.name)),key:ValueKey('mesh-thread-${t.prefix}'),selected:false),
+     for(final t in MeshtasticChats.instance.threads)if(t.messages.isNotEmpty)(favKey:MeshtasticThreadTiles.favouriteKey(t.key),title:meshtasticThreadTitle(t),
+       preview:t.last==null?'':t.last!.sender==null?t.last!.text:'${t.last!.sender} : ${t.last!.text}',at:t.last?.at,unread:t.unread,
+       fav:fav.contains(MeshtasticThreadTiles.favouriteKey(t.key)),
+       avatar:CircleAvatar(radius:22,backgroundColor:const Color(0xFF2E7D32),foregroundColor:Colors.white,child:Icon(t.channel?Icons.groups_outlined:Icons.wifi_tethering)),
+       onTap:()=>unawaited(openMeshtasticChat(context,t.key,t.name)),key:ValueKey('meshtastic-thread-${t.key}'),selected:false),
+   ];
+   final shown=sortConversations(entries.where((e)=>match(e.title,e.preview)));
+   // People not written to yet, only while searching.
+   final talked={for(final k in convs)?peerOf(k)};
+   final people=q.isEmpty?const <String>[]:directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId)
+     .where((p)=>!talked.contains(p)&&p.toLowerCase().contains(q)).toList();
+   final now=DateTime.now();
    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
      if(search)Padding(padding:const EdgeInsets.fromLTRB(12,10,12,6),child:_searchField()),
-     Padding(padding:EdgeInsets.fromLTRB(12,search?0:8,12,6),child:Row(children:[
-       chip('all',S.t('messages.filterAll')),chip('unread',S.t('messages.filterUnread')),chip('fav',S.t('messages.filterFav'))])),
-     Expanded(child:ListView(children:[for(final k in keys)Builder(builder:(_){
-       final last=lastBy[k]; final n=_unreadIn(k,by,acks);
-       return MouseRegion(onEnter:(_)=>setState(()=>_hovered=k),onExit:(_){if(_hovered==k)setState(()=>_hovered=null);},child:ListTile(selected:k==_conv,selectedTileColor:s.primaryContainer.withValues(alpha:0.45),
-         leading:_convIcon(k,by,r:22),
-         title:Text(_convName(k,by),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w600)),
-         subtitle:last==null?null:Text('${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.deleted?S.t(last.deletedByPco?'messages.deletedByPco':'messages.deleted'):last.body}',maxLines:1,overflow:TextOverflow.ellipsis),
-         // Time on the right, unread count in SARCADE blue, star of the
-         // favourites (long press or right click to add or remove).
-         trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,mainAxisSize:MainAxisSize.min,children:[
-           if(last!=null)Text(_hm(last.createdAt),style:TextStyle(fontSize:12,color:n>0?s.primary:s.onSurfaceVariant)),
-           const SizedBox(height:4),
-           Row(mainAxisSize:MainAxisSize.min,children:[
-             // Star on hover (lot 10C): one click adds or removes.
-             if(fav.contains(k)||_hovered==k)star(k),
-             if(n>0)Container(margin:const EdgeInsets.only(left:4),padding:const EdgeInsets.symmetric(horizontal:7,vertical:2),
-               decoration:BoxDecoration(color:s.primary,borderRadius:BorderRadius.circular(12)),
-               child:Text('$n',style:TextStyle(color:s.onPrimary,fontSize:11,fontWeight:FontWeight.w700))),
-           ]),
-         ]),
-         onLongPress:()=>_toggleFavConv(k),
-         onTap:()=>_open(k)));
-     }),
-     // Threads with MeshCore nodes, kept on this device (lot 17).
-     // They follow the filter, the search and the favourites (lot 29).
-     MeshCoreThreadTiles(filter:_filter,query:_search,favourites:fav,onToggleFavourite:_toggleFavConv),
-     MeshtasticThreadTiles(filter:_filter,query:_search,favourites:fav,onToggleFavourite:_toggleFavConv)])), // lot 28
+     Expanded(child:ListView(keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,children:[
+       if(q.isNotEmpty&&shown.isNotEmpty)_sectionHead(S.t('messages.sectionConversations')),
+       for(final e in shown)MouseRegion(onEnter:(_)=>setState(()=>_hovered=e.favKey),onExit:(_){if(_hovered==e.favKey)setState(()=>_hovered=null);},
+         child:ConversationRow(entry:e,now:now,muted:Mutes.instance.muted(e.favKey),mention:_unreadMention(e.favKey,by,acks),onLongPress:()=>_toggleFavConv(e.favKey),hoverStar:_hovered==e.favKey?star(e.favKey):null)),
+       if(people.isNotEmpty)...[
+         _sectionHead(S.t('messages.sectionPeople')),
+         for(final p in people)ListTile(key:ValueKey('person-$p'),leading:_personAvatar(p,r:22),title:Text(p,style:const TextStyle(fontWeight:FontWeight.w600)),
+           subtitle:Text(S.t('messages.personNew')),onTap:(){_searchCtl.clear();setState(()=>_search='');_open(directKey(p));}),
+       ],
+       if(q.isNotEmpty&&shown.isEmpty&&people.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('messages.searchNone'))),
+     ])),
    ]);
+   });
  }
+
+ ConvEntry _sarcadeEntry(String k,SarcadeMessage? last,Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks,Set<String> fav)=>(favKey:k,title:_convName(k,by),
+   preview:last==null?'':'${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.deleted?S.t(last.deletedByPco?'messages.deletedByPco':'messages.deleted'):last.body}',
+   at:last?.createdAt,unread:_unreadIn(k,by,acks),fav:fav.contains(k),avatar:_convIcon(k,by,r:22),onTap:()=>_open(k),key:ValueKey('conv-$k'),selected:k==_conv);
+
+ Widget _sectionHead(String text)=>Padding(padding:const EdgeInsets.fromLTRB(16,12,16,4),child:Text(text,
+   style:Theme.of(context).textTheme.labelLarge?.copyWith(color:Theme.of(context).colorScheme.primary)));
 
  Widget _searchField(){
    final s=Theme.of(context).colorScheme;
@@ -517,11 +521,18 @@ class _MessagesPageState extends State<MessagesPage>{
        minTileHeight:44,leading:Icon(icon,size:22),title:Text(label,style:const TextStyle(fontSize:15)),onTap:()=>Navigator.pop(c,id));
      return Padding(padding:EdgeInsets.only(bottom:bottomMenuMargin(c)),
      child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+     // Reactions first, like WhatsApp (lot 29, group 7).
+     if(canReact(m)&&_canWrite)ReactionPicker(mine:Reactions.instance.value[m.id]?[widget.actorId],onPick:(e)=>Navigator.pop(c,'react:$e')),
      // « Répondre » first (31 Oct 2026): the answer quotes this message.
      if(!m.deleted&&_canWrite)item('reply',Icons.reply,S.t('messages.replyQuote'),key:const ValueKey('msg-reply')),
      if(!mine&&peerOf(_conv)==null)item('direct',Icons.chat_outlined,S.t('messages.reply',{'who':m.senderId}),key:const ValueKey('msg-direct')),
      if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])item(s,s=='rejected'?Icons.close:Icons.check,S.t('ack.$s')),
      if(!m.deleted)item('copy',Icons.copy,S.t('messages.copy')),
+     if(canForward(m))item('forward',Icons.forward_outlined,S.t('messages.forward'),key:const ValueKey('msg-forward')),
+     if(!m.deleted)item('important',Important.instance.has(widget.eventId,m.id)?Icons.star:Icons.star_border,
+       S.t(Important.instance.has(widget.eventId,m.id)?'messages.importantOff':'messages.importantOn'),key:const ValueKey('msg-important')),
+     if(canEditMessage(m,widget.actorId,now:DateTime.now()))item('edit',Icons.edit_outlined,S.t('messages.edit'),key:const ValueKey('msg-edit')),
+     if(m.edited&&!m.deleted&&isPco(widget.actorId))item('history',Icons.history,S.t('messages.history'),key:const ValueKey('msg-history')),
      item('info',Icons.info_outline,S.t('messages.info')),
      // Several messages at once (lot 21): this one already checked.
      item('select',Icons.check_circle_outline,S.t('messages.select'),key:const ValueKey('msg-select')),
@@ -533,6 +544,11 @@ class _MessagesPageState extends State<MessagesPage>{
    if(choice=='info'){_showInfo(m,acks);return;}
    if(choice=='direct'){_open(directKey(m.senderId));return;}
    if(choice=='delete'){await _delete(m);return;}
+   if(choice=='edit'){await _edit(m);return;}
+   if(choice=='forward'){await _forward(m);return;}
+   if(choice=='important'){await Important.instance.toggle(widget.store,widget.api,widget.eventId,m.id);return;}
+   if(choice=='history'){await _history(m);return;}
+   if(choice.startsWith('react:')){await _react(m,choice.substring(6));return;}
    if(choice=='select'){_selection.start(m.id);_selectFocus.requestFocus();return;}
    await _ack(m,choice);
  }
@@ -560,6 +576,246 @@ class _MessagesPageState extends State<MessagesPage>{
    if(choice=='me'){await _hideForMe([m.id]);return;}
    await _deleteForEveryone(m,pco:pco,now:DateTime.now().toUtc());
    if(mounted)setState((){});
+ }
+
+ /// « Historique » (PCO): every version, kept by the server in the logbook.
+ Future<void> _history(SarcadeMessage m) async {
+   final Map<String,dynamic> j;
+   try{j=await widget.api.messageVersions(widget.eventId,m.id);}catch(_){_snack(S.t('messages.historyOffline'));return;}
+   if(!mounted)return;
+   final list=versionsOf(j);
+   showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.history'),style:Theme.of(c).textTheme.titleMedium)),
+     for(final (i,v) in list.indexed)ListTile(dense:true,title:Text(v.body),
+       subtitle:Text('${i==list.length-1?S.t('messages.historyNow'):S.t('messages.historyBefore')}${v.at==null?'':' · ${_hm(v.at!)}'}')),
+   ])));
+ }
+
+ /// « Modifier »: the new text in place, « modifié » for everyone; offline,
+ /// the change waits in the Outbox like any other.
+ Future<void> _edit(SarcadeMessage m) async {
+   final typed=await showDialog<String>(context:context,builder:(c)=>EditMessageDialog(initial:m.body));
+   if(typed==null||!mounted)return;
+   final body=editedText(m,typed);
+   if(body==null)return;
+   if(!canEditMessage(m,widget.actorId,now:DateTime.now())){_snack(S.t('messages.editTooLate'));return;}
+   await widget.store.cacheMessage(editedLocally(m,body));
+   await widget.sync.queue(objectId:m.id,objectType:'message',action:'update',payload:editPayload(m,body,widget.actorId));
+   if(mounted)setState((){});
+ }
+
+ /// Reactions of the event from the server; offline, the ones kept here.
+ Future<void> _loadReactions() async {
+   try{await Reactions.instance.replace(widget.store,widget.eventId,await widget.api.reactions(widget.eventId));}catch(_){/* offline */}
+ }
+
+ /// One reaction per person: the same emoji again removes it.
+ Future<void> _react(SarcadeMessage m,String picked) async {
+   final next=nextReaction(Reactions.instance.value[m.id]?[widget.actorId],picked);
+   final data={'message_id':m.id,'actor_id':widget.actorId,'emoji':next};
+   await Reactions.instance.apply(widget.store,widget.eventId,data);
+   await widget.sync.queue(objectId:'${m.id}:${widget.actorId}',objectType:'reaction',action:next==null?'delete':'create',
+     payload:{...data,'event_id':widget.eventId});
+ }
+
+ /// Who reacted, under the chips.
+ void _showReactions(SarcadeMessage m){
+   final of=Reactions.instance.value[m.id]??const <String,String>{};
+   showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.reactions'),style:Theme.of(c).textTheme.titleMedium)),
+     for(final e in of.entries)ListTile(leading:Text(e.value,style:const TextStyle(fontSize:22)),title:Text(e.key)),
+   ])));
+ }
+
+ // --- « … écrit » (lot 29, group 7): by the real time only ---
+ final _typingSender=TypingSender(); Timer? _typingTimer;
+ static bool _typingConv(String conv)=>conv==allKey||groupOf(conv)!=null||peerOf(conv)!=null;
+ void _signalTyping(){
+   final rt=RealtimeService.active;
+   // Never in energy saving (card « en train d'écrire »).
+   if(rt==null||!rt.connected||PowerState.instance.saver||_text.text.trim().isEmpty||!_typingConv(_conv))return;
+   if(!_typingSender.shouldSend(_conv,DateTime.now()))return;
+   rt.send({'type':'typing','data':{'actor_id':widget.actorId,'conversation':typingWire(_conv,widget.actorId)}});
+ }
+ /// Shown at once, hidden again once the signal is too old.
+ void _onTyping(){
+   if(!mounted)return;
+   setState((){});
+   _typingTimer?.cancel();
+   _typingTimer=Timer(typingForget+const Duration(milliseconds:200),(){if(mounted)setState((){});});
+ }
+ /// The name of the conversation, « … écrit » under it.
+ Widget _convTitle(Map<String,CommGroup> by,{TextStyle? style}){
+   final name=Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:style);
+   final who=Typing.instance.who(_conv);
+   if(who.isEmpty)return name;
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[name,
+     Text(S.t('messages.typing',{'n':who.length,'who':who.join(', ')}),key:const ValueKey('typing-line'),maxLines:1,overflow:TextOverflow.ellipsis,
+       style:const TextStyle(fontSize:12,fontStyle:FontStyle.italic,fontWeight:FontWeight.normal))]);
+ }
+
+ /// « Messages importants »: a touch opens the message in its conversation.
+ void _showImportant(){
+   final by=_byId;
+   final byId={for(final m in _eventMessages)m.id:m};
+   final prefix='${widget.eventId}/';
+   final list=[for(final id in Important.instance.value)
+     if(id.startsWith(prefix)&&byId[id.substring(prefix.length)]!=null)byId[id.substring(prefix.length)]!];
+   showModalBottomSheet<void>(context:context,showDragHandle:true,isScrollControlled:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.importantList'),style:Theme.of(c).textTheme.titleMedium)),
+     if(list.isEmpty)ListTile(title:Text(S.t('messages.importantNone'))),
+     for(final m in list)ListTile(leading:const Icon(Icons.star,color:Color(0xFFF9A825)),
+       title:Text(m.deleted?S.t('messages.deleted'):m.body,maxLines:2,overflow:TextOverflow.ellipsis),
+       subtitle:Text('${_convName(conversationOf(m,widget.actorId,by),by)} · ${m.senderId} · ${_hm(m.createdAt)}'),
+       onTap:(){Navigator.pop(c);_open(conversationOf(m,widget.actorId,by));
+         WidgetsBinding.instance.addPostFrameCallback((_){unawaited(_goToMessage(m.id));});}),
+   ])));
+ }
+
+ /// « Transférer »: one copy per conversation ticked, through the Outbox.
+ Future<void> _forward(SarcadeMessage m) async {
+   final by=_byId;
+   final targets=[for(final k in _conversations(by))
+     if(groupOf(k)==null||(by[groupOf(k)]?.canSend(widget.actorId)??true))(key:k,title:_convName(k,by),icon:_convIcon(k,by,r:16))];
+   final picked=await showDialog<List<String>>(context:context,builder:(c)=>ForwardDialog(targets:targets));
+   if(picked==null||picked.isEmpty)return;
+   final now=DateTime.now().toUtc();
+   for(final k in picked){
+     final copy=forwardedCopy(m,id:_uuid.v4(),me:widget.actorId,recipients:recipientsFor(k,by),now:now);
+     await widget.store.cacheMessage(copy.toJson());
+     await widget.sync.queue(objectId:copy.id,objectType:'message',payload:copy.toJson());
+   }
+   _snack(S.t('messages.forwarded',{'n':picked.length}));
+   if(mounted)setState((){});
+ }
+
+ /// « … » of the open conversation (lot 29, group 7): « Sourdine ».
+ /// On a phone the star goes into this menu too: the header keeps room
+ /// for the name of the conversation.
+ Widget _convMenu({bool narrow=false}){
+   final muted=Mutes.instance.muted(_conv);
+   final fav=_favConvs.contains(_conv);
+   return PopupMenuButton<String>(key:const ValueKey('conv-more'),icon:const Icon(Icons.more_vert),tooltip:S.t('messages.convMore'),
+     onSelected:(v){
+       if(v=='fav'){_toggleFavConv(_conv);return;}
+       if(v=='find'){setState((){_finding=true;_findQ='';_findCtl.clear();});return;}
+       if(v=='pdf'){unawaited(_exportPdf());return;}
+       unawaited(Mutes.instance.set(widget.store,widget.eventId,_conv,v=='unmute'?null:v));
+     },
+     itemBuilder:(_)=>[
+       if(narrow)PopupMenuItem(value:'find',key:const ValueKey('conv-find-menu'),child:menuEntry(context,icon:Icons.search,
+         color:const Color(0xFF1565C0),title:S.t('messages.find'))),
+       if(narrow)PopupMenuItem(value:'fav',key:const ValueKey('conv-fav'),child:menuEntry(context,icon:fav?Icons.star:Icons.star_border,
+         color:const Color(0xFFF9A825),title:S.t(fav?'messages.unfav':'messages.fav'))),
+       // « Exporter en PDF » (lot 29, group 7).
+       if(canExport(group:_group,me:widget.actorId,pco:isPco(widget.actorId)))PopupMenuItem(value:'pdf',key:const ValueKey('conv-pdf'),
+         child:menuEntry(context,icon:Icons.picture_as_pdf_outlined,color:const Color(0xFFC62828),title:S.t('messages.pdf'),detail:S.t('messages.pdfDetail'))),
+       if(muted)PopupMenuItem(value:'unmute',key:const ValueKey('conv-unmute'),child:menuEntry(context,icon:Icons.volume_up_outlined,color:const Color(0xFF2E7D32),
+         title:S.t('messages.unmute')))
+       else for(final c in muteChoices.keys)PopupMenuItem(value:c,key:ValueKey('conv-mute-$c'),child:menuEntry(context,icon:Icons.volume_off_outlined,
+         color:const Color(0xFF546E7A),title:S.t('messages.mute.$c'),detail:c==muteChoices.keys.first?S.t('messages.muteDetail'):null)),
+     ]);
+ }
+
+ // --- Mentions « @nom » (lot 29, group 7) ---
+ String? _mentionQ;
+ void _onMentionQuery(){
+   final sel=_text.selection;
+   final q=sel.isValid&&sel.isCollapsed?mentionQuery(_text.text,sel.start):null;
+   if(q!=_mentionQ&&mounted)setState(()=>_mentionQ=q);
+ }
+ /// The participants of the open conversation.
+ Iterable<String> _participants(){
+   final g=_group;
+   if(g!=null&&g.kind!='all'&&g.members.isNotEmpty)return g.members;
+   final peer=peerOf(_conv);
+   if(peer!=null)return [peer];
+   return directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId);
+ }
+ Widget? _mentionBar(){
+   final q=_mentionQ;
+   if(q==null)return null;
+   final list=mentionSuggestions(q,_participants(),me:widget.actorId);
+   if(list.isEmpty)return null;
+   return Material(key:const ValueKey('mention-bar'),color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),
+     child:SingleChildScrollView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.fromLTRB(8,6,8,0),child:Row(children:[
+       for(final n in list)Padding(padding:const EdgeInsets.only(right:6),child:ActionChip(key:ValueKey('mention-$n'),
+         avatar:n==mentionPco?const Icon(Icons.shield_outlined,size:16):operatorAvatar(n,radius:10),label:Text('@$n'),
+         onPressed:(){
+           final r=insertMention(_text.text,_text.selection.start,n);
+           _text.value=TextEditingValue(text:r.text,selection:TextSelection.collapsed(offset:r.cursor));
+         })),
+     ])));
+ }
+ /// « @ » on the line while a mention of me is unread.
+ bool _unreadMention(String key,Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
+   final pco=isPco(widget.actorId);
+   return _eventMessages.any((m)=>conversationOf(m,widget.actorId,by)==key&&mentionsMe(m,widget.actorId,pco:pco)
+     &&!(acks[m.id]??const []).any((a)=>a.actorId==widget.actorId&&a.status!='received'));
+ }
+
+ // --- « Recherche dans une conversation » (lot 29, group 7) ---
+ bool _finding=false; String _findQ=''; int _findAt=0;
+ final _findCtl=TextEditingController();
+ Widget _findButton()=>IconButton(key:const ValueKey('conv-find'),tooltip:S.t('messages.find'),
+   onPressed:()=>setState((){_finding=true;_findQ='';_findCtl.clear();}),icon:const Icon(Icons.search));
+ void _closeFind(){_finding=false;_findQ='';_findAt=0;_findCtl.clear();}
+ void _findMove(List<String> hits,int step){
+   if(hits.isEmpty)return;
+   setState(()=>_findAt=(_findAt+step)%hits.length);
+   unawaited(_goToMessage(hits[_findAt]));
+ }
+ Widget _findBar(List<SarcadeMessage> messages){
+   final hits=searchHits(messages,_findQ);
+   final at=hits.isEmpty?0:_findAt.clamp(0,hits.length-1);
+   return Material(key:const ValueKey('find-bar'),color:Theme.of(context).colorScheme.surfaceContainerHigh,child:Padding(padding:const EdgeInsets.fromLTRB(12,2,4,2),child:Row(children:[
+     Expanded(child:TextField(key:const ValueKey('find-field'),controller:_findCtl,autofocus:true,textInputAction:TextInputAction.search,
+       decoration:InputDecoration(hintText:S.t('messages.findHint'),border:InputBorder.none,isDense:true),
+       onChanged:(v){setState((){_findQ=v;_findAt=0;});final h=searchHits(messages,v);if(h.isNotEmpty)unawaited(_goToMessage(h.first));},
+       onSubmitted:(_)=>_findMove(hits,1))),
+     if(_findQ.trim().isNotEmpty)Text(hits.isEmpty?S.t('messages.findNone'):'${at+1} / ${hits.length}',key:const ValueKey('find-count'),
+       style:Theme.of(context).textTheme.bodySmall),
+     IconButton(key:const ValueKey('find-prev'),tooltip:S.t('messages.findPrev'),onPressed:hits.isEmpty?null:()=>_findMove(hits,-1),icon:const Icon(Icons.keyboard_arrow_up)),
+     IconButton(key:const ValueKey('find-next'),tooltip:S.t('messages.findNext'),onPressed:hits.isEmpty?null:()=>_findMove(hits,1),icon:const Icon(Icons.keyboard_arrow_down)),
+     IconButton(key:const ValueKey('find-close'),tooltip:S.t('common.close'),onPressed:()=>setState(_closeFind),icon:const Icon(Icons.close)),
+   ])));
+ }
+
+ /// « Exporter en PDF »: period, then the file opened with the system
+ /// application, which shares it (e-mail, files).
+ Future<void> _exportPdf() async {
+   final now=DateTime.now();
+   final today=DateTime(now.year,now.month,now.day);
+   final choice=await showDialog<String>(context:context,builder:(c)=>SimpleDialog(title:Text(S.t('messages.pdfPeriodTitle')),children:[
+     SimpleDialogOption(key:const ValueKey('pdf-all'),onPressed:()=>Navigator.pop(c,'all'),child:Text(S.t('messages.pdfAll'))),
+     SimpleDialogOption(key:const ValueKey('pdf-today'),onPressed:()=>Navigator.pop(c,'today'),child:Text(S.t('messages.pdfToday'))),
+     SimpleDialogOption(key:const ValueKey('pdf-range'),onPressed:()=>Navigator.pop(c,'range'),child:Text(S.t('messages.pdfRange'))),
+   ]));
+   if(choice==null||!mounted)return;
+   DateTime? from,to; String period=S.t('messages.pdfAll');
+   if(choice=='today'){from=today;to=today.add(const Duration(days:1));period=S.t('messages.pdfToday');}
+   if(choice=='range'){
+     final r=await showDateRangePicker(context:context,firstDate:DateTime(2024),lastDate:today.add(const Duration(days:1)),
+       initialDateRange:DateTimeRange(start:today.subtract(const Duration(days:1)),end:today));
+     if(r==null||!mounted)return;
+     from=r.start;to=r.end.add(const Duration(days:1));
+     period=S.t('messages.pdfFromTo',{'from':pdfDay(r.start),'to':pdfDay(r.end)});
+   }
+   final by=_byId;
+   final list=inPeriod(_messages,from:from,to:to);
+   final acks=<String,List<SarcadeAck>>{};
+   for(final a in widget.store.acks().map(SarcadeAck.fromJson)){(acks[a.messageId]??=[]).add(a);}
+   final photos=<String,Uint8List>{};
+   for(final m in list){for(final a in m.attachments.where((a)=>a.isImage)){final b=await widget.store.attachment(a.fileId);if(b!=null)photos[a.fileId]=b;}}
+   var event=widget.eventId;
+   try{event='${(await widget.api.event(widget.eventId))['name']??event}';}catch(_){/* offline: the identifier */}
+   final title=_convName(_conv,by);
+   final bytes=conversationPdf(title:title,event:event,period:period,messages:list,acks:acks,photo:(id)=>photos[id],now:now);
+   final name='sarcade-${title.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'),'-')}-${now.year}${now.month.toString().padLeft(2,'0')}${now.day.toString().padLeft(2,'0')}.pdf';
+   try{
+     final path=await saveFile(name,bytes,mimeType:'application/pdf');
+     if(canOpenSavedFiles){await openSavedFile(path);}else{_snack(S.t('messages.pdfSaved',{'path':path}));}
+   }catch(_){_snack(S.t('messages.pdfFailed'));}
  }
 
  /// « Supprimer pour moi »: hidden on this device only.
@@ -618,6 +874,8 @@ class _MessagesPageState extends State<MessagesPage>{
    if(m.deleted)return _deletedBubble(m,ma,mine:mine,showAuthor:showAuthor&&named,grey:grey);
    final needsAnswer=!mine&&m.priority=='immediate'&&!myAck.contains('accepted')&&!myAck.contains('rejected');
    final meta=Row(mainAxisSize:MainAxisSize.min,children:[
+     if(Important.instance.has(widget.eventId,m.id))Padding(padding:const EdgeInsets.only(right:3),child:Icon(Icons.star,key:const ValueKey('msg-star'),size:12,color:grey)),
+     if(m.edited)Text('${S.t(editedAfterAck(m,ma)?'messages.editedAfterAck':'messages.edited')} ',key:const ValueKey('msg-edited'),style:TextStyle(fontSize:11,fontStyle:FontStyle.italic,color:grey)),
      Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
      if(mine)...[const SizedBox(width:4),_ticks(m,ma)],
    ]);
@@ -627,13 +885,20 @@ class _MessagesPageState extends State<MessagesPage>{
        child:Text(S.t(priorityKey(m.priority)).toUpperCase(),style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:prio,letterSpacing:0.4)))),
      if(showAuthor&&named&&!mine)Padding(padding:const EdgeInsets.only(bottom:2),child:Text(m.senderId,
        style:TextStyle(fontWeight:FontWeight.w700,fontSize:13,color:Color(authorColor(m.senderId))))),
+     if(m.forwardedSender!=null)Padding(padding:const EdgeInsets.only(bottom:2),child:Row(key:const ValueKey('msg-forwarded'),mainAxisSize:MainAxisSize.min,children:[
+       Icon(Icons.forward,size:13,color:grey),const SizedBox(width:3),
+       Flexible(child:Text(forwardedLabel(m,_hm),style:TextStyle(fontSize:12,fontStyle:FontStyle.italic,color:grey))),
+     ])),
      if(m.replyTo!=null)_quoteInBubble(m.replyTo!),
      if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
        for(final p in photos)_PhotoThumb(key:ValueKey(p.fileId),attachment:p,api:widget.api,store:widget.store,eventId:widget.eventId),
      ])),
-     Text(m.body,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
+     _finding&&_findQ.trim().isNotEmpty
+       ?HighlightText(m.body,query:_findQ,background:const Color(0xFFFFE082),style:TextStyle(fontSize:15,height:1.3,color:s.onSurface))
+       :MentionText(m.body,color:s.primary,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
      const SizedBox(height:2),
      Align(alignment:Alignment.bottomRight,widthFactor:1,child:meta),
+     ReactionChips(of:Reactions.instance.value[m.id],me:widget.actorId,onTap:()=>_showReactions(m)),
      // Immediate: the acknowledgement stays one touch away.
      if(needsAnswer)Padding(padding:const EdgeInsets.only(top:6),child:Wrap(spacing:6,children:[
        FilledButton(style:FilledButton.styleFrom(backgroundColor:s.error,foregroundColor:s.onError,visualDensity:VisualDensity.compact),
@@ -645,7 +910,6 @@ class _MessagesPageState extends State<MessagesPage>{
    // A simple touch opens the actions (decision of 30 Oct 2026, 22 h 37);
    // long press and right click stay; swiping right answers.
    final bubble=GestureDetector(onTap:()=>_actions(m,ma,mine),onLongPress:()=>_actions(m,ma,mine),onSecondaryTap:()=>_actions(m,ma,mine),
-     onHorizontalDragEnd:(d){if((d.primaryVelocity??0)>300&&_canWrite)_startReply(m);},
      child:AnimatedContainer(duration:const Duration(milliseconds:250),margin:EdgeInsets.fromLTRB(mine?56:0,1,mine?0:56,1),padding:const EdgeInsets.fromLTRB(9,6,9,5),
        decoration:BoxDecoration(color:_flashId==m.id?Color.alphaBlend(s.primary.withValues(alpha:0.25),mine?_mineBg:_otherBg):(mine?_mineBg:_otherBg),
          // Small tail on the first bubble of a series.
@@ -661,7 +925,8 @@ class _MessagesPageState extends State<MessagesPage>{
    return Padding(key:_keyFor(m.id),padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
      child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:600),child:MergeSemantics(child:Row(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
        ?avatar,
-       Flexible(child:bubble),
+       // Sliding to the right answers (lot 29, group 7); arrow on hover on a computer.
+       Flexible(child:SwipeReply(onReply:_canWrite&&!_selection.active?()=>_startReply(m):null,hoverArrow:!touchKeyboard,child:bubble)),
      ])))));
  }
 
@@ -801,7 +1066,9 @@ class _MessagesPageState extends State<MessagesPage>{
            // « Message » shown in the empty field (revue d'ergonomie n° 37).
            decoration:InputDecoration(hintText:S.t('messages.hint'),hintStyle:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant),counterText:'',border:InputBorder.none,isDense:true,
              contentPadding:const EdgeInsets.symmetric(vertical:13))))),
-         IconButton(tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
+         // Phone and tablet: the keyboard has its emojis (card « bouton emoji
+         // inutile sur téléphone », lot 29.3); kept on computers and Tesla.
+         if(!touchKeyboard)IconButton(key:const ValueKey('messages-emoji'),tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
        ]))),
      if(empty)SizedBox(height:48,child:_picking
        ?const Padding(padding:EdgeInsets.all(14),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
@@ -815,8 +1082,10 @@ class _MessagesPageState extends State<MessagesPage>{
    ]))));
    // Answering (31 Oct 2026): the quoted message above the field, ✕ to cancel.
    final r=_replyTo;
-   if(r==null)return bar;
-   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[_replyBar(r),bar]);
+   final mentions=_mentionBar();
+   // PTT natif (lot 29): « Appuyer pour parler » while the channel is joined.
+   final ptt=PttBar(channel:pttChannelOf(_conv));
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[ptt,?mentions,if(r!=null)_replyBar(r),bar]);
  }
 
  Widget _chat(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
@@ -827,6 +1096,7 @@ class _MessagesPageState extends State<MessagesPage>{
    final group=_group;
    final showAuthor=peerOf(_conv)==null;
    return Column(children:[
+     if(_finding)_findBar(messages),
      if(group!=null&&(group.description.isNotEmpty||group.managers.isNotEmpty))Padding(padding:const EdgeInsets.fromLTRB(14,4,14,4),child:Align(alignment:Alignment.centerLeft,child:Text(
        [if(group.description.isNotEmpty)group.description,if(group.radioChannel.isNotEmpty)group.radioChannel,S.t('groups.managers',{'names':group.managers.join(', ')})].join(' · '),
        style:Theme.of(context).textTheme.bodySmall))),
@@ -878,17 +1148,23 @@ class _MessagesPageState extends State<MessagesPage>{
      final close=widget.onClose==null?null:IconButton(tooltip:S.t('common.close'),onPressed:widget.onClose,icon:const Icon(Icons.close));
      final listOnly=!wide&&!_chatOpen;
      final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
-     final newChat=RoundIconButton(key:const ValueKey('messages-new-direct'),tooltip:S.t('messages.newDirect'),onPressed:_pickDirect,icon:Icons.add_comment_outlined);
      // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
      // ADRASEC channel models only when the event has the module.
-     final adrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec')?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
-       PopupMenuItem(value:'adrasec',child:Text(S.t('groups.addAdrasec')))]):null;
+     final canAdrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec');
+     final adrasec=PopupMenuButton<String>(key:const ValueKey('messages-more'),icon:const Icon(Icons.more_horiz),tooltip:S.t('messages.more'),
+       onSelected:(v){if(v=='adrasec'){_addTemplate();}else{_showImportant();}},itemBuilder:(_)=>[
+       // « Messages importants », all conversations together (lot 29, group 7).
+       PopupMenuItem(value:'important',key:const ValueKey('messages-important'),child:menuEntry(context,icon:Icons.star_outline,color:const Color(0xFFF9A825),
+         title:S.t('messages.importantList'),detail:S.t('messages.importantListDetail'))),
+       // Round coloured icon, short label, detail under it (lot 29.3).
+       if(canAdrasec)PopupMenuItem(value:'adrasec',child:menuEntry(context,icon:Icons.shield_outlined,color:const Color(0xFF1565C0),
+         title:S.t('groups.addAdrasecShort'),detail:S.t('groups.addAdrasecDetail')))]);
      final editGroup=group!=null&&group.canManage(widget.actorId)
        ?RoundIconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:Icons.edit_outlined):null;
      final pending=_pendingPill();
      if(listOnly){
        return Scaffold(
-         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newChat,newGroup,?adrasec,?close]),
+         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,adrasec,?close]),
          body:_convList(by,acks));
      }
      // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
@@ -900,17 +1176,17 @@ class _MessagesPageState extends State<MessagesPage>{
        return Scaffold(body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
          SizedBox(height:60,child:Row(children:[
            SizedBox(width:360,child:Padding(padding:const EdgeInsets.fromLTRB(12,8,4,8),child:Row(children:[
-             Expanded(child:_searchField()),newChat,newGroup,?adrasec]))),
+             Expanded(child:_searchField()),newGroup,adrasec]))),
            const VerticalDivider(width:1),
            const SizedBox(width:12),
            // Selection (lot 21): « N sélectionnés », Copier, Supprimer in place of the conversation.
            if(_selection.active)Expanded(child:_selectionBar())
            else...[
              _convIcon(_conv,by),const SizedBox(width:12),
-             Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
+             Flexible(child:_convTitle(by,style:Theme.of(context).textTheme.titleMedium)),
              ?pending,
              const Spacer(),
-             ?editGroup,favButton,?close,
+             ?editGroup,PttHeaderButton(channel:pttChannelOf(_conv),name:widget.actorId),_findButton(),favButton,_convMenu(),?close,
            ],
            const LinkStatusPill(),const SizedBox(width:4),
          ])),
@@ -930,10 +1206,10 @@ class _MessagesPageState extends State<MessagesPage>{
          titleSpacing:back?0:null,
          title:Row(children:[
            if(!wide)...[_convIcon(_conv,by,r:18),const SizedBox(width:10)],
-           Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis)),
+           Flexible(child:_convTitle(by)),
            ?pending,
          ]),
-         actions:[?editGroup,favButton,?close]),
+         actions:[?editGroup,PttHeaderButton(channel:pttChannelOf(_conv),name:widget.actorId),_convMenu(narrow:true),?close]),
        body:_chat(by,acks),
      );
    }));

@@ -96,7 +96,8 @@ def main() -> int:
     info["CFBundleDisplayName"] = "SARCADE"
     info["ITSAppUsesNonExemptEncryption"] = False
     modes = info.setdefault("UIBackgroundModes", [])
-    for mode in ("remote-notification", "location"):
+    # « audio »: the PTT channel keeps playing screen off (lot 29).
+    for mode in ("remote-notification", "location", "audio"):
         if mode not in modes:
             modes.append(mode)
     ats = info.setdefault("NSAppTransportSecurity", {})
