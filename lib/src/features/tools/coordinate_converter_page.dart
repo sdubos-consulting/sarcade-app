@@ -1,3 +1,10 @@
+/// Card « Convertisseur de coordonnées : écran compact » (lot 29.5): title
+/// « Coordonnées », one field « Coller, saisir ou chercher un lieu » (text,
+/// links, typed coordinates, address), two sources (Ma position, Toucher la
+/// carte), one line per format (a touch copies, ⋮ reads aloud or shows big),
+/// « En clair » first and following the pin, actions on one row, « Effacer »
+/// the history in the ⋮ of the header.
+///
 /// Convertisseur de coordonnées (menu Outils, 29 Oct 2026; étoffé par le
 /// lot 5, validated on 30 Oct 2026, 2 h 11): source of the position (my
 /// position live by default, touch the map, an operator / high point /
@@ -9,7 +16,6 @@
 /// « Infos du point ».
 library;
 
-import '../../ui/choice_pills.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -25,11 +31,14 @@ import '../dictation/dictation_button.dart';
 import '../measure/coordinate_rows.dart';
 import '../measure/coordinates.dart';
 import '../search/map_search.dart';
-import 'converter_input.dart';
+import 'converter_input.dart' show pushHistory;
 import 'paste_locations.dart';
 import '../../ui/link_status.dart';
 
 enum ConverterSource { me, map, search, input }
+
+/// Delay after the pin stops before the « En clair » line is asked again.
+const plainDelay=Duration(milliseconds:500);
 
 /// Actions handed back to the map (the converter closes first).
 class ConverterActions {
@@ -50,27 +59,33 @@ class CoordinateConverterPage extends StatefulWidget {
   final Iterable<Searchable> Function()? items;
   final Future<List<SearchResult>> Function(String query,LatLng? near)? addresses;
   final String tileUrl;
+  /// « En clair » (lot 29.5): « 850 m au nord-est de Marnes-la-Coquette ·
+  /// Rue de la Gare », from the server (readable_place.dart); null: no line.
+  final Future<String?> Function(LatLng p)? describe;
   const CoordinateConverterPage({super.key,this.initial,this.onShow,this.onMeasure,this.actions=const ConverterActions(),
-    this.location,this.store,this.items,this.addresses,this.tileUrl=''});
+    this.location,this.store,this.items,this.addresses,this.tileUrl='',this.describe});
   @override State<CoordinateConverterPage> createState()=>_CoordinateConverterPageState();
 }
 
 class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
-  late final TextEditingController _text=TextEditingController(text:widget.initial==null?'':formatDd(widget.initial!));
+  late final TextEditingController _text=TextEditingController(text:widget.initial==null?'':formatDd(widget.initial!,decimal:'.'));
   late ConverterSource _source=widget.initial!=null?ConverterSource.input:widget.location!=null?ConverterSource.me:ConverterSource.input;
   LatLng? _picked, _live; String? _pickedLabel; StreamSubscription? _gps;
-  CoordFormat _guided=CoordFormat.dd; bool _fields=false; int _mgrsDigits=4;
-  final _search=TextEditingController(); List<SearchResult> _results=const []; Timer? _debounce;
+  int _mgrsDigits=4;
+  List<SearchResult> _results=const []; List<FoundLocation> _found=const []; Timer? _debounce; bool _looking=false;
   final _mini=MapController();
   List<Map<String,dynamic>> _history=[];
   static const _historyKey='converter_history';
+  // « En clair »: text of the last point asked, « … » while the pin moves.
+  String? _plain; LatLng? _plainFor; bool _plainMoving=false; Timer? _plainTimer;
+  final Map<String,String?> _plainCache={};
 
   @override void initState(){
     super.initState();
     _history=_readHistory();
     if(_source==ConverterSource.me)_startGps();
   }
-  @override void dispose(){_gps?.cancel();_debounce?.cancel();_text.dispose();_search.dispose();_paste.dispose();super.dispose();}
+  @override void dispose(){_gps?.cancel();_debounce?.cancel();_plainTimer?.cancel();_text.dispose();super.dispose();}
 
   List<Map<String,dynamic>> _readHistory(){
     try{final v=widget.store?.preference(_historyKey);if(v==null)return [];
@@ -112,20 +127,44 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
     ConverterSource.input=>_text.text.trim(),
   };
 
-  void _searchChanged(String q){
-    final local=widget.items==null?const <SearchResult>[]:searchLocal(q,widget.items!());
-    setState(()=>_results=local);
+  /// The one field: coordinates typed, else positions found in the text
+  /// (links, message), else a place by its name (event, then address).
+  void _changed(String q){
     _debounce?.cancel();
+    if(q.trim().isEmpty){setState((){_source=widget.location!=null?ConverterSource.me:ConverterSource.input;_results=const [];_found=const [];});
+      if(_source==ConverterSource.me)_startGps();return;}
+    _gps?.cancel();_gps=null;
+    if(parseCoordinates(q)!=null){setState((){_source=ConverterSource.input;_results=const [];_found=const [];});return;}
+    final found=findLocations(q);
+    if(found.length==1){_useFound(found.first);return;}
+    final local=widget.items==null?const <SearchResult>[]:searchLocal(q,widget.items!());
+    setState((){_source=ConverterSource.search;_picked=null;_found=found;_results=local;});
     final addr=widget.addresses;
-    if(addr==null||q.trim().length<3)return;
+    if(addr==null||q.trim().length<3||q.trim().length>200)return;
     _debounce=Timer(const Duration(milliseconds:400),() async {
-      try{final r=await addr(q.trim(),_live);if(mounted&&_search.text==q)setState(()=>_results=[...local,...r]);}catch(_){/* offline: local only */}
+      setState(()=>_looking=true);
+      try{final r=await addr(q.trim(),_live);if(mounted&&_text.text==q)setState(()=>_results=[...local,...r]);}catch(_){/* offline: local only */}
+      if(mounted)setState(()=>_looking=false);
     });
+  }
+
+  Future<void> _paste() async {
+    final d=await Clipboard.getData(Clipboard.kTextPlain);
+    final text=d?.text??'';
+    if(text.trim().isEmpty){if(mounted)ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content:Text(S.t('paste.empty'))));return;}
+    _text.text=text.trim();
+    _changed(_text.text);
+  }
+
+  void _useFound(FoundLocation f){
+    setState((){_source=ConverterSource.search;_picked=f.point;_pickedLabel=f.excerpt;_results=const [];_found=const [];});
+    _remember(f.point,f.excerpt);
+    _moveMini(f.point);
   }
 
   void _pickResult(SearchResult r){
     FocusScope.of(context).unfocus();
-    setState((){_picked=r.point;_pickedLabel=r.title;_results=const [];});
+    setState((){_source=ConverterSource.search;_picked=r.point;_pickedLabel=r.title;_results=const [];_found=const [];});
     _remember(r.point,r.title);
     _moveMini(r.point);
   }
@@ -142,8 +181,43 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
 
   /// The mini map was dragged: the point becomes a typed position.
   void _dragged(LatLng p){
-    setState((){_source=ConverterSource.input;_text.text=formatDd(p,decimal:'.');});
+    setState((){_source=ConverterSource.input;_text.text=formatDd(p,decimal:'.');_results=const [];_found=const [];});
     _gps?.cancel();_gps=null;
+  }
+
+  /// « En clair » follows the pin: « … » while it moves, the answer 0.5 s
+  /// after it stops; answers kept per point (~10 m).
+  void _followPlain(LatLng? p){
+    final describe=widget.describe;
+    if(describe==null||p==null)return;
+    final key='${p.latitude.toStringAsFixed(4)},${p.longitude.toStringAsFixed(4)}';
+    if(_plainFor!=null&&'${_plainFor!.latitude.toStringAsFixed(4)},${_plainFor!.longitude.toStringAsFixed(4)}'==key)return;
+    _plainFor=p;
+    if(_plainCache.containsKey(key)){_plainTimer?.cancel();_plain=_plainCache[key];_plainMoving=false;return;}
+    _plainMoving=true;
+    _plainTimer?.cancel();
+    _plainTimer=Timer(plainDelay,() async {
+      final text=await describe(p);
+      _plainCache[key]=text;
+      if(!mounted||_plainFor!=p)return;
+      setState((){_plain=text;_plainMoving=false;});
+    });
+  }
+
+  Widget _field(ThemeData t){
+    final q=_text.text.trim();
+    final detected=q.isEmpty?null:detectFormat(q);
+    return TextField(key:const ValueKey('converter-input'),controller:_text,onChanged:_changed,
+      autofocus:widget.initial==null&&widget.location==null,textInputAction:TextInputAction.search,
+      decoration:InputDecoration(isDense:true,prefixIcon:const Icon(Icons.search),hintText:S.t('converter.oneField'),
+        filled:true,fillColor:t.colorScheme.surfaceContainerHigh,
+        border:OutlineInputBorder(borderRadius:BorderRadius.circular(24),borderSide:BorderSide.none),
+        helperText:detected==null?null:S.t('converter.recognised',{'f':formatLabel(detected)}),
+        suffixIcon:Row(mainAxisSize:MainAxisSize.min,children:[
+          if(_text.text.isNotEmpty)IconButton(tooltip:S.t('search.clear'),onPressed:(){_text.clear();_changed('');},icon:const Icon(Icons.close)),
+          DictationButton(controller:_text,onChanged:()=>_changed(_text.text)),
+          IconButton(key:const ValueKey('paste-button'),tooltip:S.t('paste.button'),onPressed:_paste,icon:const Icon(Icons.content_paste)),
+        ])));
   }
 
   Widget _sourceChips(){
@@ -152,122 +226,22 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
     return Wrap(spacing:8,runSpacing:8,children:[
       if(widget.location!=null)chip(ConverterSource.me,Icons.my_location,'converter.src.me'),
       if(widget.actions.pickOnMap!=null)chip(ConverterSource.map,Icons.touch_app_outlined,'converter.src.map'),
-      if(widget.items!=null||widget.addresses!=null)chip(ConverterSource.search,Icons.search,'converter.src.search'),
-      chip(ConverterSource.input,Icons.keyboard_outlined,'converter.src.input'),
     ]);
-  }
-
-  Widget _input(ThemeData t){
-    final detected=detectFormat(_text.text);
-    final invalid=_text.text.trim().isNotEmpty&&parseCoordinates(_text.text)==null;
-    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Row(children:[
-        Expanded(child:ChoicePills<bool>(choices:[
-          (value:false,label:S.t('converter.free'),icon:null),(value:true,label:S.t('converter.fields'),icon:null)],
-          selected:_fields,onSelected:(v)=>setState(()=>_fields=v))),
-      ]),
-      const SizedBox(height:10),
-      if(!_fields)TextField(key:const ValueKey('converter-input'),controller:_text,autofocus:widget.initial==null&&widget.location==null,onChanged:(_)=>setState((){}),
-        decoration:InputDecoration(labelText:S.t('converter.input'),hintText:'48°48,074 N 2°08,074 E · 31U DQ 4823 0611',
-          border:OutlineInputBorder(borderRadius:BorderRadius.circular(12)),
-          helperText:detected==null?null:S.t('converter.recognised',{'f':formatLabel(detected)}),
-          suffixIcon:Row(mainAxisSize:MainAxisSize.min,children:[
-            if(_text.text.isNotEmpty)IconButton(tooltip:S.t('common.close'),onPressed:()=>setState(_text.clear),icon:const Icon(Icons.clear)),
-            DictationButton(controller:_text,onChanged:()=>setState((){})),
-          ]),
-          errorText:invalid?S.t('converter.invalid'):null))
-      else ...[
-        DropdownButtonFormField<CoordFormat>(initialValue:_guided,decoration:InputDecoration(labelText:S.t('converter.format'),isDense:true,
-            border:OutlineInputBorder(borderRadius:BorderRadius.circular(12))),
-          items:[for(final f in guidedFormats)DropdownMenuItem(value:f,child:Text(formatLabel(f)))],
-          onChanged:(f){if(f!=null)setState(()=>_guided=f);}),
-        const SizedBox(height:10),
-        GuidedFields(key:ValueKey('guided-${_guided.name}'),format:_guided,onText:(v)=>setState(()=>_text.text=v)),
-        if(invalid)Padding(padding:const EdgeInsets.only(top:6),child:Text(S.t('converter.invalid'),style:TextStyle(color:t.colorScheme.error))),
-      ],
-    ]);
-  }
-
-  // --- « Coller » (card of 30 Oct 2026, 16 h 34), text part ---------------
-  final _paste=TextEditingController();
-  List<FoundLocation>? _found; String? _pasteNote; bool _pasting=false;
-
-  Future<void> _pasteFromClipboard() async {
-    final d=await Clipboard.getData(Clipboard.kTextPlain);
-    final text=d?.text??'';
-    if(text.trim().isEmpty){setState(()=>_pasteNote=S.t('paste.empty'));return;}
-    _paste.text=text;
-    await _readPasted();
-  }
-
-  /// Reads the pasted text; nothing is applied without a touch on a result.
-  Future<void> _readPasted() async {
-    final text=_paste.text;
-    if(text.trim().isEmpty){setState((){_found=null;_pasteNote=null;});return;}
-    var found=findLocations(text);
-    String? note;
-    // Last resort: an address (geocoding of the server).
-    final addr=widget.addresses;
-    if(found.isEmpty&&addr!=null&&text.trim().length>=3&&text.trim().length<=200){
-      setState(()=>_pasting=true);
-      try{
-        final r=await addr(text.trim(),_live);
-        found=[for(final x in r.take(5))(point:x.point,excerpt:x.title,format:'address')];
-      }catch(_){note=S.t('paste.offline');}
-      if(!mounted)return;
-    }
-    setState((){_pasting=false;_found=found;_pasteNote=note??(found.isEmpty?S.t('paste.none'):null);});
-  }
-
-  void _usePasted(FoundLocation f){
-    setState((){
-      _source=ConverterSource.input;_fields=false;
-      _text.text=formatDd(f.point,decimal:'.');
-      _found=null;_pasteNote=S.t('paste.applied',{'what':f.excerpt});
-    });
-    _gps?.cancel();_gps=null;
-    _remember(f.point,f.excerpt);
   }
 
   String _formatName(String f)=>switch(f){
     'link'=>S.t('paste.link'),'address'=>S.t('paste.address'),
     _=>formatLabel(CoordFormat.values.firstWhere((c)=>c.name==f,orElse:()=>CoordFormat.dd))};
 
-  Widget _pasteZone(ThemeData t){
-    final found=_found;
-    return Card(key:const ValueKey('converter-paste'),margin:EdgeInsets.zero,child:Padding(padding:const EdgeInsets.fromLTRB(12,10,12,10),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        Row(children:[
-          const Icon(Icons.content_paste),const SizedBox(width:8),
-          Expanded(child:Text(S.t('paste.title'),style:t.textTheme.titleSmall)),
-          FilledButton.tonalIcon(key:const ValueKey('paste-button'),onPressed:_pasteFromClipboard,icon:const Icon(Icons.content_paste_go),label:Text(S.t('paste.button'))),
-        ]),
-        const SizedBox(height:8),
-        TextField(key:const ValueKey('paste-text'),controller:_paste,minLines:1,maxLines:4,onSubmitted:(_)=>_readPasted(),
-          decoration:InputDecoration(isDense:true,hintText:S.t('paste.hint'),border:OutlineInputBorder(borderRadius:BorderRadius.circular(12)),
-            suffixIcon:IconButton(tooltip:S.t('paste.read'),onPressed:_readPasted,icon:const Icon(Icons.travel_explore)))),
-        if(_pasting)const Padding(padding:EdgeInsets.only(top:8),child:LinearProgressIndicator()),
-        if(_pasteNote!=null)Padding(padding:const EdgeInsets.only(top:6),child:Text(_pasteNote!,style:t.textTheme.bodySmall)),
-        if(found!=null&&found.isNotEmpty)...[
-          Padding(padding:const EdgeInsets.only(top:6),child:Text(S.t(found.length==1?'paste.foundOne':'paste.foundMany',{'n':found.length}),style:t.textTheme.bodySmall)),
-          for(final f in found)ListTile(dense:true,contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),
-            title:Text(S.t('paste.read1',{'what':f.excerpt}),maxLines:2,overflow:TextOverflow.ellipsis),
-            subtitle:Text('${_formatName(f.format)} · ${formatDd(f.point)}'),
-            trailing:FilledButton(onPressed:()=>_usePasted(f),child:Text(S.t('paste.use')))),
-        ],
-      ])));
-  }
-
-  Widget _searchBox(){
-    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      TextField(key:const ValueKey('converter-search'),controller:_search,onChanged:_searchChanged,
-        decoration:InputDecoration(prefixIcon:const Icon(Icons.search),labelText:S.t('converter.searchHint'),
-          border:OutlineInputBorder(borderRadius:BorderRadius.circular(12)),
-          suffixIcon:DictationButton(controller:_search,onChanged:()=>_searchChanged(_search.text)))),
+  List<Widget> _choices(){
+    return [
+      if(_looking)const Padding(padding:EdgeInsets.only(top:6),child:LinearProgressIndicator()),
+      for(final f in _found)ListTile(dense:true,leading:const Icon(Icons.place_outlined),
+        title:Text(S.t('paste.read1',{'what':f.excerpt}),maxLines:2,overflow:TextOverflow.ellipsis),
+        subtitle:Text('${_formatName(f.format)} · ${formatDd(f.point)}'),onTap:()=>_useFound(f)),
       for(final r in _results.take(8))ListTile(dense:true,leading:const Icon(Icons.place_outlined),title:Text(r.title,maxLines:1,overflow:TextOverflow.ellipsis),
         subtitle:Text([S.t('search.kind.${r.kind.name}'),if(r.subtitle.isNotEmpty)r.subtitle].join(' · '),maxLines:1,overflow:TextOverflow.ellipsis),onTap:()=>_pickResult(r)),
-      if(_picked!=null&&_results.isEmpty)Padding(padding:const EdgeInsets.only(top:6),child:Text(_pickedLabel??'',style:const TextStyle(fontWeight:FontWeight.w600))),
-    ]);
+    ];
   }
 
   Widget _miniMap(LatLng p){
@@ -283,64 +257,74 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
     ])));
   }
 
+  /// One action: icon and short label, on one row.
+  Widget _action(IconData icon,String label,VoidCallback onTap,{bool main=false,Key? key}){
+    final s=Theme.of(context).colorScheme;
+    return Padding(padding:const EdgeInsets.only(right:4),child:InkWell(key:key,borderRadius:BorderRadius.circular(12),onTap:onTap,child:SizedBox(width:64,
+      child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(mainAxisSize:MainAxisSize.min,children:[
+        CircleAvatar(radius:20,backgroundColor:main?s.primary:s.surfaceContainerHigh,child:Icon(icon,size:20,color:main?s.onPrimary:s.onSurface)),
+        const SizedBox(height:4),
+        Text(label,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:11,color:s.onSurface)),
+      ])))));
+  }
+
   @override
   Widget build(BuildContext context){
     final t=Theme.of(context); final p=_point;
     if(p!=null&&_source!=ConverterSource.input)WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_moveMini(p);});
+    _followPlain(p);
     final a=widget.actions;
     final show=a.show??widget.onShow, measure=a.measure??widget.onMeasure;
-    final formats=converterFormats;
+    const formats=converterFormats;
+    String allText()=>[_label,if(_plain!=null)'${S.t('converter.plain')} : $_plain',coordinatesText(p!,formats,mgrsDigits:_mgrsDigits)].where((s)=>s.isNotEmpty).join('\n');
     return Scaffold(
-      appBar:LinkedAppBar(title:Text(S.t('converter.title'))),
+      appBar:LinkedAppBar(title:Text(S.t('converter.screenTitle')),actions:[
+        PopupMenuButton<String>(key:const ValueKey('converter-menu'),onSelected:(v){
+            if(v=='clear'){setState(()=>_history=[]);unawaited(widget.store?.setPreference(_historyKey,null));}
+            if(v.startsWith('mgrs'))setState(()=>_mgrsDigits=int.parse(v.substring(4)));
+          },
+          itemBuilder:(_)=>[
+            for(final d in const [2,3,4,5])CheckedPopupMenuItem(value:'mgrs$d',checked:d==_mgrsDigits,
+              child:Text(S.t('converter.mgrsDigits',{'m':const {2:'1 km',3:'100 m',4:'10 m',5:'1 m'}[d]}))),
+            if(_history.isNotEmpty)...[const PopupMenuDivider(),PopupMenuItem(value:'clear',child:Text(S.t('converter.historyClear')))],
+          ]),
+      ]),
       body:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,24),children:[
-        Text(S.t('converter.help'),style:t.textTheme.bodyMedium?.copyWith(color:t.colorScheme.onSurfaceVariant)),
-        const SizedBox(height:12),
-        _pasteZone(t),
-        const SizedBox(height:12),
+        _field(t),
+        ..._choices(),
+        const SizedBox(height:10),
         _sourceChips(),
-        const SizedBox(height:12),
-        if(_source==ConverterSource.input)_input(t),
-        if(_source==ConverterSource.search)_searchBox(),
         if(_source==ConverterSource.me&&_live==null)ListTile(leading:const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)),title:Text(S.t('converter.waitingGps'))),
         if(_source==ConverterSource.map&&_picked==null)ListTile(leading:const Icon(Icons.touch_app_outlined),title:Text(S.t('converter.touchMap'))),
+        if(_source==ConverterSource.input&&_text.text.trim().isNotEmpty&&p==null)Padding(padding:const EdgeInsets.only(top:6),
+          child:Text(S.t('converter.invalid'),style:TextStyle(color:t.colorScheme.error))),
         const SizedBox(height:12),
         if(p!=null)...[
           _miniMap(p),
           const SizedBox(height:12),
-          InfoBlock(title:S.t('info.coordinates'),trailing:PopupMenuButton<int>(tooltip:S.t('converter.mgrsPrecision'),initialValue:_mgrsDigits,
-              icon:const Icon(Icons.tune),onSelected:(v)=>setState(()=>_mgrsDigits=v),
-              itemBuilder:(_)=>[for(final d in const [2,3,4,5])CheckedPopupMenuItem(value:d,checked:d==_mgrsDigits,
-                child:Text(S.t('converter.mgrsDigits',{'m':const {2:'1 km',3:'100 m',4:'10 m',5:'1 m'}[d]})))]),
-            children:coordinateRows(p,formats,mgrsDigits:_mgrsDigits)),
-          Wrap(spacing:8,runSpacing:8,children:[
-            FilledButton.icon(style:FilledButton.styleFrom(shape:const StadiumBorder()),onPressed:(){_remember(p,_label);
-                copyText(context,[_label,coordinatesText(p,formats,mgrsDigits:_mgrsDigits)].where((s)=>s.isNotEmpty).join('\n'));},
-              icon:const Icon(Icons.copy_all),label:Text(S.t('info.copyAll'))),
-            if(a.message!=null)OutlinedButton.icon(style:OutlinedButton.styleFrom(shape:const StadiumBorder()),onPressed:(){
-                final text=[_label,coordinatesText(p,formats,mgrsDigits:_mgrsDigits)].where((s)=>s.isNotEmpty).join('\n');
-                _act((_)=>a.message!(text));},
-              icon:const Icon(Icons.send_outlined),label:Text(S.t('info.send'))),
-            if(show!=null)OutlinedButton.icon(style:OutlinedButton.styleFrom(shape:const StadiumBorder()),
-              onPressed:()=>_act(show),icon:const Icon(Icons.center_focus_strong),label:Text(S.t('converter.show'))),
-            if(measure!=null)OutlinedButton.icon(style:OutlinedButton.styleFrom(shape:const StadiumBorder()),
-              onPressed:()=>_act(measure),icon:const Icon(Icons.straighten),label:Text(S.t('converter.measure'))),
-            if(a.poi!=null)OutlinedButton.icon(style:OutlinedButton.styleFrom(shape:const StadiumBorder()),
-              onPressed:()=>_act(a.poi),icon:const Icon(Icons.add_location_alt_outlined),label:Text(S.t('point.poi'))),
-            if(a.bearing!=null)OutlinedButton.icon(style:OutlinedButton.styleFrom(shape:const StadiumBorder()),
-              onPressed:()=>_act(a.bearing),icon:const Icon(Icons.track_changes),label:Text(S.t('converter.bearing'))),
-            if(a.order!=null)OutlinedButton.icon(style:OutlinedButton.styleFrom(shape:const StadiumBorder()),
-              onPressed:()=>_act(a.order),icon:const Icon(Icons.flag_outlined),label:Text(S.t('point.order'))),
+          InfoBlock(title:S.t('info.coordinates'),children:[
+            if(widget.describe!=null)InfoRow(key:const ValueKey('coord-plain'),label:S.t('converter.plain'),
+              value:_plainMoving?'…':(_plain??'—'),spell:true),
+            ...coordinateRows(p,formats,mgrsDigits:_mgrsDigits),
           ]),
+          SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
+            if(a.message!=null)_action(Icons.send_outlined,S.t('converter.a.message'),(){final text=allText();_act((_)=>a.message!(text));},main:true,key:const ValueKey('converter-message')),
+            _action(Icons.copy_all,S.t('converter.a.copyAll'),(){_remember(p,_label);copyText(context,allText());}),
+            if(show!=null)_action(Icons.center_focus_strong,S.t('converter.a.show'),()=>_act(show)),
+            if(measure!=null)_action(Icons.straighten,S.t('converter.a.measure'),()=>_act(measure)),
+            if(a.poi!=null)_action(Icons.add_location_alt_outlined,S.t('converter.a.poi'),()=>_act(a.poi)),
+            if(a.order!=null)_action(Icons.flag_outlined,S.t('converter.a.order'),()=>_act(a.order)),
+            if(a.bearing!=null)_action(Icons.track_changes,S.t('converter.a.bearing'),()=>_act(a.bearing)),
+          ])),
         ],
         if(_history.isNotEmpty)...[
-          const SizedBox(height:20),
-          Row(children:[Expanded(child:Text(S.t('converter.history'),style:t.textTheme.titleSmall)),
-            OutlinedButton(onPressed:(){setState(()=>_history=[]);unawaited(widget.store?.setPreference(_historyKey,null));},child:Text(S.t('converter.historyClear')))]),
-          for(final h in _history)ListTile(dense:true,leading:const Icon(Icons.history),
+          const SizedBox(height:16),
+          Text(S.t('converter.history'),style:t.textTheme.titleSmall),
+          for(final h in _history)ListTile(dense:true,contentPadding:EdgeInsets.zero,leading:const Icon(Icons.history),
             title:Text('${h['label']??''}',maxLines:1,overflow:TextOverflow.ellipsis),
             subtitle:Text(formatDd(LatLng((h['lat'] as num).toDouble(),(h['lon'] as num).toDouble()))),
-            onTap:()=>setState((){_source=ConverterSource.input;_gps?.cancel();_gps=null;
-              _text.text=formatDd(LatLng((h['lat'] as num).toDouble(),(h['lon'] as num).toDouble()),decimal:'.');_fields=false;})),
+            onTap:()=>setState((){_source=ConverterSource.input;_gps?.cancel();_gps=null;_results=const [];_found=const [];
+              _text.text=formatDd(LatLng((h['lat'] as num).toDouble(),(h['lon'] as num).toDouble()),decimal:'.');})),
         ],
       ]),
     );
