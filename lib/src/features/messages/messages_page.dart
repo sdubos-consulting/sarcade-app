@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'conversation_row.dart';
 import 'message_edit.dart';
 import 'reactions.dart';
+import 'typing.dart';
+import '../../services/realtime_service.dart' show RealtimeService;
+import '../../services/power_state.dart' show PowerState;
 import '../../ui/menu_entry.dart';
 import '../../ui/keyboard.dart';
 import 'package:image_picker/image_picker.dart';
@@ -87,6 +90,7 @@ class _MessagesPageState extends State<MessagesPage>{
    _selection.addListener(_onSelection);
    Reactions.instance.load(widget.store,widget.eventId);
    Reactions.instance.addListener(_onSelection);
+   Typing.instance.addListener(_onTyping);
    unawaited(_loadReactions());
    _refreshGroups();
    _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
@@ -310,7 +314,7 @@ class _MessagesPageState extends State<MessagesPage>{
 
  /// The round button switches between the microphone and « Envoyer ».
  bool _wasEmpty=true;
- void _onTextChanged(){final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
+ void _onTextChanged(){_signalTyping();final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
 
  late final bool Function() _backFn=_backToList;
  bool _wide=false;
@@ -323,7 +327,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -601,6 +605,33 @@ class _MessagesPageState extends State<MessagesPage>{
      ListTile(title:Text(S.t('messages.reactions'),style:Theme.of(c).textTheme.titleMedium)),
      for(final e in of.entries)ListTile(leading:Text(e.value,style:const TextStyle(fontSize:22)),title:Text(e.key)),
    ])));
+ }
+
+ // --- « … écrit » (lot 29, group 7): by the real time only ---
+ final _typingSender=TypingSender(); Timer? _typingTimer;
+ static bool _typingConv(String conv)=>conv==allKey||groupOf(conv)!=null||peerOf(conv)!=null;
+ void _signalTyping(){
+   final rt=RealtimeService.active;
+   // Never in energy saving (card « en train d'écrire »).
+   if(rt==null||!rt.connected||PowerState.instance.saver||_text.text.trim().isEmpty||!_typingConv(_conv))return;
+   if(!_typingSender.shouldSend(_conv,DateTime.now()))return;
+   rt.send({'type':'typing','data':{'actor_id':widget.actorId,'conversation':typingWire(_conv,widget.actorId)}});
+ }
+ /// Shown at once, hidden again once the signal is too old.
+ void _onTyping(){
+   if(!mounted)return;
+   setState((){});
+   _typingTimer?.cancel();
+   _typingTimer=Timer(typingForget+const Duration(milliseconds:200),(){if(mounted)setState((){});});
+ }
+ /// The name of the conversation, « … écrit » under it.
+ Widget _convTitle(Map<String,CommGroup> by,{TextStyle? style}){
+   final name=Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:style);
+   final who=Typing.instance.who(_conv);
+   if(who.isEmpty)return name;
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[name,
+     Text(S.t('messages.typing',{'n':who.length,'who':who.join(', ')}),key:const ValueKey('typing-line'),maxLines:1,overflow:TextOverflow.ellipsis,
+       style:const TextStyle(fontSize:12,fontStyle:FontStyle.italic,fontWeight:FontWeight.normal))]);
  }
 
  /// « Supprimer pour moi »: hidden on this device only.
@@ -954,7 +985,7 @@ class _MessagesPageState extends State<MessagesPage>{
            if(_selection.active)Expanded(child:_selectionBar())
            else...[
              _convIcon(_conv,by),const SizedBox(width:12),
-             Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
+             Flexible(child:_convTitle(by,style:Theme.of(context).textTheme.titleMedium)),
              ?pending,
              const Spacer(),
              ?editGroup,favButton,?close,
@@ -977,7 +1008,7 @@ class _MessagesPageState extends State<MessagesPage>{
          titleSpacing:back?0:null,
          title:Row(children:[
            if(!wide)...[_convIcon(_conv,by,r:18),const SizedBox(width:10)],
-           Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis)),
+           Flexible(child:_convTitle(by)),
            ?pending,
          ]),
          actions:[?editGroup,favButton,?close]),
