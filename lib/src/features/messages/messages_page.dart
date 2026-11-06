@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'conversation_row.dart';
 import 'message_edit.dart';
+import 'reactions.dart';
 import '../../ui/menu_entry.dart';
 import '../../ui/keyboard.dart';
 import 'package:image_picker/image_picker.dart';
@@ -84,6 +85,9 @@ class _MessagesPageState extends State<MessagesPage>{
    _text.addListener(_onTextChanged);
    widget.navigator?.attach(_backFn);
    _selection.addListener(_onSelection);
+   Reactions.instance.load(widget.store,widget.eventId);
+   Reactions.instance.addListener(_onSelection);
+   unawaited(_loadReactions());
    _refreshGroups();
    _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
      deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
@@ -319,7 +323,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -498,6 +502,8 @@ class _MessagesPageState extends State<MessagesPage>{
        minTileHeight:44,leading:Icon(icon,size:22),title:Text(label,style:const TextStyle(fontSize:15)),onTap:()=>Navigator.pop(c,id));
      return Padding(padding:EdgeInsets.only(bottom:bottomMenuMargin(c)),
      child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+     // Reactions first, like WhatsApp (lot 29, group 7).
+     if(canReact(m)&&_canWrite)ReactionPicker(mine:Reactions.instance.value[m.id]?[widget.actorId],onPick:(e)=>Navigator.pop(c,'react:$e')),
      // « Répondre » first (31 Oct 2026): the answer quotes this message.
      if(!m.deleted&&_canWrite)item('reply',Icons.reply,S.t('messages.replyQuote'),key:const ValueKey('msg-reply')),
      if(!mine&&peerOf(_conv)==null)item('direct',Icons.chat_outlined,S.t('messages.reply',{'who':m.senderId}),key:const ValueKey('msg-direct')),
@@ -518,6 +524,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(choice=='delete'){await _delete(m);return;}
    if(choice=='edit'){await _edit(m);return;}
    if(choice=='history'){await _history(m);return;}
+   if(choice.startsWith('react:')){await _react(m,choice.substring(6));return;}
    if(choice=='select'){_selection.start(m.id);_selectFocus.requestFocus();return;}
    await _ack(m,choice);
  }
@@ -571,6 +578,29 @@ class _MessagesPageState extends State<MessagesPage>{
    await widget.store.cacheMessage(editedLocally(m,body));
    await widget.sync.queue(objectId:m.id,objectType:'message',action:'update',payload:editPayload(m,body,widget.actorId));
    if(mounted)setState((){});
+ }
+
+ /// Reactions of the event from the server; offline, the ones kept here.
+ Future<void> _loadReactions() async {
+   try{await Reactions.instance.replace(widget.store,widget.eventId,await widget.api.reactions(widget.eventId));}catch(_){/* offline */}
+ }
+
+ /// One reaction per person: the same emoji again removes it.
+ Future<void> _react(SarcadeMessage m,String picked) async {
+   final next=nextReaction(Reactions.instance.value[m.id]?[widget.actorId],picked);
+   final data={'message_id':m.id,'actor_id':widget.actorId,'emoji':next};
+   await Reactions.instance.apply(widget.store,widget.eventId,data);
+   await widget.sync.queue(objectId:'${m.id}:${widget.actorId}',objectType:'reaction',action:next==null?'delete':'create',
+     payload:{...data,'event_id':widget.eventId});
+ }
+
+ /// Who reacted, under the chips.
+ void _showReactions(SarcadeMessage m){
+   final of=Reactions.instance.value[m.id]??const <String,String>{};
+   showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.reactions'),style:Theme.of(c).textTheme.titleMedium)),
+     for(final e in of.entries)ListTile(leading:Text(e.value,style:const TextStyle(fontSize:22)),title:Text(e.key)),
+   ])));
  }
 
  /// « Supprimer pour moi »: hidden on this device only.
@@ -646,6 +676,7 @@ class _MessagesPageState extends State<MessagesPage>{
      Text(m.body,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
      const SizedBox(height:2),
      Align(alignment:Alignment.bottomRight,widthFactor:1,child:meta),
+     ReactionChips(of:Reactions.instance.value[m.id],me:widget.actorId,onTap:()=>_showReactions(m)),
      // Immediate: the acknowledgement stays one touch away.
      if(needsAnswer)Padding(padding:const EdgeInsets.only(top:6),child:Wrap(spacing:6,children:[
        FilledButton(style:FilledButton.styleFrom(backgroundColor:s.error,foregroundColor:s.onError,visualDensity:VisualDensity.compact),
