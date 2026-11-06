@@ -6,6 +6,7 @@ import 'message_edit.dart';
 import 'reactions.dart';
 import 'important.dart';
 import 'forward.dart';
+import 'mute.dart';
 import 'typing.dart';
 import '../../services/realtime_service.dart' show RealtimeService;
 import '../../services/power_state.dart' show PowerState;
@@ -93,6 +94,8 @@ class _MessagesPageState extends State<MessagesPage>{
    Reactions.instance.load(widget.store,widget.eventId);
    Reactions.instance.addListener(_onSelection);
    Important.instance.load(widget.store);
+   Mutes.instance.load(widget.store,widget.eventId);
+   Mutes.instance.addListener(_onSelection);
    Important.instance.addListener(_onSelection);
    Typing.instance.addListener(_onTyping);
    unawaited(_loadReactions());
@@ -331,7 +334,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){Important.instance.removeListener(_onSelection);_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){Mutes.instance.removeListener(_onSelection);Important.instance.removeListener(_onSelection);_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -445,7 +448,7 @@ class _MessagesPageState extends State<MessagesPage>{
      Expanded(child:ListView(keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,children:[
        if(q.isNotEmpty&&shown.isNotEmpty)_sectionHead(S.t('messages.sectionConversations')),
        for(final e in shown)MouseRegion(onEnter:(_)=>setState(()=>_hovered=e.favKey),onExit:(_){if(_hovered==e.favKey)setState(()=>_hovered=null);},
-         child:ConversationRow(entry:e,now:now,onLongPress:()=>_toggleFavConv(e.favKey),hoverStar:_hovered==e.favKey?star(e.favKey):null)),
+         child:ConversationRow(entry:e,now:now,muted:Mutes.instance.muted(e.favKey),onLongPress:()=>_toggleFavConv(e.favKey),hoverStar:_hovered==e.favKey?star(e.favKey):null)),
        if(people.isNotEmpty)...[
          _sectionHead(S.t('messages.sectionPeople')),
          for(final p in people)ListTile(key:ValueKey('person-$p'),leading:_personAvatar(p,r:22),title:Text(p,style:const TextStyle(fontWeight:FontWeight.w600)),
@@ -676,6 +679,27 @@ class _MessagesPageState extends State<MessagesPage>{
    }
    _snack(S.t('messages.forwarded',{'n':picked.length}));
    if(mounted)setState((){});
+ }
+
+ /// « … » of the open conversation (lot 29, group 7): « Sourdine ».
+ /// On a phone the star goes into this menu too: the header keeps room
+ /// for the name of the conversation.
+ Widget _convMenu({bool narrow=false}){
+   final muted=Mutes.instance.muted(_conv);
+   final fav=_favConvs.contains(_conv);
+   return PopupMenuButton<String>(key:const ValueKey('conv-more'),icon:const Icon(Icons.more_vert),tooltip:S.t('messages.convMore'),
+     onSelected:(v){
+       if(v=='fav'){_toggleFavConv(_conv);return;}
+       unawaited(Mutes.instance.set(widget.store,widget.eventId,_conv,v=='unmute'?null:v));
+     },
+     itemBuilder:(_)=>[
+       if(narrow)PopupMenuItem(value:'fav',key:const ValueKey('conv-fav'),child:menuEntry(context,icon:fav?Icons.star:Icons.star_border,
+         color:const Color(0xFFF9A825),title:S.t(fav?'messages.unfav':'messages.fav'))),
+       if(muted)PopupMenuItem(value:'unmute',key:const ValueKey('conv-unmute'),child:menuEntry(context,icon:Icons.volume_up_outlined,color:const Color(0xFF2E7D32),
+         title:S.t('messages.unmute')))
+       else for(final c in muteChoices.keys)PopupMenuItem(value:c,key:ValueKey('conv-mute-$c'),child:menuEntry(context,icon:Icons.volume_off_outlined,
+         color:const Color(0xFF546E7A),title:S.t('messages.mute.$c'),detail:c==muteChoices.keys.first?S.t('messages.muteDetail'):null)),
+     ]);
  }
 
  /// « Supprimer pour moi »: hidden on this device only.
@@ -1041,7 +1065,7 @@ class _MessagesPageState extends State<MessagesPage>{
              Flexible(child:_convTitle(by,style:Theme.of(context).textTheme.titleMedium)),
              ?pending,
              const Spacer(),
-             ?editGroup,favButton,?close,
+             ?editGroup,favButton,_convMenu(),?close,
            ],
            const LinkStatusPill(),const SizedBox(width:4),
          ])),
@@ -1064,7 +1088,7 @@ class _MessagesPageState extends State<MessagesPage>{
            Flexible(child:_convTitle(by)),
            ?pending,
          ]),
-         actions:[?editGroup,favButton,?close]),
+         actions:[?editGroup,_convMenu(narrow:true),?close]),
        body:_chat(by,acks),
      );
    }));

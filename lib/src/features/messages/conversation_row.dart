@@ -41,7 +41,9 @@ String conversationTime(DateTime t,DateTime now){
 /// SARCADE blue when there is something new, all in grey otherwise.
 class ConversationRow extends StatelessWidget {
   final ConvEntry entry; final VoidCallback? onLongPress; final Widget? hoverStar; final DateTime? now;
-  const ConversationRow({super.key,required this.entry,this.onLongPress,this.hoverStar,this.now});
+  /// « Sourdine » (lot 29, group 7): crossed speaker after the name.
+  final bool muted;
+  const ConversationRow({super.key,required this.entry,this.onLongPress,this.hoverStar,this.now,this.muted=false});
   @override Widget build(BuildContext context){
     final t=Theme.of(context); final s=t.colorScheme; final e=entry;
     final news=e.unread>0;
@@ -50,6 +52,7 @@ class ConversationRow extends StatelessWidget {
       leading:e.avatar,isThreeLine:e.preview.isNotEmpty,
       title:Row(children:[
         Expanded(child:Text(e.title,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:news?FontWeight.w700:FontWeight.w600))),
+        if(muted)Padding(padding:const EdgeInsets.only(right:4),child:Icon(Icons.volume_off,key:const ValueKey('conv-muted'),size:16,color:s.onSurfaceVariant)),
         if(e.at!=null)Text(conversationTime(e.at!,now??DateTime.now()),style:TextStyle(fontSize:12,color:news?s.primary:s.onSurfaceVariant,fontWeight:news?FontWeight.w600:null)),
       ]),
       subtitle:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
