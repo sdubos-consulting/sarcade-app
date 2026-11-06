@@ -10,7 +10,6 @@ library;
 
 import 'dart:async';
 
-import '../../l10n/strings.dart';
 import 'weather_models.dart';
 
 /// Time between two loads of the forecast by the map.
@@ -95,12 +94,11 @@ class MapWeather {
     return WeatherReport.fromJson(j).fetchedAt??DateTime.tryParse('${j['saved_at']}');
   }
 
-  /// Text of the pill: offline (or last load failed), the time of the kept
-  /// forecast is added: « 7° · E 11 km/h · à 14:05 ».
-  String? pillText(String? text){
-    if(text==null||(!_failed&&online()))return text;
-    final at=keptAt; if(at==null)return text;
-    final l=at.toLocal(); String two(int v)=>v.toString().padLeft(2,'0');
-    return S.t('weather.pillAt',{'text':text,'time':'${two(l.hour)}:${two(l.minute)}'});
-  }
+  /// The kept forecast is no longer valid: offline or last load failed.
+  /// The pill shows it in grey, without any time (card « météo périmée
+  /// dans la pastille », lot 29.2).
+  bool get stale=>_failed||!online();
+
+  /// Text of the pill: never a time any more (lot 29.2).
+  String? pillText(String? text)=>text;
 }

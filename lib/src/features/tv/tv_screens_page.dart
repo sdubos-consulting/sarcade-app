@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, LengthLimitingTextInputFormatter;
 import '../../l10n/strings.dart';
 import 'tv_screens_button.dart' show tvScreensChanged;
 import '../../models/comm_group.dart';
@@ -23,14 +23,10 @@ class TvScreensPage extends StatelessWidget {
   /// The camera opens at once.
   final bool scanOnOpen;
   const TvScreensPage({super.key,required this.api,required this.eventId,this.scanOnOpen=false});
-  @override Widget build(BuildContext context)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tv.menu'))),
-    body:ListView(padding:const EdgeInsets.all(16),children:[
-      Text(S.t('tv.help'),style:Theme.of(context).textTheme.bodyLarge),
-      // « Découverte automatique des écrans » (1 Nov 2026, 8 h 01).
-      ValueListenableBuilder<bool>(valueListenable:tvDiscovery,builder:(_,on,_)=>SwitchListTile(key:const ValueKey('tv-discovery'),
-        contentPadding:EdgeInsets.zero,value:on,onChanged:(v)=>tvDiscovery.value=v,
-        title:Text(S.t('tv.discovery')),subtitle:Text(S.t('tv.discoveryHelp')))),
-      const SizedBox(height:8),
+  // Card « Afficher sur une TV : écran réorganisé » (lot 29.5): title
+  // « Écrans TV », no long sentence; « Mes écrans » first (panel).
+  @override Widget build(BuildContext context)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tv.screensTitle'))),
+    body:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,24),children:[
       TvScreensPanel(api:api,eventId:eventId,scanOnOpen:scanOnOpen),
     ]));
 }
@@ -285,14 +281,15 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
     final t=Theme.of(context); final all=_list; final wide=tvButtonsWide(context);
     final list=all==null?null:tvVisibleScreens(all,showOld:_showOld);
     final old=all==null?0:all.length-tvVisibleScreens(all,showOld:false).length;
+    Widget section(String text)=>Padding(padding:const EdgeInsets.only(top:12,bottom:4),child:Text(text,
+      style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600,color:t.colorScheme.primary)));
+    Widget step(int n,String text,{Widget? trailing})=>Padding(padding:const EdgeInsets.symmetric(vertical:4),child:Row(children:[
+      CircleAvatar(radius:12,backgroundColor:t.colorScheme.primaryContainer,child:Text('$n',style:TextStyle(fontSize:12,color:t.colorScheme.onPrimaryContainer))),
+      const SizedBox(width:10),Expanded(child:Text(text)),?trailing]));
     return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,mainAxisSize:MainAxisSize.min,children:[
-        Wrap(spacing:8,runSpacing:8,children:[
-          if(canScanTvQr)FilledButton.icon(onPressed:_scan,icon:const Icon(Icons.qr_code_scanner),label:Text(S.t('tv.scan'))),
-          OutlinedButton.icon(onPressed:_type,icon:const Icon(Icons.keyboard_outlined),label:Text(S.t('tv.type'))),
-        ]),
-        if(_busy)const Padding(padding:EdgeInsets.only(top:16),child:LinearProgressIndicator()),
-        const SizedBox(height:16),
-        Text(S.t('tv.list'),style:t.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w600,color:t.colorScheme.primary)),
+        if(_busy)const Padding(padding:EdgeInsets.only(bottom:8),child:LinearProgressIndicator()),
+        // « Mes écrans » first (lot 29.5).
+        section(S.t('tv.mine')),
         if(_offline)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.cloud_off),title:Text(S.t('event.offline')),
           trailing:OutlinedButton(onPressed:_load,child:Text(S.t('common.retry'))))
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))
@@ -331,8 +328,24 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
           if(d['active']==true)Padding(padding:const EdgeInsets.only(bottom:8),child:TvScreenButtons(screen:d,wide:wide,
             onAction:(a)=>_act(d,a==TvAction.theme?'nextTheme':a))),
         ]),
-        if(old>0)Align(alignment:Alignment.centerLeft,child:OutlinedButton(key:const ValueKey('tv-show-old'),onPressed:()=>setState(()=>_showOld=!_showOld),
-          child:Text(_showOld?S.t('tv.hideOld'):S.t('tv.showOld',{'n':old})))),
+        // « Connecter un nouvel écran » in two numbered steps.
+        section(S.t('tv.connectNew')),
+        step(1,S.t('tv.step1'),trailing:IconButton(tooltip:S.t('common.copy'),icon:const Icon(Icons.copy_outlined),
+          onPressed:(){Clipboard.setData(const ClipboardData(text:'https://tv.sarcade.org'));_say('common.copied');})),
+        step(2,S.t('tv.step2')),
+        Padding(padding:const EdgeInsets.only(left:34,top:4),child:Wrap(spacing:8,runSpacing:8,children:[
+          if(canScanTvQr)FilledButton.icon(onPressed:_scan,icon:const Icon(Icons.qr_code_scanner),label:Text(S.t('tv.scan'))),
+          OutlinedButton.icon(onPressed:_type,icon:const Icon(Icons.keyboard_outlined),label:Text(S.t('tv.type'))),
+        ])),
+        const SizedBox(height:8),
+        // « Découverte automatique des écrans » (1 Nov 2026, 8 h 01): one line.
+        ValueListenableBuilder<bool>(valueListenable:tvDiscovery,builder:(_,on,_)=>SwitchListTile(key:const ValueKey('tv-discovery'),
+          dense:true,contentPadding:EdgeInsets.zero,value:on,onChanged:(v)=>tvDiscovery.value=v,
+          title:Text(S.t('tv.discovery')),subtitle:Text(S.t('tv.discoveryShort')))),
+        // « Anciens écrans · 21 › » (expired or revoked).
+        if(old>0)ListTile(key:const ValueKey('tv-show-old'),dense:true,contentPadding:EdgeInsets.zero,
+          title:Text(_showOld?S.t('tv.hideOld'):S.t('tv.oldN',{'n':old})),
+          trailing:Icon(_showOld?Icons.expand_less:Icons.chevron_right),onTap:()=>setState(()=>_showOld=!_showOld)),
       ]));
   }
 }
