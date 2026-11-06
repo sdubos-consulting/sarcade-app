@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import '../../../l10n/strings.dart';
+
 import 'package:flutter/material.dart';
 
 import 'drawing_controller.dart';
@@ -63,11 +66,15 @@ class DrawingToolbar extends StatelessWidget {
   const DrawingToolbar({super.key,required this.controller,required this.onClose,this.hintSeen,this.onHintShown});
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context)=>LayoutBuilder(builder:(context,box)=>_build(context,box.maxWidth));
+
+  Widget _build(BuildContext context,double room){
     final c=controller;
     final scheme=Theme.of(context).colorScheme;
-    // Five columns that fit the screen (iPhone in portrait: labels scaled down).
-    final fit=(MediaQuery.sizeOf(context).width-24-8)/5-4;
+    // Five columns that fit the screen (iPhone in portrait: labels scaled
+    // down) and the room actually given to the bar (inner padding 8).
+    var fit=(MediaQuery.sizeOf(context).width-24-8)/5-4;
+    if(room.isFinite)fit=math.min(fit,((room-8)/5-4).floorToDouble());
     final width=toolButtonWidth(context,[for(final k in drawingToolbarKinds)k.label,S.t('draw.undo'),S.t('draw.redo')]).clamp(44.0,fit<44?44.0:fit).toDouble();
     final tools=<Widget>[
       for(final k in drawingPaletteOrder)Padding(
