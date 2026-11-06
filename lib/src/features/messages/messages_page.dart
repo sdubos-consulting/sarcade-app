@@ -11,6 +11,8 @@ import 'mentions.dart';
 import 'conversation_search.dart';
 import 'swipe_reply.dart';
 import 'pdf_export.dart';
+import '../ptt/ptt.dart';
+import '../ptt/ptt_bar.dart';
 import 'typing.dart';
 import '../../services/realtime_service.dart' show RealtimeService;
 import '../../services/power_state.dart' show PowerState;
@@ -99,6 +101,7 @@ class _MessagesPageState extends State<MessagesPage>{
    Reactions.instance.addListener(_onSelection);
    Important.instance.load(widget.store);
    Mutes.instance.load(widget.store,widget.eventId);
+   unawaited(Ptt.instance.load(widget.api,widget.eventId,widget.actorId));
    Mutes.instance.addListener(_onSelection);
    Important.instance.addListener(_onSelection);
    Typing.instance.addListener(_onTyping);
@@ -1080,8 +1083,9 @@ class _MessagesPageState extends State<MessagesPage>{
    // Answering (31 Oct 2026): the quoted message above the field, ✕ to cancel.
    final r=_replyTo;
    final mentions=_mentionBar();
-   if(r==null&&mentions==null)return bar;
-   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[?mentions,if(r!=null)_replyBar(r),bar]);
+   // PTT natif (lot 29): « Appuyer pour parler » while the channel is joined.
+   final ptt=PttBar(channel:pttChannelOf(_conv));
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[ptt,?mentions,if(r!=null)_replyBar(r),bar]);
  }
 
  Widget _chat(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
@@ -1182,7 +1186,7 @@ class _MessagesPageState extends State<MessagesPage>{
              Flexible(child:_convTitle(by,style:Theme.of(context).textTheme.titleMedium)),
              ?pending,
              const Spacer(),
-             ?editGroup,_findButton(),favButton,_convMenu(),?close,
+             ?editGroup,PttHeaderButton(channel:pttChannelOf(_conv),name:widget.actorId),_findButton(),favButton,_convMenu(),?close,
            ],
            const LinkStatusPill(),const SizedBox(width:4),
          ])),
@@ -1205,7 +1209,7 @@ class _MessagesPageState extends State<MessagesPage>{
            Flexible(child:_convTitle(by)),
            ?pending,
          ]),
-         actions:[?editGroup,_convMenu(narrow:true),?close]),
+         actions:[?editGroup,PttHeaderButton(channel:pttChannelOf(_conv),name:widget.actorId),_convMenu(narrow:true),?close]),
        body:_chat(by,acks),
      );
    }));
