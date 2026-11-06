@@ -69,7 +69,9 @@ void main() {
       child: const Text('open'))))));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    // One panel « Carte » (lot 29.2): base maps, then the theme.
+    // One panel « Carte » (lot 29.2): base maps in thumbnails, then the
+    // theme further down (built once scrolled to).
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('display-theme')), 300, scrollable: find.byType(Scrollable).last);
     expect(find.byKey(const ValueKey('display-theme')), findsOneWidget);
     await tester.ensureVisible(find.text('Nuit'));
     await tester.pumpAndSettle();
