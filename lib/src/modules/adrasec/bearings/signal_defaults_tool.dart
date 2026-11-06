@@ -17,5 +17,5 @@ ToolItem? signalDefaultsToolItem({required SarcadeApi api,LocalStore? store,Set<
     required void Function(String id,Widget Function() build) open})=>
   (roles??myRoles).contains('admin')
     ?ToolItem(id:'signals',icon:Icons.graphic_eq,title:S.t('signals.title'),subtitle:S.t('signals.rowHelp'),
-      color:Colors.red,group:ToolGroup.pc,onTap:()=>open('signals',()=>SignalDefaultsPage(api:api,store:store)))
+      color:Colors.red,group:ToolGroup.module,onTap:()=>open('signals',()=>SignalDefaultsPage(api:api,store:store)))
     :null;

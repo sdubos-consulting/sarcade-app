@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
 import '../../access/access_session.dart';
@@ -10,7 +9,6 @@ import '../../account/rights.dart' show RightsState;
 import '../../admin/admin_section.dart' show AdminSection;
 import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
-import '../../config/version.dart';
 import 'about_page.dart';
 import 'windows_update.dart' show WindowsUpdates, windowsUpdateAlert;
 import 'notifications_panel.dart';
@@ -558,15 +556,7 @@ class _SettingsPageState extends State<SettingsPage> {
     // Événement, Serveur and Terminal are in Général, not repeated here; they
     // stay in the copied report. Main courante moved to Outils › Au PC
     // (22 h 18, points 6 and 8).
-    // « Copier » at the far right (29 Oct 2026).
-    _row(S.t('diagnostics.version'),child:Builder(builder:(c){
-      final v='SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}';
-      return Row(children:[Expanded(child:SelectableText(v)),
-        IconButton(tooltip:S.t('common.copy'),icon:const Icon(Icons.copy_outlined),onPressed:() async {
-          await Clipboard.setData(ClipboardData(text:v));
-          if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
-        })]);
-    })),
+    // The version is only in « Cet appareil » of the panel (lot 29.4).
     if(VersionStatus.shown)const Padding(padding:EdgeInsets.only(bottom:12),child:VersionStatus()),
     // Battery card (30 Oct 2026, point F).
     _row(S.t('power.consumption'),child:Builder(builder:(_){final p=PowerState.instance;
@@ -622,7 +612,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final t=Theme.of(context);
     return Scaffold(
       // Same surface as the content in both themes (revue n° 68).
-      appBar:LinkedAppBar(linkStatus:!widget.firstRun,automaticallyImplyLeading:!widget.firstRun,backgroundColor:t.colorScheme.surface,surfaceTintColor:Colors.transparent,scrolledUnderElevation:0),
+      appBar:LinkedAppBar(linkStatus:!widget.firstRun,automaticallyImplyLeading:!widget.firstRun,backgroundColor:t.colorScheme.surface),
       // Fixed save bar at the bottom (charte « style Play Console »); none on
       // Diagnostic and À propos, nothing to save there (revue n° 64).
       bottomNavigationBar:settingsShowsSaveBar(tab:_tabs[_tab.clamp(0,_tabs.length-1)],firstRun:widget.firstRun,dirty:_dirty)?SaveBar(changed:widget.firstRun||_dirty,saving:_saving,onSave:_trySave,
