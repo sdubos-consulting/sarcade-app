@@ -171,18 +171,35 @@ class _MeshCoreChatPageState extends State<MeshCoreChatPage> {
 /// The MeshCore threads in the list of Messages (after the conversations of
 /// the event): « MeshCore · nom », last message, unread count.
 class MeshCoreThreadTiles extends StatelessWidget {
-  const MeshCoreThreadTiles({super.key});
+  /// Filter of the list (« all », « unread », « fav »), search text and
+  /// favourites of Messages: these threads follow them like the others
+  /// (card « fils MeshCore et Meshtastic hors filtres », lot 29).
+  final String filter, query; final Set<String> favourites;
+  final void Function(String key)? onToggleFavourite;
+  const MeshCoreThreadTiles({super.key,this.filter='all',this.query='',this.favourites=const {},this.onToggleFavourite});
+  static String favouriteKey(String id)=>'mesh:$id';
   @override Widget build(BuildContext context)=>ListenableBuilder(listenable:MeshCoreChats.instance,builder:(context,_){
-    final threads=MeshCoreChats.instance.threads.where((t)=>t.messages.isNotEmpty).toList();
+    final threads=MeshCoreChats.instance.threads.where((t)=>t.messages.isNotEmpty).where((t){
+      final fav=favourites.contains(favouriteKey(t.prefix));
+      if(filter=='unread'&&t.unread==0)return false;
+      if(filter=='fav'&&!fav)return false;
+      final q=query.trim().toLowerCase(); if(q.isEmpty)return true;
+      return meshCoreThreadTitle(t).toLowerCase().contains(q)||(t.last?.text.toLowerCase().contains(q)??false);
+    }).toList();
     if(threads.isEmpty)return const SizedBox.shrink();
     final s=Theme.of(context).colorScheme;
     return Column(mainAxisSize:MainAxisSize.min,children:[for(final t in threads)ListTile(key:ValueKey('mesh-thread-${t.prefix}'),
       leading:const CircleAvatar(radius:22,backgroundColor:Color(0xFF00838F),foregroundColor:Colors.white,child:Icon(Icons.hub_outlined)),
       title:Text(meshCoreThreadTitle(t),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w600)),
       subtitle:t.last==null?null:Text(t.last!.text,maxLines:1,overflow:TextOverflow.ellipsis),
-      trailing:t.unread==0?null:Container(padding:const EdgeInsets.symmetric(horizontal:7,vertical:2),
-        decoration:BoxDecoration(color:s.primary,borderRadius:BorderRadius.circular(12)),
-        child:Text('${t.unread}',style:TextStyle(color:s.onPrimary,fontSize:11,fontWeight:FontWeight.w700))),
+      trailing:Row(mainAxisSize:MainAxisSize.min,children:[
+        if(favourites.contains(favouriteKey(t.prefix)))const Icon(Icons.star,size:18,color:Color(0xFFF9A825)),
+        if(t.unread>0)Container(margin:const EdgeInsets.only(left:4),padding:const EdgeInsets.symmetric(horizontal:7,vertical:2),
+          decoration:BoxDecoration(color:s.primary,borderRadius:BorderRadius.circular(12)),
+          child:Text('${t.unread}',style:TextStyle(color:s.onPrimary,fontSize:11,fontWeight:FontWeight.w700))),
+      ]),
+      // Long press: favourite or not, like the other conversations.
+      onLongPress:onToggleFavourite==null?null:()=>onToggleFavourite!(favouriteKey(t.prefix)),
       onTap:()=>unawaited(openMeshCoreChat(context,t.prefix,t.name)))]);
   });
 }
