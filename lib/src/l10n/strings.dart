@@ -203,6 +203,7 @@ const Texts _fr={
   'map.sync':'Synchroniser','map.messages':'Messages','map.menu':'Menu','map.fit':'Cadrer les opérateurs',
   'map.operators':'Opérateurs','map.references':'Référentiel radio','map.files':'Fichiers',
   'map.logbook':'Main courante','map.settings':'Paramètres',
+  'logbook.kind.sos':'SOS','logbook.kind.order':'Ordres','logbook.kind.message':'Messages','logbook.kind.drawing':'Dessins','logbook.kind.access':'Accès','logbook.kind.note':'Note','logbook.kind.other':'Autre','logbook.all':'Tout','logbook.search':'Rechercher dans la main courante','logbook.today':'Aujourd’hui','logbook.yesterday':'Hier','logbook.none':'Aucune entrée','logbook.entries':'{n## entrée|# entrées}','logbook.note':'Note','logbook.noteHint':'Ce qui s’est passé','logbook.noteSave':'Ajouter','logbook.noteFailed':'Note non enregistrée : réseau ou serveur indisponible','logbook.csv':'Exporter en CSV','logbook.csvSaved':'{n## entrée exportée en CSV|# entrées exportées en CSV}','logbook.csvFailed':'Export CSV impossible','month.1':'janvier','month.2':'février','month.3':'mars','month.4':'avril','month.5':'mai','month.6':'juin','month.7':'juillet','month.8':'août','month.9':'septembre','month.10':'octobre','month.11':'novembre','month.12':'décembre',
   // Sync and low-bandwidth mode
   'sync.alert':'{n## élément non envoyé|# éléments non envoyés} depuis {min} min','sync.now':'Envoyer',
   'lowband.on':'Liaison faible imposée par le PCO : envoi groupé toutes les {s} s, photos en attente',
@@ -886,6 +887,7 @@ const Texts _en={
   'map.sync':'Synchronise','map.messages':'Messages','map.menu':'Menu','map.fit':'Fit operators',
   'map.operators':'Operators','map.references':'Radio directory','map.files':'Files',
   'map.logbook':'Logbook','map.settings':'Settings',
+  'logbook.kind.sos':'SOS','logbook.kind.order':'Orders','logbook.kind.message':'Messages','logbook.kind.drawing':'Drawings','logbook.kind.access':'Access','logbook.kind.note':'Note','logbook.kind.other':'Other','logbook.all':'All','logbook.search':'Search the logbook','logbook.today':'Today','logbook.yesterday':'Yesterday','logbook.none':'No entry','logbook.entries':'{n## entry|# entries}','logbook.note':'Note','logbook.noteHint':'What happened','logbook.noteSave':'Add','logbook.noteFailed':'Note not saved: network or server unavailable','logbook.csv':'Export to CSV','logbook.csvSaved':'{n## entry exported to CSV|# entries exported to CSV}','logbook.csvFailed':'CSV export impossible','month.1':'January','month.2':'February','month.3':'March','month.4':'April','month.5':'May','month.6':'June','month.7':'July','month.8':'August','month.9':'September','month.10':'October','month.11':'November','month.12':'December',
   'sync.alert':'{n## item|# items} not sent for {min} min','sync.now':'Send',
   'lowband.on':'Low-bandwidth mode set by the command post: grouped sending every {s} s, photos on hold',
   'lowband.photosHeld':'{n## photo|# photos} waiting for the end of the low-bandwidth mode',
