@@ -27,7 +27,7 @@ export 'meshtastic_protocol.dart' show MeshtasticNode;
 /// [onShowOnMap]: « Voir sur la carte » of a node.
 ToolItem meshtasticToolItem({required void Function(String id,Widget Function() build) open,void Function(MeshtasticNode)? onShowOnMap})=>
   ToolItem(id:'meshtastic',icon:Icons.wifi_tethering,title:S.t('meshtastic.tool'),subtitle:S.t('meshtastic.toolHelp'),
-    color:Colors.lightGreen,onTap:()=>open('meshtastic',()=>MeshtasticPage(onShowOnMap:onShowOnMap)));
+    group:ToolGroup.radio,color:Colors.lightGreen,onTap:()=>open('meshtastic',()=>MeshtasticPage(onShowOnMap:onShowOnMap)));
 
 /// The nodes heard by the module, in the search of the map (point 5).
 List<Searchable> meshtasticMapSearchables(){
