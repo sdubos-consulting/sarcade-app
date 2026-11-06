@@ -130,7 +130,7 @@ class _MeshtasticPageState extends State<MeshtasticPage> {
             onTap:n.placed&&widget.onShowOnMap!=null?()=>widget.onShowOnMap!(n):null)),
           Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.local'),style:t.textTheme.bodySmall)),
         ],
-      ]))))),
+      ])))),
     );
   }
 }
