@@ -90,7 +90,7 @@ class _LogbookPageState extends State<LogbookPage>{
    String two(int v)=>v.toString().padLeft(2,'0');
    final name='main-courante-${now.year}${two(now.month)}${two(now.day)}-${two(now.hour)}${two(now.minute)}.csv';
    String? path;
-   try{path=await saveFile(name,const Utf8Codec().encode(logbookCsv(shown)),mimeType:'text/csv');}catch(_){path=null;}
+   try{path=await saveFile(name,const Utf8Codec().encode(logbookCsv(shown,eventId:widget.eventId)),mimeType:'text/csv');}catch(_){path=null;}
    messenger.showSnackBar(SnackBar(content:Text(path==null?S.t('logbook.csvFailed'):S.t('logbook.csvSaved',{'n':shown.length})),
      action:path==null||!canOpenSavedFiles?null:SnackBarAction(label:S.t('map.open'),onPressed:()=>openSavedFile(path!))));
  }
