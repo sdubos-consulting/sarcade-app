@@ -300,7 +300,7 @@ const Texts _fr={
   'weather.code.drizzle':'Bruine','weather.code.rain':'Pluie','weather.code.showers':'Averses','weather.code.snow':'Neige',
   'weather.code.storm':'Orage','weather.code.unknown':'Inconnu',
   // Base maps
-  'basemap.title':'Fond de carte','basemap.menu':'Fond de carte','basemap.eventDefault':'par défaut pour l’événement',
+  'basemap.title':'Fond de carte','map.panelTitle':'Carte','basemap.short.photos':'Photos aériennes','basemap.desc.osm':'Rues, bâtiments, lieux','basemap.desc.topo':'Relief, sentiers, altitudes','basemap.desc.ignPlan':'Carte officielle française','basemap.desc.photos':'Vue du ciel','basemap.menu':'Fond de carte','basemap.eventDefault':'par défaut pour l’événement',
   'basemap.offlineAvailable':'disponible hors Internet','basemap.preferOffline':'Utiliser les cartes du serveur local',
   'basemap.preferOfflineHelp':'Tuiles du serveur SARCADE (département), sans Internet',
   // Files, drawing
@@ -972,7 +972,7 @@ const Texts _en={
   'weather.code.clear':'Clear sky','weather.code.partly':'Partly cloudy','weather.code.overcast':'Overcast','weather.code.fog':'Fog',
   'weather.code.drizzle':'Drizzle','weather.code.rain':'Rain','weather.code.showers':'Showers','weather.code.snow':'Snow',
   'weather.code.storm':'Thunderstorm','weather.code.unknown':'Unknown',
-  'basemap.title':'Base map','basemap.menu':'Base map','basemap.eventDefault':'default for the event',
+  'basemap.title':'Base map','map.panelTitle':'Map','basemap.short.photos':'Aerial photos','basemap.desc.osm':'Streets, buildings, places','basemap.desc.topo':'Relief, paths, altitudes','basemap.desc.ignPlan':'French official map','basemap.desc.photos':'Seen from the sky','basemap.menu':'Base map','basemap.eventDefault':'default for the event',
   'basemap.offlineAvailable':'available without Internet','basemap.preferOffline':'Use the maps of the local server',
   'basemap.preferOfflineHelp':'Tiles from the SARCADE server (department), without Internet',
   'files.tooLarge':'File limited to 25 MB','files.uploadFailed':'Upload failed: {error}','files.downloadFailed':'Download failed: {error}',
