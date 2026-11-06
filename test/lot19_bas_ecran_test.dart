@@ -35,7 +35,8 @@ void main() {
       final layers = tester.getRect(find.byKey(const ValueKey('layers')));
       expect(badge.bottom, 700 - phoneBottomGap);
       expect(scale.left, greaterThanOrEqualTo(badge.right), reason: 'the scale does not cover « Suivi de position »');
-      expect(scale.center.dy, closeTo(badge.center.dy, 0.5), reason: 'same line');
+      // Lot 29.2: the scale sits on the bottom of the line, like the SOS disc.
+      expect(scale.bottom, closeTo(badge.bottom, 0.5), reason: 'same line, bottom aligned');
       expect(sos.bottom - sosDiscInset, closeTo(badge.bottom, 0.5), reason: 'bottom of the SOS disc on the line');
       expect(scale.right, lessThanOrEqualTo(sos.left), reason: 'the scale stays clear of the column');
       expect(layers.center.dx, sos.center.dx, reason: 'same axis (lot 25)');
