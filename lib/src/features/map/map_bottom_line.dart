@@ -62,7 +62,8 @@ Widget mapAttribution({required bool compact,required bool fullBleed,required St
 Widget phoneBottomLine({required Widget badge,required Widget scale})=>
   Positioned(left:12,right:phoneColumnReserve,bottom:phoneBottomGap,height:pillHeight,
     child:Row(children:[
-      Flexible(child:withId('map.tracking',badge)),
+      // The scale on the right, next to the round buttons (lot 29.2).
+      Expanded(child:Align(alignment:Alignment.centerLeft,child:withId('map.tracking',badge))),
       const SizedBox(width:8),
-      withId('map.scale',scale),
+      Align(alignment:Alignment.bottomRight,child:withId('map.scale',scale)),
     ]));
