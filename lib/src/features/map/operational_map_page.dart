@@ -1000,6 +1000,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Convertisseur étoffé (lot 5): actions handed back to the map.
   void _openConverter({LatLng? initial})=>_openDesk('converter',()=>CoordinateConverterPage(key:ValueKey('desk-converter-$initial'),initial:initial,
     location:_location,store:widget.store,items:_searchables,addresses:_searchAddresses,tileUrl:_tileUrl,
+    describe:(p) async =>placeText(await _places.describe(p)),
     actions:ConverterActions(
       show:(p)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);}),
       measure:(p)=>_onMapNow(()=>_measureTo(p,S.t('nav.point'))),
