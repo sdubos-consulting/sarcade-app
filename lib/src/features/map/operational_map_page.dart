@@ -4,7 +4,13 @@ import 'dart:math' as math;
 import '../../ui/car_mode.dart';
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
-import '../messages/conversations.dart' show avatarInitials;
+import '../messages/conversations.dart' show avatarInitials, conversationOf;
+import '../messages/reactions.dart' show Reactions;
+import '../messages/typing.dart' show Typing;
+import '../messages/important.dart' show Important;
+import '../messages/mute.dart' show Mutes, ringsThroughMute;
+import '../messages/mentions.dart' show mentionsMe;
+import '../profile/profile_photo.dart' show ProfilePhotos;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -103,6 +109,7 @@ import '../basemaps/basemap_sheet.dart';
 import '../weather/weather_page.dart';
 import '../weather/weather_models.dart';
 import '../weather/map_weather.dart';
+import '../weather/rain_radar.dart';
 import '../measure/coordinates.dart';
 import '../measure/external_maps.dart';
 import '../measure/measure_controller.dart';
@@ -307,7 +314,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false;_showMessagesPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initAdsb();_initTvDiscovery();_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_carScreen.start();_stopWakeups=listenWakeups(_onWakeup);_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));unawaited(MeshtasticLink.instance.restore(widget.store));}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initAdsb();_initTvDiscovery();_initDrawing();_initBearings();_loadLocal();_syncRadar();_initRoutes();_initMeasure();_sync.start();_initOperations();_carScreen.start();_stopWakeups=listenWakeups(_onWakeup);_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());unawaited(MeshCoreLink.instance.restore(widget.store));unawaited(MeshtasticLink.instance.restore(widget.store));}
 
   /// « Découverte automatique des écrans », remembered on this device.
   void _initTvDiscovery(){
@@ -362,7 +369,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
   }
-  void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId&&!p.deleted)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
+  void _loadLocal(){ProfilePhotos.instance.load(widget.store,widget.eventId);for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId&&!p.deleted)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
   /// Initial load followed by the Diagnostic and the dot (lot 19, map_load_status.dart).
   late final _mapLoad=MapLoadStatus()..onRetry=_retryLinks;
   void _retryLinks(){if(!mounted)return;if(!_started){unawaited(_start());}else if(!_realtime.connected){_realtime.reconnectNow();}}
@@ -480,16 +487,45 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ].join(' · ');
   }
 
+  /// Profile photos (lot 29, group 7): the ones new or changed only.
+  Future<void> _refreshPhotos() async {
+    try{await ProfilePhotos.instance.refresh(widget.api,widget.store,widget.eventId);}catch(_){/* offline: the ones kept */}
+  }
+  Future<void> _photoChanged(Map data) async {
+    try{await ProfilePhotos.instance.changed(widget.api,widget.store,widget.eventId,data);}catch(_){return;}
+    // Removed by a PCO or an administrator: the operator is told.
+    if(data['device_id']==widget.deviceId&&data['removed_by']!=null&&mounted){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('profile.photoRemovedByPco'))));
+    }
+  }
+
+  /// PCO or administrator: a photo not suitable; the operator is told.
+  Future<void> _removePhotoOf(String deviceId) async {
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('profile.photoRemoveOther')),
+      content:Text(S.t('profile.photoRemoveOtherHelp',{'who':deviceId})),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('profile.photoRemove')))]));
+    if(ok!=true||!mounted)return;
+    try{await ProfilePhotos.instance.remove(widget.api,widget.store,widget.eventId,deviceId);}
+    catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('profile.photoFailed'))));}
+    if(mounted)setState((){});
+  }
+
   void _onRealtime(RealtimeEvent e){
     if(e.type.startsWith('adsb.')){_adsb.onRealtime(e.type,e.data);return;}
     if(e.type=='aprs.class.updated'){unawaited(_applyFixedClass(e.data));}
     if(e.type=='operator.status'||e.type=='device.updated'){_statuses.applyJson(e.data);}
     if(e.type=='device.updated'){final id='${e.data['device_id']??''}';if(id.isNotEmpty&&mounted)setState(()=>_devices[id]=Map<String,dynamic>.from(e.data));}
-    if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());unawaited(_loadRoles());return;}
+    if(e.type==RealtimeService.reconnectedType){unawaited(_refreshPhotos());unawaited(_reloadPositions());unawaited(_loadRoles());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());_traces.add(p);if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'||e.type=='poi.updated'||e.type=='poi.deleted'){unawaited(applyRemotePoi(_pois,widget.store,Map<String,dynamic>.from(e.data),widget.eventId).then((c){if(c&&mounted)setState((){});}));}
     if(e.type=='message.created'){_receiveMessage(e.data);}
     if(e.type=='message.deleted'){unawaited(widget.store.cacheMessage(Map<String,dynamic>.from(e.data)));}
+    if(e.type=='message.updated'){unawaited(widget.store.cacheMessage(Map<String,dynamic>.from(e.data)));}
+    if(e.type=='photo.updated'){unawaited(_photoChanged(e.data));}
+    if(e.type=='typing'){Typing.instance.received(e.data,widget.deviceId);}
+    if(e.type=='message.created'){Typing.instance.sent('${e.data['sender_id']??''}');}
+    if(e.type=='reaction.updated'){unawaited(Reactions.instance.apply(widget.store,widget.eventId,e.data));}
     if(e.type=='map_feature.upserted'||e.type=='map_feature.deleted'){_applyRemoteFeature(e.data,persist:true);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
     if(e.type=='group.upserted'&&!_sync.isPending('${e.data['id']}')){widget.store.saveGroup(e.data);}
@@ -535,11 +571,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       }
       // Realtime and synchronisation may both bring the message: only the
       // first arrival notifies; an old message caught up later stays silent.
-      if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
+      // « Sourdine » (lot 29, group 7): silent, except distress, IMMÉDIAT and orders.
+      Mutes.instance.load(widget.store,widget.eventId);
+      final mention=mentionsMe(m,widget.deviceId,pco:isPco(widget.deviceId));
+      final muted=Mutes.instance.muted(conversationOf(m,widget.deviceId,groups))&&!ringsThroughMute(m,mentionsMe:mention);
+      if(!muted&&shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
         // Conversation format for Android Auto (lot 1b): the channel by its name.
         final gid=m.recipientIds.where((r)=>r.startsWith('group:')).map((r)=>r.substring(6)).firstOrNull;
         final g=gid==null?null:groups[gid];
-        await _notifications.message(title:'SARCADE · ${S.t(priorityKey(m.priority))} · ${m.senderId}',body:m.body,priority:m.priority,
+        await _notifications.message(title:'SARCADE · ${S.t(priorityKey(m.priority))} · ${m.senderId}',body:m.body,priority:m.priority,mention:mention,
           payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m),senderId:m.senderId),
           car:carConversation(m,me:widget.deviceId,channelName:g==null?null:(g.kind=='all'?S.t('car.allChannel'):g.name),
             earlier:carThread(m,widget.store.messages().map(SarcadeMessage.fromJson),me:widget.deviceId)));
@@ -1716,6 +1756,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _allTraces=>widget.store.preference('traces_all:${widget.eventId}')=='1';
   bool get _aprsTraces=>aprsTracesFrom(widget.store.preference('traces_aprs:${widget.eventId}'));
   int get _traceWindow=>traceWindowFrom(widget.store.preference('trace_window'));
+  // --- Rain radar (lot 29) ---
+  late final RainRadar _radar=RainRadar(widget.api)..addListener(_onRadar);
+  void _onRadar(){if(mounted)setState((){});}
+  bool get _showRadar=>widget.store.preference('show_radar')=='1';
+  void _syncRadar()=>_radar.setOn(_showRadar);
+  Future<void> _setRadar(bool v) async {await widget.store.setPreference('show_radar',v?'1':null);_syncRadar();if(mounted)setState((){});}
   Future<void> _setFlag(String key,bool v) async {await widget.store.setPreference('$key:${widget.eventId}',v?'1':null);if(mounted)setState((){});}
   late final TracesStore _traces=TracesStore(load:(id)=>widget.api.positionHistory(widget.eventId,id,limit:2000),onChanged:(){if(mounted)setState((){});});
   /// Stations whose trace is drawn: pinned ones, or every one with « Toutes les traces ».
@@ -1907,6 +1953,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         row(S.t('adsb.layer'),_adsb.on,(v) async {await _adsb.setOn(v);refresh((){});},icon:Icons.flight,
           detail:Padding(padding:const EdgeInsets.only(left:8,right:8),child:AdsbFiltersTiles(adsb:_adsb))),
       ],
+      // Météo (lot 29): rain radar of Météo-France.
+      layerSectionTitle(c,S.t('layers.weather')),
+      row(S.t('radar.layer'),_showRadar,_setRadar,op:'radar',icon:Icons.water_drop_outlined,detail:RainRadarDetail(radar:_radar)),
       if(radio)layerSectionTitle(c,S.t('layers.radio')),
       // « Sans Internet seulement » renamed and moved into the detail of
       // « Stations APRS » (lot 29.2).
@@ -2122,6 +2171,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         await widget.store.setPreference('rail_pins',jsonEncode([for(final x in pins)'$x']));
         if(mounted)setState((){});
       }
+      // « Messages importants » of the person (lot 29, group 7).
+      await Important.instance.fromServer(widget.store,p['important_messages']);
       final remote=p['favourites'];
       if(remote is List){
         await widget.store.setPreference('favourites',encodeFavourites({for(final x in remote)'$x'}));
@@ -2257,7 +2308,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return Container(padding:const EdgeInsets.all(14),decoration:glass(context,radius:18,border:_stationColor(p).withValues(alpha:0.6)),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Row(children:[
-          _stationIcon(p,size:40),const SizedBox(width:10),
+          // The photo of the operator in his sheet (lot 29, group 7); the map keeps the symbols.
+          !p.isAprs&&ProfilePhotos.instance.of(p.deviceId)!=null?operatorAvatar(p.deviceId,label:p.label,radius:20):_stationIcon(p,size:40),const SizedBox(width:10),
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             // APRS station linked to a terminal: its callsign stays visible
             // (« PCO-demo · F4JPO-5 », decision of 28 Oct 2026).
@@ -2268,6 +2320,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])),
           IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
           // « Discuter »: direct chat with this operator (not with myself, not an APRS station).
+          if(!p.isAprs&&p.deviceId!=widget.deviceId&&isPco(widget.deviceId)&&ProfilePhotos.instance.of(p.deviceId)!=null)IconButton(key:const ValueKey('photo-remove-other'),
+            tooltip:S.t('profile.photoRemoveOther'),onPressed:()=>unawaited(_removePhotoOf(p.deviceId)),icon:const Icon(Icons.no_photography_outlined)),
           if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>setState((){_chatPeer=p.deviceId;_deskPage=null;_deskId=null;}),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
@@ -2790,7 +2844,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();_teamSearch.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_carField.dispose();_stopWakeups?.call();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
+@override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();_radar.removeListener(_onRadar);_radar.dispose();_teamSearch.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_carField.dispose();_stopWakeups?.call();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).
@@ -2971,6 +3025,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Night: street maps darkened; aerial photos stay as they are.
           TileLayer(key:ValueKey('$_tileUrl|${_darkTiles(context)}'),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble(),
             tileBuilder:_darkTiles(context)?darkModeTileBuilder:null),
+          // Rain radar of Météo-France, just above the base map (lot 29).
+          ?rainRadarLayer(_radar,server:widget.api.baseUrl,opacity:_layerOpacity('radar')),
           if(traced.isNotEmpty)_faded('traces',PolylineLayer(polylines:_traces.polylines(traced,windowMin:_traceWindow))),
           if(traced.isNotEmpty)_faded('traces',CircleLayer(circles:traceDots(_traces,traced,windowMin:_traceWindow,zoom:_mapZoomOr(0)))),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Theme.of(context).colorScheme.secondary)).toList()),

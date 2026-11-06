@@ -68,6 +68,13 @@ class RealtimeService {
  /// Reconnect at once (network back, manual synchronisation).
  void reconnectNow(){if(!connected&&_channel==null&&_uri!=null&&!_closing){_retry?.cancel();_open();}}
 
+ /// A light signal to the server (« typing »); dropped when the channel is
+ /// closed, never kept for later.
+ void send(Map<String,dynamic> message){
+   if(!connected)return;
+   try{_channel?.sink.add(jsonEncode(message));}catch(_){/* closed meanwhile */}
+ }
+
  void disconnect(){_closing=true;_retry?.cancel();_ping?.cancel();_sub?.cancel();_sub=null;_channel?.sink.close();_channel=null;connected=false;}
  Future<void> dispose() async {disconnect();await _events.close();}
 }

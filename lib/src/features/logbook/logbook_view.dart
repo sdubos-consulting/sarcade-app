@@ -104,15 +104,29 @@ final _coords=RegExp(r'\((-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)\)');
 /// CSV for Excel in French: « ; », UTF-8 with its mark, one line per entry
 /// (date and time to the second, type, operator, text, latitude,
 /// longitude, identifier). The position is read from the text when given.
-String logbookCsv(List<LogbookEntry> entries){
+/// Columns of the common event format (card « format d'événement commun »,
+/// lot 29, group 8, choice 4): the same, in the same order, as the JSON sent
+/// to the SIEM and the export of the server; the fingerprint of each row.
+const logbookCsvColumns=['event.id','@timestamp','event.dataset','event.action','user.id','host.id','sarcade.event_id',
+  'geo.location.lat','geo.location.lon','event.outcome','message','event.hash'];
+
+/// « 2026-11-05T21:17:04.123Z »: UTC to the millisecond.
+String ecsTimestamp(DateTime t){
+  final u=t.toUtc();
+  String p(int v,[int n=2])=>v.toString().padLeft(n,'0');
+  return '${p(u.year,4)}-${p(u.month)}-${p(u.day)}T${p(u.hour)}:${p(u.minute)}:${p(u.second)}.${p(u.millisecond,3)}Z';
+}
+
+String logbookCsv(List<LogbookEntry> entries,{required String eventId}){
   String cell(String v)=>v.contains(RegExp(r'[;"\n\r]'))?'"${v.replaceAll('"','""')}"':v;
-  final b=StringBuffer('﻿')..writeln(['date','heure','type','operateur','texte','latitude','longitude','identifiant'].join(';'));
+  final b=StringBuffer('\ufeff')..write('${logbookCsvColumns.join(';')}\r\n');
   for(final e in entries){
-    final l=e.time.toLocal(); final m=_coords.firstMatch(e.summary);
-    b.writeln([
-      '${l.year}-${_two(l.month)}-${_two(l.day)}',logHms(e.time),logKindLabel(logKind(e)),e.actorId??'',e.summary,
-      m?.group(1)??'',m?.group(2)??'',e.objectId??'${e.seq}',
-    ].map(cell).join(';'));
+    final m=_coords.firstMatch(e.summary);
+    final lat=m==null?null:double.tryParse(m.group(1)!), lon=m==null?null:double.tryParse(m.group(2)!);
+    b.write('${[
+      'log-${e.seq}',ecsTimestamp(e.time),'sarcade.logbook',e.kind,e.actorId??'','',eventId,
+      lat?.toString()??'',lon?.toString()??'','unknown',e.summary,e.hash??'',
+    ].map(cell).join(';')}\r\n');
   }
   return b.toString();
 }

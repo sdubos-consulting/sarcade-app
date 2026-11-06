@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' show LatLng;
 import '../access/access_manager.dart';
@@ -158,6 +159,67 @@ class SarcadeApi {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/messages'));
     if(r.statusCode!=200) throw Exception('messages_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>SarcadeMessage.fromJson(e)).toList();
+  }
+  /// Rain radar (lot 29): images of the last hour, legend, source.
+  Future<Map<String,dynamic>> rainRadar() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/weather/radar'));
+    if(r.statusCode!=200) throw SarcadeHttpException('radar',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// « Main courante intègre » or the entry where it breaks (PCO, administrators).
+  Future<Map<String,dynamic>> logbookVerify(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook/verify'));
+    if(r.statusCode!=200) throw SarcadeHttpException('logbook_verify',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// « Historique » of a changed message (PCO and administrators).
+  Future<Map<String,dynamic>> messageVersions(String eventId,String messageId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/messages/$messageId/versions'));
+    if(r.statusCode!=200) throw SarcadeHttpException('message_versions',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Profile photos (lot 29, group 7): who has one and since when.
+  Future<List<Map>> photos(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/photos'));
+    if(r.statusCode!=200) throw SarcadeHttpException('photos',r.statusCode);
+    return (jsonDecode(r.body) as List).whereType<Map>().toList();
+  }
+  /// The photo itself, or null when it was removed meanwhile.
+  Future<Uint8List?> photo(String eventId,String deviceId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/${Uri.encodeComponent(deviceId)}/photo'));
+    if(r.statusCode==404)return null;
+    if(r.statusCode!=200) throw SarcadeHttpException('photo',r.statusCode);
+    return r.bodyBytes;
+  }
+  /// Returns the time kept by the server.
+  Future<String> putPhoto(String eventId,String deviceId,Uint8List bytes) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/${Uri.encodeComponent(deviceId)}/photo'),
+      headers:{'content-type':'application/octet-stream'},body:bytes);
+    if(r.statusCode!=200) throw SarcadeHttpException('photo_put',r.statusCode,r.body);
+    return '${(jsonDecode(r.body) as Map)['updated_at']??''}';
+  }
+  Future<void> deletePhoto(String eventId,String deviceId) async {
+    final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/${Uri.encodeComponent(deviceId)}/photo'));
+    if(r.statusCode!=200&&r.statusCode!=404) throw SarcadeHttpException('photo_delete',r.statusCode,r.body);
+  }
+  /// PTT natif (lot 29): channels of this device, LiveKit set or not.
+  Future<Map<String,dynamic>> pttChannels(String eventId,String deviceId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/ptt').replace(queryParameters:{'device_id':deviceId}));
+    if(r.statusCode!=200) throw SarcadeHttpException('ptt',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Access to the voice room of one channel: {url, room, token, can_talk}.
+  Future<Map<String,dynamic>> pttToken(String eventId,String deviceId,String channel,{String? name}) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/ptt/token'),headers:{'content-type':'application/json'},
+      body:jsonEncode({'device_id':deviceId,'channel':channel,'name':?name}));
+    if(r.statusCode!=200) throw SarcadeHttpException('ptt_token',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Reactions of the event (lot 29, group 7), for a device back online.
+  Future<List<Map>> reactions(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/reactions'));
+    if(r.statusCode!=200) throw SarcadeHttpException('reactions',r.statusCode);
+    return (jsonDecode(r.body) as List).whereType<Map>().toList();
   }
   Future<List<LogbookEntry>> logbook(String eventId,{int after=0}) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook?after=$after'));

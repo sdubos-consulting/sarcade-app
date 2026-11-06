@@ -5,6 +5,7 @@ import '../../models/comm_group.dart' show isPco;
 import '../../offline/local_store.dart';
 import '../../services/sarcade_api.dart';
 import 'weather_models.dart';
+import 'rain_radar.dart';
 import '../../ui/link_status.dart';
 
 IconData weatherIcon(String key,{bool night=false})=>switch(key){
@@ -198,6 +199,9 @@ class _WeatherPageState extends State<WeatherPage> {
         if(weatherShowsStale(r,offline:_offline))ListTile(leading:const Icon(Icons.history),title:Text(S.t('weather.stale',{'time':_hm(r!.fetchedAt)}))),
         if(r==null||r.isEmpty)Padding(padding:const EdgeInsets.all(20),child:Text(_loading?S.t('weather.loading'):S.t('weather.none'))),
         if(hours.isNotEmpty)_nowCard(hours.first,loc),
+        // Rain radar of the area, the last hour in a loop (lot 29).
+        if(loc!=null&&!widget.lowBandwidth)Padding(padding:const EdgeInsets.fromLTRB(16,8,16,0),
+          child:RainRadarCard(api:widget.api,lat:loc.lat,lon:loc.lon)),
         if(hours.isNotEmpty)_strip(hours,loc),
         // Temperatures over 24 h, the hours under it, the rain in bars (lot 29.5).
         if(hours.where((h)=>h.temperatureC!=null).length>=2)Padding(padding:const EdgeInsets.fromLTRB(16,8,16,8),child:Card(elevation:0,child:Padding(
