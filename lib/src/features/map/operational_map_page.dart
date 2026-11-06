@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:geolocator/geolocator.dart' show Position;
 import '../../ui/car_mode.dart';
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
@@ -1595,11 +1596,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _followMe=>_meMode!=MeMode.off;
   /// One button, each touch the next mode (locate_cycle.dart, 30 Oct 2026).
   LocateMode _locate=LocateMode.idle;
+  /// « Cap de route » on (lot 29.6): the map turns with the direction of
+  /// travel above 10 km/h, north up when stopped.
+  bool _course=false;
+  /// Course of the GPS when moving fast enough, else null.
+  static double? courseOf(Position p)=>p.speed*3.6>=10&&p.heading>=0?p.heading:null;
+  void _applyCourse(Position p){
+    if(!_course)return;
+    final c=courseOf(p);
+    final next=c??0.0;
+    if(headingChanged(_heading,next)){_heading=next;_map.rotate(-next);}
+  }
   /// « N » (card « petite boussole N », lot 29): north up, centred on my
   /// position (« centré sur moi ») without starting the following again;
   /// north up only when my position is unknown. Leaves compass mode.
   void _northOnMe(){
     if(_meMode==MeMode.compass)_stopCompass();
+    // « N » also leaves « Cap de route » (lot 29.6).
+    _course=false;_heading=null;
     _map.rotate(0);
     final me=_me;
     setState((){_meMode=MeMode.off;_locate=me!=null?LocateMode.me:LocateMode.idle;});
@@ -1607,7 +1621,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _myPosition() async {
-    var next=nextLocateMode(_locate);
+    // Tesla: no compass, « Cap de route » in its place, without trying.
+    var next=nextLocateMode(_locate,compass:!carMode,course:carMode);
+    if(_course&&next!=LocateMode.course){_course=false;_heading=null;_map.rotate(0);}
     if(next==LocateMode.me){
       if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
       _meMode=MeMode.off;
@@ -1632,14 +1648,31 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       return;
     }
     if(next==LocateMode.compass){
-      if(await _startCompass()){if(mounted)setState((){_meMode=MeMode.compass;_locate=LocateMode.compass;});return;}
-      next=LocateMode.all;
+      if(await _startCompass()){
+        if(mounted)setState((){_meMode=MeMode.compass;_locate=LocateMode.compass;});
+        // No reading within 2 s (browser, car): « Cap de route » instead.
+        Future.delayed(const Duration(seconds:2),(){
+          if(!mounted||_locate!=LocateMode.compass||SharedCompass.instance.heading!=null)return;
+          _stopCompass();
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('map.noCompass'))));
+          _startCourse();
+        });
+        return;
+      }
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('map.noCompass'))));
+      next=LocateMode.course;
     }
+    if(next==LocateMode.course){_startCourse();return;}
     // Every operator framed; the following of the map stops (the map stays
     // put), the dot keeps moving (lot 29).
     if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
     setState((){_meMode=MeMode.off;_locate=LocateMode.all;});
     _fitOperators();
+  }
+  void _startCourse(){
+    setState((){_meMode=MeMode.follow;_locate=LocateMode.course;_course=true;_heading=null;});
+    final me=_me; if(me!=null)_map.move(me,_map.camera.zoom);
+    _startFollowingMe();
   }
   void _startFollowingMe(){
     if(_meSub!=null)return;
@@ -1647,6 +1680,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(!mounted)return;
       setState((){_me=LatLng(p.latitude,p.longitude);_meLost=false;});
       if(_followMe)_map.move(_me!,_map.camera.zoom);
+      _applyCourse(p);
     },onError:(_){if(mounted)setState(()=>_meLost=true);},
       // Positions no longer given (service turned off): grey dot, and the
       // next press on « Ma position » starts again.
@@ -1671,6 +1705,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _stopCompass(){if(_compassOn){_compassOn=false;SharedCompass.instance.removeListener(_onMapCompass);SharedCompass.instance.stop();}_heading=null;}
   void _stopFollowing(){
     if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
+    if(_course){_course=false;_heading=null;_map.rotate(0);}
     // Only the map stops following: the dot keeps moving (lot 29).
     setState((){_meMode=MeMode.off;_locate=LocateMode.idle;});
   }
@@ -2207,6 +2242,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Marker _stationMarker(SarcadePosition p,DateTime now){
     final s=mapMarkerScheme;
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
+    // Car (lot 29.6): initials only, the name on a touch (selected).
+    if(carMode&&_selectedDevice!=p.deviceId){
+      return Marker(point:LatLng(p.lat,p.lon),width:56,height:56,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_tapStation(p),
+        child:Opacity(opacity:f==Freshness.ageing?0.75:1,child:Column(mainAxisSize:MainAxisSize.min,children:[
+          _stationIcon(p),const SizedBox(height:2),
+          Container(padding:const EdgeInsets.symmetric(horizontal:5,vertical:1),
+            decoration:BoxDecoration(color:s.surface.withValues(alpha:0.85),borderRadius:BorderRadius.circular(6)),
+            child:Text(carInitials(p.label),style:TextStyle(fontSize:12,fontWeight:FontWeight.w800,color:s.onSurface))),
+        ]))));
+    }
     return Marker(point:LatLng(p.lat,p.lon),width:170,height:64,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_tapStation(p),
       child:Opacity(opacity:f==Freshness.ageing?0.75:1,child:Column(mainAxisSize:MainAxisSize.min,children:[
         _stationIcon(p),const SizedBox(height:2),
@@ -2970,7 +3015,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ),children:[
           // Night: street maps darkened; aerial photos stay as they are.
           TileLayer(key:ValueKey('$_tileUrl|${_darkTiles(context)}'),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble(),
-            tileBuilder:_darkTiles(context)?darkModeTileBuilder:null),
+            // Car (lot 29.6): a sober map, colours toned down.
+            tileBuilder:_darkTiles(context)?darkModeTileBuilder:carMode?carTileBuilder:null),
           if(traced.isNotEmpty)_faded('traces',PolylineLayer(polylines:_traces.polylines(traced,windowMin:_traceWindow))),
           if(traced.isNotEmpty)_faded('traces',CircleLayer(circles:traceDots(_traces,traced,windowMin:_traceWindow,zoom:_mapZoomOr(0)))),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Theme.of(context).colorScheme.secondary)).toList()),

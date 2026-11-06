@@ -27,7 +27,7 @@ class _LocateButtonState extends State<LocateButton> {
   @override void dispose(){_timer?.cancel();super.dispose();}
   @override Widget build(BuildContext context){
     final s=Theme.of(context).colorScheme; final m=widget.mode;
-    final active=m==LocateMode.follow||m==LocateMode.compass;
+    final active=m==LocateMode.follow||m==LocateMode.compass||m==LocateMode.course;
     return Row(mainAxisSize:MainAxisSize.min,children:[
       if(_label!=null)Container(margin:const EdgeInsets.only(right:8),padding:const EdgeInsets.symmetric(horizontal:10,vertical:6),
         decoration:BoxDecoration(color:s.inverseSurface,borderRadius:BorderRadius.circular(12)),
