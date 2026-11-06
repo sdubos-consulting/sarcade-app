@@ -94,30 +94,28 @@ class _WeatherPageState extends State<WeatherPage> {
 
   bool _night(DateTime t,({double lat,double lon})? loc)=>loc!=null&&isNightAt(t,loc.lat,loc.lon);
 
-  /// « Maintenant »: big icon and temperature, feels like, wind with its
-  /// arrow and gusts, rain; sky gradient by day, night blue at night.
+  /// « Maintenant » (card « écran plus lisible », lot 29.5): light
+  /// background (dark at night), no gradient: icon, temperature, feels
+  /// like, wind, gusts, rain.
   Widget _nowCard(WeatherHour h,({double lat,double lon})? loc){
     final night=_night(DateTime.now(),loc); final key=weatherKey(h.weatherCode);
-    final fg=Colors.white;
-    return Container(margin:const EdgeInsets.fromLTRB(16,12,16,8),padding:const EdgeInsets.all(18),
-      decoration:BoxDecoration(borderRadius:BorderRadius.circular(24),gradient:LinearGradient(begin:Alignment.topLeft,end:Alignment.bottomRight,
-        colors:night?const [Color(0xFF1A237E),Color(0xFF0D1B2A)]:const [Color(0xFF4FC3F7),Color(0xFF1A73E8)])),
+    final s=Theme.of(context).colorScheme; final fg=s.onSurface; final muted=s.onSurfaceVariant;
+    return Container(margin:const EdgeInsets.fromLTRB(16,12,16,8),padding:const EdgeInsets.all(16),
+      decoration:BoxDecoration(borderRadius:BorderRadius.circular(20),color:s.surfaceContainerLow),
       child:Row(children:[
-        Container(width:76,height:76,decoration:const BoxDecoration(color:Color(0x33FFFFFF),shape:BoxShape.circle),
-          child:Icon(weatherIcon(key,night:night),size:48,color:night?const Color(0xFFFFF59D):(key=='clear'||key=='partly'?const Color(0xFFFFEB3B):Colors.white))),
-        const SizedBox(width:16),
+        Icon(weatherIcon(key,night:night),size:52,color:weatherColor(key,night:night)),
+        const SizedBox(width:14),
         Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Text(S.t('weather.now'),style:TextStyle(color:fg.withValues(alpha:0.85),fontSize:13,fontWeight:FontWeight.w600)),
-          Text(_num(h.temperatureC,'°').replaceAll(' ',''),style:TextStyle(color:fg,fontSize:44,fontWeight:FontWeight.w300,height:1.05)),
+          Text(_num(h.temperatureC,'°').replaceAll(' ',''),style:TextStyle(color:temperatureColor(h.temperatureC),fontSize:40,fontWeight:FontWeight.w400,height:1.05)),
           Text(S.t('weather.code.$key'),style:TextStyle(color:fg,fontSize:15,fontWeight:FontWeight.w500)),
-          if(h.apparentC!=null)Text(S.t('weather.feels',{'t':_num(h.apparentC,'°').replaceAll(' ','')}),style:TextStyle(color:fg.withValues(alpha:0.85),fontSize:13)),
+          if(h.apparentC!=null)Text(S.t('weather.feels',{'t':_num(h.apparentC,'°').replaceAll(' ','')}),style:TextStyle(color:muted,fontSize:13)),
         ])),
         Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
           Row(mainAxisSize:MainAxisSize.min,children:[_windArrow(h.windDirectionDeg,size:18,color:fg),const SizedBox(width:4),
             Text('${windDirection(h.windDirectionDeg)} ${_num(h.windKmh,'km/h')}',style:TextStyle(color:fg,fontWeight:FontWeight.w600))]),
-          if(h.gustKmh!=null)Text(S.t('weather.gusts',{'v':_num(h.gustKmh,'km/h')}),style:TextStyle(color:(h.gustKmh??0)>=70?const Color(0xFFFFCC80):fg.withValues(alpha:0.85),fontSize:12)),
+          if(h.gustKmh!=null)Text(S.t('weather.gusts',{'v':_num(h.gustKmh,'km/h')}),style:TextStyle(color:(h.gustKmh??0)>=70?const Color(0xFFE8710A):muted,fontSize:12)),
           const SizedBox(height:6),
-          Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.water_drop,size:14,color:fg),const SizedBox(width:3),
+          Row(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.water_drop,size:14,color:Color(0xFF1A73E8)),const SizedBox(width:3),
             Text([if(h.precipitationProbability!=null)'${h.precipitationProbability} %',if(h.precipitationMm!=null)'${h.precipitationMm!.toStringAsFixed(1)} mm'].join(' · '),
               style:TextStyle(color:fg,fontSize:12))]),
         ]),
@@ -151,12 +149,12 @@ class _WeatherPageState extends State<WeatherPage> {
         decoration:BoxDecoration(borderRadius:BorderRadius.circular(16),
           color:now?s.primary:(h.gustKmh??0)>=70?Colors.orange.withValues(alpha:0.15):s.surfaceContainer),
         child:Column(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[
-          Text(now?S.t('weather.now'):_hm(h.time),style:TextStyle(fontSize:11,fontWeight:now?FontWeight.w700:FontWeight.w500,color:now?s.onPrimary:s.onSurfaceVariant)),
+          Text(now?S.t('weather.nowShort'):hourShort(h.time),maxLines:1,style:TextStyle(fontSize:11,fontWeight:now?FontWeight.w700:FontWeight.w500,color:now?s.onPrimary:s.onSurfaceVariant)),
           Icon(weatherIcon(key,night:night),size:24,color:now?s.onPrimary:weatherColor(key,night:night)),
           Text(_num(h.temperatureC,'°').replaceAll(' ',''),style:TextStyle(fontWeight:FontWeight.w700,fontSize:15,color:now?s.onPrimary:temperatureColor(h.temperatureC))),
           _windArrow(h.windDirectionDeg,size:14,color:fg),
           // Wind speed under the arrow; rain only when there is some (lot 5).
-          Text(h.windKmh==null?'':'${h.windKmh!.round()}',style:TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:fg)),
+          Text(h.windKmh==null?'':'${h.windKmh!.round()} km/h',maxLines:1,style:TextStyle(fontSize:10,fontWeight:FontWeight.w600,color:fg)),
           if(mm>0)Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.water_drop,size:10,color:now?s.onPrimary:const Color(0xFF1A73E8)),
             Text(rainLabel(mm),style:TextStyle(fontSize:10,color:now?s.onPrimary:const Color(0xFF1A73E8)))])
           else const SizedBox(height:12),
@@ -177,7 +175,7 @@ class _WeatherPageState extends State<WeatherPage> {
     final r=_report; final now=DateTime.now();
     final hours=r?.upcoming(now)??const <WeatherHour>[];
     final loc=widget.point!=null?(lat:widget.point!.lat,lon:widget.point!.lon):(r?.lat!=null&&r?.lon!=null?(lat:r!.lat!,lon:r.lon!):widget.fallback);
-    final title=widget.point==null?S.t('weather.title'):S.t('weather.pointTitle',{'label':widget.point!.label});
+    final title=widget.point==null?S.t('weather.menu'):S.t('weather.pointTitle',{'label':widget.point!.label});
     final t=Theme.of(context); final s=t.colorScheme;
     return Scaffold(
       appBar:LinkedAppBar(title:Text(title),secondary:[
@@ -201,29 +199,82 @@ class _WeatherPageState extends State<WeatherPage> {
         if(r==null||r.isEmpty)Padding(padding:const EdgeInsets.all(20),child:Text(_loading?S.t('weather.loading'):S.t('weather.none'))),
         if(hours.isNotEmpty)_nowCard(hours.first,loc),
         if(hours.isNotEmpty)_strip(hours,loc),
-        // Temperatures over 24 h.
+        // Temperatures over 24 h, the hours under it, the rain in bars (lot 29.5).
         if(hours.where((h)=>h.temperatureC!=null).length>=2)Padding(padding:const EdgeInsets.fromLTRB(16,8,16,8),child:Card(elevation:0,child:Padding(
           padding:const EdgeInsets.fromLTRB(12,10,12,8),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(S.t('weather.curve'),style:t.textTheme.titleSmall),
             const SizedBox(height:6),
-            SizedBox(height:90,child:CustomPaint(size:Size.infinite,painter:_TempCurve([for(final h in hours.take(24))h.temperatureC],s.onSurfaceVariant))),
+            SizedBox(height:120,child:CustomPaint(size:Size.infinite,painter:_TempCurve([for(final h in hours.take(24))h.temperatureC],s.onSurfaceVariant,
+              rain:[for(final h in hours.take(24))h.precipitationMm],hours:[for(final h in hours.take(24))h.time]))),
           ])))),
+        // Sunrise and sunset (search at night).
+        if(loc!=null)Builder(builder:(_){
+          final sun=sunTimes(now.toUtc(),loc.lat,loc.lon);
+          if(sun.sunrise==null&&sun.sunset==null)return const SizedBox.shrink();
+          return Padding(padding:const EdgeInsets.fromLTRB(16,4,16,4),child:Row(children:[
+            const Icon(Icons.wb_twilight,size:18,color:Color(0xFFE8710A)),const SizedBox(width:6),
+            Text(S.t('weather.sunLine',{'rise':_hm(sun.sunrise),'set':_hm(sun.sunset)})),
+          ]));
+        }),
+        // The next days (as many as the forecast gives, 7 at most).
+        if(r!=null&&dailySummaries(r.hours,now).length>1)Padding(padding:const EdgeInsets.fromLTRB(16,8,16,0),child:Card(elevation:0,child:Padding(
+          padding:const EdgeInsets.fromLTRB(12,10,12,8),child:Builder(builder:(_){
+            final days=dailySummaries(r.hours,now).take(7).toList();
+            final lo=days.map((d)=>d.min).reduce((a,b)=>a<b?a:b), hi=days.map((d)=>d.max).reduce((a,b)=>a>b?a:b);
+            return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+              Text(S.t('weather.days'),style:t.textTheme.titleSmall),
+              for(final d in days)Padding(padding:const EdgeInsets.symmetric(vertical:4),child:Row(children:[
+                SizedBox(width:72,child:Text(dayShort(d.day,now))),
+                Icon(weatherIcon(weatherKey(d.code)),size:20,color:weatherColor(weatherKey(d.code))),
+                const SizedBox(width:8),
+                SizedBox(width:34,child:Text('${d.min.round()}°',textAlign:TextAlign.end,style:TextStyle(color:s.onSurfaceVariant))),
+                const SizedBox(width:8),
+                Expanded(child:LayoutBuilder(builder:(_,c){
+                  final span=(hi-lo).abs()<1?1.0:hi-lo;
+                  final left=c.maxWidth*(d.min-lo)/span, w=(c.maxWidth*(d.max-d.min)/span).clamp(6.0,c.maxWidth);
+                  return Stack(children:[
+                    Container(height:6,decoration:BoxDecoration(color:s.surfaceContainerHighest,borderRadius:BorderRadius.circular(3))),
+                    Positioned(left:left.clamp(0.0,c.maxWidth-w),width:w,child:Container(height:6,decoration:BoxDecoration(borderRadius:BorderRadius.circular(3),
+                      gradient:LinearGradient(colors:[temperatureColor(d.min),temperatureColor(d.max)])))),
+                  ]);
+                })),
+                const SizedBox(width:8),
+                SizedBox(width:34,child:Text('${d.max.round()}°',style:const TextStyle(fontWeight:FontWeight.w600))),
+              ])),
+            ]);
+          })))),
         if(r?.provider!=null)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('weather.source',{'provider':r!.provider}),style:t.textTheme.bodySmall)),
       ])),
     );
   }
 }
 
-/// Temperature curve, each point in its colour.
+/// Temperature curve, each point in its colour; the rain in blue bars and
+/// the hours under it (lot 29.5).
 class _TempCurve extends CustomPainter {
-  final List<double?> values; final Color label;
-  _TempCurve(this.values,this.label);
+  final List<double?> values; final Color label; final List<double?> rain; final List<DateTime> hours;
+  _TempCurve(this.values,this.label,{this.rain=const [],this.hours=const []});
   @override void paint(Canvas canvas,Size size){
+    const bottom=16.0;
+    final h=size.height-bottom;
+    // Rain bars, 4 mm fill the height.
+    for(var i=0;i<rain.length;i++){
+      final mm=rain[i]??0; if(mm<=0)continue;
+      final bh=(mm/4).clamp(0.05,1.0)*(h*0.5);
+      final x=size.width*i/(values.length-1);
+      canvas.drawRect(Rect.fromLTWH(x-3,h-bh,6,bh),Paint()..color=const Color(0x661A73E8));
+    }
+    // Hours, every 3 h.
+    for(var i=0;i<hours.length;i+=3){
+      final tp=TextPainter(text:TextSpan(text:hourShort(hours[i]),style:TextStyle(fontSize:10,color:label)),textDirection:TextDirection.ltr)..layout();
+      final x=size.width*i/(values.length-1);
+      tp.paint(canvas,Offset((x-tp.width/2).clamp(0.0,size.width-tp.width),h+2));
+    }
     final pts=[for(var i=0;i<values.length;i++)if(values[i]!=null)(i,values[i]!)];
     if(pts.length<2)return;
     final lo=pts.map((p)=>p.$2).reduce((a,b)=>a<b?a:b), hi=pts.map((p)=>p.$2).reduce((a,b)=>a>b?a:b);
     final span=(hi-lo).abs()<1?1.0:hi-lo;
-    Offset at((int,double) p)=>Offset(size.width*p.$1/(values.length-1),12+(size.height-28)*(1-(p.$2-lo)/span));
+    Offset at((int,double) p)=>Offset(size.width*p.$1/(values.length-1),12+(h-28)*(1-(p.$2-lo)/span));
     for(var i=1;i<pts.length;i++){
       canvas.drawLine(at(pts[i-1]),at(pts[i]),Paint()..strokeWidth=3..strokeCap=StrokeCap.round..color=temperatureColor((pts[i-1].$2+pts[i].$2)/2));
     }
@@ -233,5 +284,5 @@ class _TempCurve extends CustomPainter {
       tp.paint(canvas,Offset((o.dx-tp.width/2).clamp(0.0,size.width-tp.width),o.dy-tp.height-2<0?o.dy+4:o.dy-tp.height-2));
     }
   }
-  @override bool shouldRepaint(covariant _TempCurve old)=>old.values!=values;
+  @override bool shouldRepaint(covariant _TempCurve old)=>old.values!=values||old.rain!=rain;
 }
