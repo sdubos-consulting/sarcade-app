@@ -91,6 +91,8 @@ Future<void> reloadFresh() async {
   web.window.location.reload();
 }
 bool get browserOnline=>web.window.navigator.onLine;
+/// User agent of the browser (Tesla detection, lot 29).
+String get browserUserAgent{try{return web.window.navigator.userAgent;}catch(_){return '';}}
 
 /// Web Push subscription of this browser (note « Réveil des appareils »),
 /// as the JSON the server expects; null when push is unavailable or the
