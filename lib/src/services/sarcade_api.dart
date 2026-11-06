@@ -190,6 +190,19 @@ class SarcadeApi {
     final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/${Uri.encodeComponent(deviceId)}/photo'));
     if(r.statusCode!=200&&r.statusCode!=404) throw SarcadeHttpException('photo_delete',r.statusCode,r.body);
   }
+  /// PTT natif (lot 29): channels of this device, LiveKit set or not.
+  Future<Map<String,dynamic>> pttChannels(String eventId,String deviceId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/ptt').replace(queryParameters:{'device_id':deviceId}));
+    if(r.statusCode!=200) throw SarcadeHttpException('ptt',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Access to the voice room of one channel: {url, room, token, can_talk}.
+  Future<Map<String,dynamic>> pttToken(String eventId,String deviceId,String channel,{String? name}) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/ptt/token'),headers:{'content-type':'application/json'},
+      body:jsonEncode({'device_id':deviceId,'channel':channel,'name':?name}));
+    if(r.statusCode!=200) throw SarcadeHttpException('ptt_token',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Reactions of the event (lot 29, group 7), for a device back online.
   Future<List<Map>> reactions(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/reactions'));
