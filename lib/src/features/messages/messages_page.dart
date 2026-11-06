@@ -682,11 +682,19 @@ class _MessagesPageState extends State<MessagesPage>{
  }
 
  /// « … » of the open conversation (lot 29, group 7): « Sourdine ».
- Widget _convMenu(){
+ /// On a phone the star goes into this menu too: the header keeps room
+ /// for the name of the conversation.
+ Widget _convMenu({bool narrow=false}){
    final muted=Mutes.instance.muted(_conv);
+   final fav=_favConvs.contains(_conv);
    return PopupMenuButton<String>(key:const ValueKey('conv-more'),icon:const Icon(Icons.more_vert),tooltip:S.t('messages.convMore'),
-     onSelected:(v)=>unawaited(Mutes.instance.set(widget.store,widget.eventId,_conv,v=='unmute'?null:v)),
+     onSelected:(v){
+       if(v=='fav'){_toggleFavConv(_conv);return;}
+       unawaited(Mutes.instance.set(widget.store,widget.eventId,_conv,v=='unmute'?null:v));
+     },
      itemBuilder:(_)=>[
+       if(narrow)PopupMenuItem(value:'fav',key:const ValueKey('conv-fav'),child:menuEntry(context,icon:fav?Icons.star:Icons.star_border,
+         color:const Color(0xFFF9A825),title:S.t(fav?'messages.unfav':'messages.fav'))),
        if(muted)PopupMenuItem(value:'unmute',key:const ValueKey('conv-unmute'),child:menuEntry(context,icon:Icons.volume_up_outlined,color:const Color(0xFF2E7D32),
          title:S.t('messages.unmute')))
        else for(final c in muteChoices.keys)PopupMenuItem(value:c,key:ValueKey('conv-mute-$c'),child:menuEntry(context,icon:Icons.volume_off_outlined,
@@ -1080,7 +1088,7 @@ class _MessagesPageState extends State<MessagesPage>{
            Flexible(child:_convTitle(by)),
            ?pending,
          ]),
-         actions:[?editGroup,favButton,_convMenu(),?close]),
+         actions:[?editGroup,_convMenu(narrow:true),?close]),
        body:_chat(by,acks),
      );
    }));
