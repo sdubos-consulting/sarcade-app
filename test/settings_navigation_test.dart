@@ -57,7 +57,9 @@ void main() {
     expect(find.text('Notifications'), findsNothing);
     await tester.tap(find.text('À propos'));
     await tester.pumpAndSettle();
-    expect(find.text('Édité par SDUBOS Consulting'), findsOneWidget);
+    // Lot 29.4: « SDUBOS Consulting › » with its site under it.
+    expect(find.text('SDUBOS Consulting'), findsOneWidget);
+    expect(find.text('sdubos.com'), findsOneWidget);
   });
 
   testWidgets('theme: day, night or automatic, from « Fond et affichage » of the map', (tester) async {
@@ -144,17 +146,17 @@ void main() {
     expect(text, contains('Terminal : TEST'));
   });
 
-  test('Main courante and the bearing frequencies in Outils › Au PC', () {
+  test('Main courante and the bearing frequencies in Outils (families, lot 29.5)', () {
     final api = SarcadeApi(baseUrl: 'https://example.org', client: MockClient((_) async => http.Response('{}', 200)));
     addTearDown(api.close);
     final opened = <String>[];
     void open(String id, Widget Function() _) => opened.add(id);
     final logbook = logbookToolItem(api: api, eventId: 'e', open: open);
     expect(logbook.title, 'Main courante');
-    expect(logbook.group, ToolGroup.pc);
+    expect(logbook.group, ToolGroup.operation);
     final signals = signalDefaultsToolItem(api: api, roles: {'admin'}, open: open)!;
     expect(signals.title, 'Fréquences du relevé');
-    expect(signals.group, ToolGroup.pc);
+    expect(signals.group, ToolGroup.module);
     expect(signalDefaultsToolItem(api: api, roles: {'pco'}, open: open), isNull);
     logbook.onTap();
     signals.onTap();
@@ -189,7 +191,7 @@ void main() {
       home: const SarcadeAboutPage(),
     ));
     expect(find.text('About SARCADE'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Credits and component licences'), 300, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(find.text('Component credits'), 300, scrollable: find.byType(Scrollable).first);
     expect(tester.takeException(), isNull);
   });
 }

@@ -57,8 +57,11 @@ String wakeTitle(Map<String,dynamic> data){
   return priority=='immediate'||priority=='urgent'?'SARCADE : message prioritaire':'SARCADE : nouveau message';
 }
 
+/// Routine without sound nor vibration (lot 29, group 7), as in the
+/// application by default: the phone is woken while SARCADE is closed, the
+/// sound chosen in Paramètres applies once it runs.
 String wakeChannel(Map<String,dynamic> data)=>switch('${data['priority']??'routine'}'){
-  'immediate'=>'sarcade_immediate','urgent'=>'sarcade_urgent',_=>'sarcade_routine'};
+  'immediate'=>'sarcade_immediate','urgent'=>'sarcade_urgent',_=>'sarcade_routine_silent'};
 
 /// Same identifier as the notification of the message shown later by the
 /// application (« tag » of the server: the message, or the distress of its
@@ -71,7 +74,7 @@ int wakeNotificationId(Map<String,dynamic> data){
 
 Future<void> showWakeNotification(Map<String,dynamic> data) async {
   if(data['type']!='wake')return;
-  final urgent=wakeChannel(data)!='sarcade_routine';
+  final urgent=wakeChannel(data)!='sarcade_routine_silent';
   final plugin=FlutterLocalNotificationsPlugin();
   await plugin.initialize(const InitializationSettings(android:AndroidInitializationSettings('@mipmap/ic_launcher')));
   // Real text read from the server of the application, so that the car
@@ -93,7 +96,8 @@ Future<void> showWakeNotification(Map<String,dynamic> data) async {
   final title=m==null?wakeTitle(data):'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}';
   await plugin.show(wakeNotificationId(data),title,m?.body??'Ouvrez SARCADE pour le lire.',
     NotificationDetails(android:AndroidNotificationDetails(wakeChannel(data),wakeChannel(data),
-      importance:urgent?Importance.max:Importance.defaultImportance,priority:urgent?Priority.max:Priority.defaultPriority,
+      importance:urgent?Importance.max:Importance.low,priority:urgent?Priority.max:Priority.defaultPriority,
+      playSound:urgent,enableVibration:urgent,
       category:AndroidNotificationCategory.message,
       // Conversation format, Répondre and Lu for Android Auto (lot 1b).
       styleInformation:payload==null?null:carStyle(carConversation(m!,me:woken!.deviceId,earlier:earlier)),

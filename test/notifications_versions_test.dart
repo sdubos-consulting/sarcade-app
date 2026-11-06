@@ -4,7 +4,9 @@ import 'package:sarcade_app/src/services/notification_actions.dart';
 
 void main(){
   test('sound by priority: defaults, choices, SOS always the alarm',(){
-    expect(soundFor('routine',{}),soundNormal);
+    expect(soundFor('routine',{}),soundSilent);
+    expect(soundFor('routine',{'routine':soundNormal}),soundNormal);
+    expect(soundFor('urgent',{}),soundNormal);
     expect(soundFor('immediate',{}),soundAlarm);
     expect(soundFor('routine',{'routine':soundSilent}),soundSilent);
     expect(soundFor('urgent',{'urgent':soundSilent}),soundNormal);

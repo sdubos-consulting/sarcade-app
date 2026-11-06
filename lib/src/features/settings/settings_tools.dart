@@ -15,4 +15,4 @@ import '../tools/tools_page.dart';
 ToolItem logbookToolItem({required SarcadeApi api,required String eventId,
     required void Function(String id,Widget Function() build) open})=>
   ToolItem(id:'logbook',icon:Icons.menu_book_outlined,title:S.t('map.logbook'),subtitle:S.t('settings.logbookHelp'),
-    color:Colors.brown,group:ToolGroup.pc,onTap:()=>open('logbook',()=>LogbookPage(api:api,eventId:eventId)));
+    color:Colors.brown,group:ToolGroup.operation,onTap:()=>open('logbook',()=>LogbookPage(api:api,eventId:eventId)));

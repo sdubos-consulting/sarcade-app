@@ -161,6 +161,7 @@ import 'map_objects.dart';
 import 'traces_layer.dart';
 import 'operator_icons.dart';
 import '../team/operator_status.dart';
+import '../team/teams_view.dart';
 import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
 import '../poi/poi_move.dart';
@@ -979,16 +980,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ToolItem(id:'converter',icon:Icons.pin_drop_outlined,title:S.t('converter.title'),subtitle:S.t('tools.converterHelp'),color:Colors.blue,
       onTap:()=>_openConverter()),
     ToolItem(id:'routes',icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
-    if(_adrasec)ToolItem(id:'resection',icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
-    if(_adrasec)ToolItem(id:'adsb',icon:Icons.flight,title:S.t('adsb.title'),subtitle:S.t('adsb.toolHelp'),color:Colors.lightBlue,
+    if(_adrasec)ToolItem(id:'resection',icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,group:ToolGroup.module,onTap:_openResection),
+    if(_adrasec)ToolItem(id:'adsb',icon:Icons.flight,title:S.t('tools.adsb'),subtitle:S.t('adsb.toolHelp'),color:Colors.lightBlue,group:ToolGroup.module,
       onTap:()=>_openDesk('adsb',()=>AdsbPage(adsb:_adsb,onShow:(a){if(_isCompact)Navigator.pop(context);
         _onMapNow((){try{_map.move(aircraftEstimated(a,_adsb.serverNow),_map.camera.zoom);}catch(_){/* map not ready */}unawaited(_selectAircraft(a));});}))),
-    if(MeshCoreLink.instance.supported)ToolItem(id:'meshcore',icon:Icons.hub_outlined,title:S.t('mesh.tool'),subtitle:S.t('mesh.toolHelp'),color:Colors.cyan,
+    if(MeshCoreLink.instance.supported)ToolItem(id:'meshcore',icon:Icons.hub_outlined,title:S.t('mesh.tool'),subtitle:S.t('mesh.toolHelp'),color:Colors.cyan,group:ToolGroup.radio,
       onTap:()=>_openDesk('meshcore',()=>MeshCorePage(onShowOnMap:(n){if(_isCompact)Navigator.of(context).pop();_onMapNow(()=>unawaited(meshCoreShowOnMap(_map,n)));}))),
     meshtasticToolItem(open:_openDesk,onShowOnMap:_showMeshtasticNode), // lot 28
-    ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
+    ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.display,
       onTap:_openTvScreens),
-    if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
+    if(_adrasec&&isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.radio,
       onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
     // Main courante and the bearing frequencies, out of Paramètres (lot 19).
@@ -1000,6 +1001,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Convertisseur étoffé (lot 5): actions handed back to the map.
   void _openConverter({LatLng? initial})=>_openDesk('converter',()=>CoordinateConverterPage(key:ValueKey('desk-converter-$initial'),initial:initial,
     location:_location,store:widget.store,items:_searchables,addresses:_searchAddresses,tileUrl:_tileUrl,
+    describe:(p) async =>placeText(await _places.describe(p)),
     actions:ConverterActions(
       show:(p)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);}),
       measure:(p)=>_onMapNow(()=>_measureTo(p,S.t('nav.point'))),
@@ -1946,62 +1948,90 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// « Équipes »: the stations and « À proximité » in one place, a screen on
   /// the phone, a panel next to the map on a computer.
-  bool _favouritesOnly=false, _showOld=false;
+  bool _showOld=false, _showFavs=true;
+  /// Search of Équipes, common to both tabs (lot 29.4).
+  final _teamSearch=TextEditingController(); String _teamQuery='';
 
-  /// Three sections by freshness: Actifs (favourites first), Sans
-  /// nouvelles (age shown), Anciens (folded).
+  bool _teamMatch(SarcadePosition p){
+    final st=_statuses.statusOf(p.deviceId);
+    return teamMatches(_teamQuery,name:p.label,callsign:p.callsign,status:st==null?null:operatorStatusLabel(st));
+  }
+
+  /// « Opérateurs » (lot 29.4): me first (« Moi · nom », never « Sans
+  /// nouvelles »), then Favoris (folds like Anciens, not repeated below),
+  /// Actifs, Sans nouvelles, Anciens, stations fixes; a search keeps the
+  /// groups with a result and opens Anciens when it holds one.
   Widget _teamsList(List<SarcadePosition> sorted){
     final now=DateTime.now().toUtc(); final fav=_favourites;
-    final shown=_favouritesOnly?sorted.where((p)=>fav.contains(p.deviceId)):sorted;
+    final searching=_teamQuery.trim().isNotEmpty;
+    final shown=sorted.where(_teamMatch).toList();
+    final me=shown.where((p)=>p.deviceId==widget.deviceId).toList();
+    final others=shown.where((p)=>p.deviceId!=widget.deviceId).toList();
+    final favs=others.where((p)=>fav.contains(p.deviceId)).toList()..sort((a,b)=>a.label.compareTo(b.label));
+    final rest=others.where((p)=>!fav.contains(p.deviceId)).toList();
     final by={for(final x in Section.values)x:<SarcadePosition>[]};
-    final fixed=shown.where(_isFixed).toList()..sort((a,b)=>a.label.compareTo(b.label));
-    for(final p in shown.where((p)=>!_isFixed(p))){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
+    final fixed=rest.where(_isFixed).toList()..sort((a,b)=>a.label.compareTo(b.label));
+    for(final p in rest.where((p)=>!_isFixed(p))){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
     final t=Theme.of(context);
     Widget head(String label,int n,{VoidCallback? onTap,bool? open})=>InkWell(onTap:onTap,child:Padding(
-      padding:const EdgeInsets.fromLTRB(16,12,8,4),child:Row(children:[
+      padding:const EdgeInsets.fromLTRB(16,10,8,2),child:Row(children:[
         Expanded(child:Text('$label · $n',style:t.textTheme.labelLarge?.copyWith(color:t.colorScheme.onSurfaceVariant))),
         if(open!=null)Icon(open?Icons.expand_less:Icons.expand_more,size:20,color:t.colorScheme.onSurfaceVariant),
       ])));
     final active=sortStations(by[Section.active]!,fav);
     final silent=[...by[Section.silent]!]..sort((a,b)=>b.time.compareTo(a.time));
     final old=[...by[Section.old]!]..sort((a,b)=>b.time.compareTo(a.time));
-    return ListView(children:[
-      Padding(padding:const EdgeInsets.fromLTRB(16,10,16,4),child:_myStatus()),
-      if(shown.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t(_favouritesOnly?'favourites.none':'operators.none'))),
+    final oldOpen=_showOld||(searching&&old.isNotEmpty);
+    return ListView(keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,children:[
+      if(shown.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('operators.none'))),
+      ...me.map(_stationTile),
+      if(favs.isNotEmpty)...[head(S.t('favourites.section'),favs.length,open:_showFavs||searching,onTap:()=>setState(()=>_showFavs=!_showFavs)),
+        if(_showFavs||searching)...favs.map(_stationTile)],
       if(active.isNotEmpty)...[head(S.t('teams.active'),active.length),...active.map(_stationTile)],
       if(silent.isNotEmpty)...[head(S.t('teams.silent'),silent.length),...silent.map(_stationTile)],
-      if(old.isNotEmpty)...[head(S.t('teams.old'),old.length,open:_showOld,onTap:()=>setState(()=>_showOld=!_showOld)),
-        if(_showOld)...old.map(_stationTile)],
-      if(fixed.isNotEmpty)...[head(S.t('fixed.section'),fixed.length,open:_showFixedList,onTap:()=>setState(()=>_showFixedList=!_showFixedList)),
-        if(_showFixedList)...fixed.map(_stationTile)],
+      if(old.isNotEmpty)...[head(S.t('teams.old'),old.length,open:oldOpen,onTap:()=>setState(()=>_showOld=!_showOld)),
+        if(oldOpen)...old.map(_stationTile)],
+      if(fixed.isNotEmpty)...[head(S.t('fixed.section'),fixed.length,open:_showFixedList||searching,onTap:()=>setState(()=>_showFixedList=!_showFixedList)),
+        if(_showFixedList||searching)...fixed.map(_stationTile)],
     ]);
   }
 
+  /// « Mon statut » on the title line, before the link dot (lot 29.4).
+  Widget _myStatusPill()=>MyStatusPill(status:_statuses.statusOf(widget.deviceId),since:_statuses.sinceOf(widget.deviceId),onChanged:_setMyStatus);
+
+  /// Round search under the tabs: ✓ closes the keyboard, ✕ clears and closes.
+  Widget _teamSearchField(){
+    final s=Theme.of(context).colorScheme;
+    return Padding(padding:const EdgeInsets.fromLTRB(12,8,12,4),child:Row(children:[
+      Expanded(child:TextField(key:const ValueKey('teams-search'),controller:_teamSearch,onChanged:(v)=>setState(()=>_teamQuery=v),
+        textInputAction:TextInputAction.search,onSubmitted:(_)=>FocusManager.instance.primaryFocus?.unfocus(),
+        decoration:InputDecoration(isDense:true,prefixIcon:const Icon(Icons.search),hintText:S.t('teams.search'),filled:true,fillColor:s.surfaceContainerHigh,
+          border:OutlineInputBorder(borderRadius:BorderRadius.circular(24),borderSide:BorderSide.none),
+          suffixIcon:_teamQuery.isEmpty?null:IconButton(tooltip:S.t('search.clear'),onPressed:(){_teamSearch.clear();setState(()=>_teamQuery='');
+            FocusManager.instance.primaryFocus?.unfocus();},icon:const Icon(Icons.close))))),
+      if(_adrasec&&_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.only(left:6),child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),
+        label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprsPref=v))),
+    ]));
+  }
+
   Widget _teams(List<SarcadePosition> sorted,{required bool screen}){
-    final list=Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      const SizedBox(height:6),
-      Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Wrap(spacing:6,children:[
-        FilterChip(avatar:const Icon(Icons.star_border,size:18),label:Text(S.t('favourites.only')),selected:_favouritesOnly,
-          onSelected:(v)=>setState(()=>_favouritesOnly=v)),
-        if(_adrasec&&_positions.values.any((p)=>p.isAprs))FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprsPref=v)),
-      ])),
-      // Fixed help under the filters, never over the list (revue n° 46).
-      if(_showAprs&&_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.fromLTRB(14,4,14,0),
-        child:Text(S.t('operators.aprsHint'),style:Theme.of(context).textTheme.bodySmall?.copyWith(color:Theme.of(context).colorScheme.onSurfaceVariant))),
-      Expanded(child:_teamsList(sorted)),
-    ]);
+    final operators=sorted.where((p)=>!_isFixed(p)).length;
     final tabs=DefaultTabController(length:2,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      // Count of the stations above the two tabs (as the former panel).
-      Padding(padding:EdgeInsets.fromLTRB(14,screen?14:6,screen?14:4,4),child:Row(children:[
-        Expanded(child:Text(operatorsTitle(sorted.where((p)=>!_isFixed(p)).length,sorted.where(_isFixed).length),style:Theme.of(context).textTheme.titleMedium)),
-        // Computer: ✕ at the top of the panel (lot 25).
-        if(!screen)withId('team.panel.close',IconButton(tooltip:S.t('common.close'),onPressed:()=>_setSidePanel(null),icon:const Icon(Icons.close))),
+      // Computer: « Équipes », my status and ✕ at the top of the panel.
+      if(!screen)Padding(padding:const EdgeInsets.fromLTRB(14,6,4,0),child:Row(children:[
+        Expanded(child:Text(S.t('tabs.teams'),style:Theme.of(context).textTheme.titleMedium)),
+        _myStatusPill(),
+        withId('team.panel.close',IconButton(tooltip:S.t('common.close'),onPressed:()=>_setSidePanel(null),icon:const Icon(Icons.close))),
       ])),
-      TabBar(tabs:[Tab(text:S.t('teams.list')),Tab(text:S.t('nearby.title'))]),
-      Expanded(child:TabBarView(children:[list,_nearbyPanel(closable:false)])),
+      TabBar(tabs:[Tab(text:S.t('teams.operatorsN',{'n':operators})),Tab(text:S.t('nearby.title'))]),
+      _teamSearchField(),
+      // Fixed help under the search, never over the list (revue n° 46).
+      if(_showAprs&&_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.fromLTRB(14,0,14,2),
+        child:Text(S.t('operators.aprsHint'),style:Theme.of(context).textTheme.bodySmall?.copyWith(color:Theme.of(context).colorScheme.onSurfaceVariant))),
+      Expanded(child:TabBarView(children:[_teamsList(sorted),_nearbyPanel(closable:false)])),
     ]));
     if(!screen)return tabs;
-    return Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.teams'))),body:tabs);
+    return Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.teams')),actions:[_myStatusPill(),const SizedBox(width:6)]),body:tabs);
   }
 
   /// Weather of the pill loaded by the map itself (lot 19, map_weather.dart).
@@ -2192,18 +2222,23 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   String _sourceLabel(SarcadePosition p)=>switch(sourceOf(p)){
     PositionSource.app=>S.t('source.app'),PositionSource.aprsRadio=>S.t('source.radio'),PositionSource.aprsInternet=>S.t('source.internet')};
 
+  /// One operator on two lines (lot 29.4): name (« Moi · nom » for this
+  /// device), status · source (not « Application SARCADE ») · age; names of
+  /// the silent and old ones in grey; a small light star.
   Widget _stationTile(SarcadePosition p){
     final now=DateTime.now().toUtc(); final s=Theme.of(context).colorScheme;
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin); final fav=_favourites.contains(p.deviceId);
-    final st=_statuses.statusOf(p.deviceId);
-    return ListTile(selected:_selectedDevice==p.deviceId,leading:p.isAprs?_stationIcon(p,size:32):withStatusDot(operatorAvatar(p.deviceId,label:p.label,radius:16,stale:f==Freshness.stale),st),
-      title:Text(p.label,style:TextStyle(decoration:f==Freshness.stale?TextDecoration.lineThrough:null)),
+    final st=_statuses.statusOf(p.deviceId); final mine=p.deviceId==widget.deviceId;
+    final grey=!mine&&f!=Freshness.fresh;
+    return ListTile(dense:true,visualDensity:const VisualDensity(vertical:-2),selected:_selectedDevice==p.deviceId,
+      leading:p.isAprs?_stationIcon(p,size:30):withStatusDot(operatorAvatar(p.deviceId,label:p.label,radius:15,stale:f==Freshness.stale),st),
+      title:highlighted(mine?'${S.t('teams.me')} · ${p.label}':p.label,_teamQuery,style:TextStyle(fontSize:15,fontWeight:FontWeight.w600,color:grey?s.onSurfaceVariant:null)),
       // Version in the sheet only, not in the list (revue n° 43).
-      subtitle:Text([if(st!=null)operatorStatusLabel(st),_sourceLabel(p),ageLabel(p.time.toUtc(),now)].join(' · '),
-        style:TextStyle(color:f==Freshness.fresh?null:s.tertiary)),
-      trailing:IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),
-        visualDensity:VisualDensity.compact,iconSize:20,
-        icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:s.onSurfaceVariant)),
+      subtitle:Text([if(st!=null)operatorStatusLabel(st),if(sourceOf(p)!=PositionSource.app)_sourceLabel(p),ageLabel(p.time.toUtc(),now)].join(' · '),
+        maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(color:grey?s.onSurfaceVariant:null)),
+      trailing:mine?null:IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),
+        visualDensity:VisualDensity.compact,iconSize:18,
+        icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:s.outline)),
       onTap:()=>_select(p));
   }
 
@@ -2289,25 +2324,38 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// « À proximité » (Tesla): from the search pin, else the measure target,
   /// else the map centre; operators, stations and reference sites.
+  /// « À proximité » (lot 29.4): sorted by distance from my position (the
+  /// centre of the map only when it is unknown); favourites first, then the
+  /// others; my own line absent; star on operators and stations.
   Widget _nearbyPanel({bool closable=true}){
-    final s=Theme.of(context).colorScheme;
-    final from=_searchPin??_measure.target??_mapCentre();
-    final fromLabel=_searchPin!=null?S.t('nearby.fromPin'):_measure.target!=null?S.t('nearby.fromTarget'):S.t('nearby.fromCentre');
-    final items=<({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap})>[
-      for(final p in _positions.values)(title:p.label,subtitle:'${_sourceLabel(p)} · ${ageLabel(p.time.toUtc(),DateTime.now().toUtc())}',at:LatLng(p.lat,p.lon),icon:_stationIcon(p,size:30),onTap:()=>_select(p)),
-      for(final r in _references.values)(title:r.name,subtitle:r.subtitle,at:LatLng(r.lat,r.lon),icon:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:s.secondary),onTap:()=>_selectReference(r)),
+    final s=Theme.of(context).colorScheme; final fav=_favourites;
+    final from=_me??_mapCentre();
+    final fromLabel=_me!=null?S.t('nearby.fromMe'):S.t('nearby.fromCentre');
+    final items=<({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap,String? device})>[
+      for(final p in _positions.values)if(p.deviceId!=widget.deviceId&&_teamMatch(p))(title:p.label,
+        subtitle:[if(_statuses.statusOf(p.deviceId) case final st?)operatorStatusLabel(st),if(sourceOf(p)!=PositionSource.app)_sourceLabel(p),ageLabel(p.time.toUtc(),DateTime.now().toUtc())].join(' · '),
+        at:LatLng(p.lat,p.lon),icon:_stationIcon(p,size:30),onTap:()=>_select(p),device:p.deviceId),
+      for(final r in _references.values)if(teamMatches(_teamQuery,name:r.name))(title:r.name,subtitle:r.subtitle,at:LatLng(r.lat,r.lon),
+        icon:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:s.secondary),onTap:()=>_selectReference(r),device:null),
     ];
-    final list=from==null?<Nearby<({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap})>>[]:nearest(from,items,(i)=>i.at);
+    final all=from==null?<Nearby<({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap,String? device})>>[]:nearest(from,items,(i)=>i.at);
+    final list=[...all.where((n)=>n.item.device!=null&&fav.contains(n.item.device)),...all.where((n)=>n.item.device==null||!fav.contains(n.item.device))];
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       if(closable)Padding(padding:const EdgeInsets.fromLTRB(14,12,6,0),child:Text(S.t('nearby.title'),style:Theme.of(context).textTheme.titleMedium))
-      else const SizedBox(height:10),
+      else const SizedBox(height:4),
       Padding(padding:const EdgeInsets.symmetric(horizontal:14),child:Text(fromLabel,style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
-      const SizedBox(height:6),
-      Expanded(child:ListView(children:[for(final n in list)ListTile(leading:SizedBox(width:34,child:Center(child:n.item.icon)),
-        title:Text(n.item.title,maxLines:1,overflow:TextOverflow.ellipsis),subtitle:Text(n.item.subtitle,maxLines:1,overflow:TextOverflow.ellipsis),
-        trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,children:[
-          Text(geo.formatDistance(n.distanceM),style:const TextStyle(fontWeight:FontWeight.w700)),
-          Text('Az ${n.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',style:TextStyle(fontSize:11,color:s.onSurfaceVariant)),
+      const SizedBox(height:4),
+      Expanded(child:ListView(keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,children:[for(final n in list)ListTile(dense:true,
+        visualDensity:const VisualDensity(vertical:-2),leading:SizedBox(width:34,child:Center(child:n.item.icon)),
+        title:highlighted(n.item.title,_teamQuery,style:const TextStyle(fontSize:15,fontWeight:FontWeight.w600)),
+        subtitle:Text(n.item.subtitle,maxLines:1,overflow:TextOverflow.ellipsis),
+        trailing:Row(mainAxisSize:MainAxisSize.min,children:[
+          Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,children:[
+            Text(geo.formatDistance(n.distanceM),style:const TextStyle(fontWeight:FontWeight.w700)),
+            Text('Az ${n.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',style:TextStyle(fontSize:11,color:s.onSurfaceVariant)),
+          ]),
+          if(n.item.device case final d?)IconButton(tooltip:S.t(fav.contains(d)?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(d),
+            visualDensity:VisualDensity.compact,iconSize:18,icon:Icon(fav.contains(d)?Icons.star:Icons.star_border,color:fav.contains(d)?s.tertiary:s.outline)),
         ]),onTap:n.item.onTap)])),
     ]);
   }
@@ -2742,7 +2790,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_carField.dispose();_stopWakeups?.call();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
+  @override void dispose(){if(MapLoadStatus.active==_mapLoad)MapLoadStatus.active=null;linkStatusOnTap=null;_tvScreens.dispose();_teamSearch.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;currentMapTraces=null;currentMapExtras=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_carScreen.dispose();_carField.dispose();_stopWakeups?.call();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();_adsb.removeListener(_onAdsb);_adsb.dispose();tvDiscovery.removeListener(_saveTvDiscovery);widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).
