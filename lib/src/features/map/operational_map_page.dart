@@ -564,8 +564,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _preferOffline=>widget.store.preference('basemap_offline')=='1';
   String get _tileUrl=>_basemap.tileUrl(widget.api.baseUrl,preferOffline:_preferOffline)??widget.tileUrl;
 
+  ({double lat,double lon})? _thumbAround(){
+    final me=_me; if(me!=null)return (lat:me.latitude,lon:me.longitude);
+    try{final c=_map.camera.center;return (lat:c.latitude,lon:c.longitude);}catch(_){return null;}
+  }
   void _chooseBasemap()=>showBasemapSheet(context,catalog:_catalog,current:_basemap,eventDefault:_ops.settings.basemap,
     preferOffline:_preferOffline,layers:_layerSections,
+    // Real thumbnails: a tile of each base map around me (lot 29.2).
+    tileUrlOf:(b)=>b.tileUrl(widget.api.baseUrl,preferOffline:_preferOffline),around:_thumbAround(),
     onChoose:(id) async {await widget.store.setPreference('basemap:${widget.eventId}',id);if(mounted)setState((){});},
     onPreferOffline:(v) async {await widget.store.setPreference('basemap_offline',v?'1':null);if(mounted)setState((){});});
 
