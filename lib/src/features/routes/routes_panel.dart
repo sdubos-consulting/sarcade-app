@@ -35,15 +35,21 @@ class RoutesPanel extends StatelessWidget {
   @override Widget build(BuildContext context){
     final selected=selectedRouteId==null?null:controller.route(selectedRouteId!);
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[
-        Expanded(child:Text(S.t('routes.title'),style:Theme.of(context).textTheme.titleMedium)),
+      // One line whatever the width: on a phone the title was written one
+      // letter per line, squeezed by the buttons (lot 29, 5 Nov 2026).
+      Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:LayoutBuilder(builder:(c,box){
+        final narrow=box.maxWidth<480;
+        return Row(children:[
+        Expanded(child:Text(S.t('routes.title'),maxLines:1,softWrap:false,overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
         IconButton(tooltip:S.t('routes.refresh'),onPressed:controller.refresh,icon:const Icon(Icons.refresh)),
-        // ⊘ with its words (revue n° 54).
-        if(isPco(actorId))TextButton.icon(onPressed:onDrawClosure,icon:const Icon(Icons.block),label:Text(S.t('closures.new'))),
+        // ⊘ with its words (revue n° 54); the icon alone on a phone.
+        if(isPco(actorId))narrow
+          ?IconButton(tooltip:S.t('closures.new'),onPressed:onDrawClosure,icon:const Icon(Icons.block))
+          :TextButton.icon(onPressed:onDrawClosure,icon:const Icon(Icons.block),label:Text(S.t('closures.new'))),
         // Full screen on a phone: the map pill is hidden, the link shows here.
         if(onClose!=null)const LinkStatusPill(),
         if(onClose!=null)IconButton(key:const ValueKey('routes-close'),tooltip:S.t('common.close'),onPressed:onClose,icon:const Icon(Icons.close)),
-      ])),
+      ]);})),
       // « Nouvel itinéraire »: full blue button with the route icon (1 h 43, option A).
       if(selected==null)Padding(padding:const EdgeInsets.fromLTRB(14,4,14,4),child:Align(alignment:Alignment.centerLeft,
         child:FilledButton.icon(key:const ValueKey('routes-new'),onPressed:()=>_newRoute(context),icon:const Icon(Icons.route),label:Text(S.t('routes.new'))))),
