@@ -127,6 +127,7 @@ const Texts _fr={
   'distress.title':'Détresse','distress.help':'Envoie à tous un message immédiat avec votre position et réveille les appareils. Maintenez le bouton 2 secondes.','distress.hold':'Maintenir : DÉTRESSE','distress.body':'🆘 DÉTRESSE — {who} — position {pos}','distress.noPosition':'inconnue','distress.sent':'Détresse envoyée à tous','distress.active':'Détresse en cours — toucher pour terminer','distress.end':'Terminer la détresse','distress.endTitle':'Terminer la détresse ?','distress.endBody':'Fin de détresse — {who}',
   'resection.title':'Résection','resection.help':'Azimut vrai vers deux ou trois points connus','resection.point':'Point connu','resection.pointOptional':'Troisième point (facultatif)','resection.compute':'Calculer','resection.none':'Pas de position : vérifiez les points et les azimuts','resection.found':'Position estimée à ±{r}','resection.noRefs':'Il faut au moins deux points hauts ou relais dans le référentiel',
   'layers.opacity':'Opacité','draw.opacity':'Transparence','layers.terrain':'Terrain','layers.operation':'Opération','layers.reference':'Référentiel ADRASEC',
+  'layers.opacityHint':'Toucher un nom pour régler sa transparence','layers.radio':'Radio','layers.aprsStations':'Stations APRS','layers.radioOnly':'Stations reçues par radio seulement','traces.short':'Traces','poi.list':'Liste','order.countOpen':'{n} en cours','order.countDone':'{n## terminé|# terminés}',
   'quick.title':'Messages prédéfinis','quick.inPlace':'En place','quick.signalHeard':'Signal entendu','quick.signalLost':'Signal perdu','quick.backToPco':'Retour PCO','quick.needHelp':'Besoin d’assistance','quick.copy':'Bien reçu',
   'groups.addAdrasec':'Ajouter les canaux du modèle ADRASEC','groups.addedAdrasec':'{n#aucun canal ajouté|# canal ajouté|# canaux ajoutés}',
   'messages.everyone':'Tous','messages.you':'Vous','messages.info':'Infos : reçu et lu par','messages.noAck':'Pas encore d’accusé','messages.copy':'Copier','messages.copied':'Message copié','messages.reply':'Répondre en privé à {who}','messages.ackSummary':'✓✓ lu par {r} · reçu par {n}','messages.empty':'Aucun message dans cette conversation','operators.chat':'Discuter',
@@ -237,7 +238,7 @@ const Texts _fr={
   'messages.status.pending':'En attente d’envoi','messages.status.sent':'Envoyé','messages.status.received':'Reçu','messages.status.read':'Lu','messages.readBy':'lu par {n}','messages.unreadSeparator':'{n} messages non lus','messages.toBottom':'Derniers messages',
   // Lot 19, « Messages : ouvrir une conversation sur le dernier message ».
   'messages.unreadUp':'{n## non lu|# non lus}',
-  'map.myPosition':'Ma position','map.followMeOn':'Suivi de ma position (déplacer la carte pour l’arrêter)','map.north':'Nord en haut','map.compassOn':'Carte orientée comme le téléphone (toucher pour le nord en haut)','map.noCompass':'Pas de boussole sur cet appareil (ou accès refusé)','map.noPosition':'Position indisponible : vérifier la localisation de l’appareil',
+  'map.myPosition':'Ma position','map.followMeOn':'Suivi de ma position (déplacer la carte pour l’arrêter)','map.north':'Nord en haut','map.outsideZone':'{n## opérateur hors zone|# opérateurs hors zone}','map.showAll':'Tout montrer','map.compassOn':'Carte orientée comme le téléphone (toucher pour le nord en haut)','map.noCompass':'Pas de boussole sur cet appareil (ou accès refusé)','map.noPosition':'Position indisponible : vérifier la localisation de l’appareil',
   'search.hint':'Rechercher','search.clear':'Effacer','search.none':'Aucun résultat','search.addressesOff':'Adresses indisponibles (hors connexion)','search.kind.coordinates':'Coordonnées','search.kind.operator':'Opérateur','search.kind.reference':'Référentiel','search.kind.poi':'Point','search.kind.drawing':'Dessin','search.kind.address':'Adresse','dictation.start':'Dicter','dictation.stop':'Arrêter la dictée','dictation.unavailable':'Dictée indisponible sur cet appareil (micro ou reconnaissance vocale)','dictation.windows':'Sur ordinateur, utilisez la dictée de Windows : touches Windows + H dans le champ',
   'search.kind.aircraft':'Aéronef','search.kind.meshNode':'Nœud MeshCore',
   'ui.dayNight':'Mode jour / nuit','chips.operators':'Opérateurs','chips.drawings':'Dessins','links.title':'Liaisons','links.server':'Serveur','links.realtime':'Temps réel','links.access':'Connexion Cloudflare','links.ok':'OK','links.down':'coupée','tabs.map':'Carte','tabs.teams':'Équipes','tabs.logbook':'Main courante','tabs.more':'Plus','tabs.messages':'Messages','tabs.bearing':'Relevé','teams.list':'Liste','wakeup.test':'Tester le réveil','wakeup.testHelp':'Fermez SARCADE : la notification doit arriver','wakeup.sent':'Réveil envoyé : la notification doit arriver, même SARCADE fermé','wakeup.none':'Ce navigateur ne peut pas être réveillé (notifications non autorisées ?)','wakeup.failed':'Réveil impossible : serveur injoignable ou trop ancien','map.filters':'Filtres',
@@ -254,7 +255,7 @@ const Texts _fr={
   'priority.routine':'Routine','priority.urgent':'Urgent','priority.immediate':'Immédiat','priority.distress':'Détresse',
   'ack.received':'Reçu','ack.read':'Lu','ack.accepted':'Accepté','ack.rejected':'Refusé','messages.to':'À : {to}',
   // Groups
-  'groups.new':'Nouveau groupe','groups.edit':'Modifier le groupe','groups.name':'Nom','groups.description':'Description',
+  'groups.new':'Nouveau groupe','groups.edit':'Modifier le groupe','groups.saved':'Groupe enregistré','groups.name':'Nom','groups.description':'Description',
   'groups.listenOnly':'Écoute seule','groups.listenOnlyHelp':'Seuls les émetteurs désignés, les responsables et le PCO écrivent',
   'groups.members':'Membres','groups.membersHelp':'Identifiants séparés par des virgules','groups.senders':'Émetteurs désignés',
   'groups.radio':'Canal radio associé (facultatif)','groups.color':'Couleur','groups.archived':'Groupe archivé',
@@ -300,7 +301,7 @@ const Texts _fr={
   'weather.code.drizzle':'Bruine','weather.code.rain':'Pluie','weather.code.showers':'Averses','weather.code.snow':'Neige',
   'weather.code.storm':'Orage','weather.code.unknown':'Inconnu',
   // Base maps
-  'basemap.title':'Fond de carte','basemap.menu':'Fond de carte','basemap.eventDefault':'par défaut pour l’événement',
+  'basemap.title':'Fond de carte','map.panelTitle':'Carte','basemap.short.photos':'Photos aériennes','basemap.desc.osm':'Rues, bâtiments, lieux','basemap.desc.topo':'Relief, sentiers, altitudes','basemap.desc.ignPlan':'Carte officielle française','basemap.desc.photos':'Vue du ciel','basemap.menu':'Fond de carte','basemap.eventDefault':'par défaut pour l’événement',
   'basemap.offlineAvailable':'disponible hors Internet','basemap.preferOffline':'Utiliser les cartes du serveur local',
   'basemap.preferOfflineHelp':'Tuiles du serveur SARCADE (département), sans Internet',
   // Files, drawing
@@ -545,7 +546,6 @@ const Texts _fr={
   'weather.windLine':'Vent {dir} {speed}',
   'weather.rainLine':'Pluie {mm}{p}',
   // Lot 19, « Windows : météo absente de la pastille en haut à droite ».
-  'weather.pillAt':'{text} · à {time}',
   'diag.device':'Cet appareil',
   'diag.links':'Liaisons',
   'diag.server':'Serveur',
@@ -812,6 +812,7 @@ const Texts _en={
   'distress.title':'Distress','distress.help':'Sends everyone an immediate message with your position and wakes the devices. Hold the button 2 seconds.','distress.hold':'Hold: DISTRESS','distress.body':'🆘 DISTRESS — {who} — position {pos}','distress.noPosition':'unknown','distress.sent':'Distress sent to everyone','distress.active':'Distress in progress — tap to end','distress.end':'End the distress','distress.endTitle':'End the distress?','distress.endBody':'End of distress — {who}',
   'resection.title':'Resection','resection.help':'True azimuth towards two or three known points','resection.point':'Known point','resection.pointOptional':'Third point (optional)','resection.compute':'Compute','resection.none':'No position: check the points and azimuths','resection.found':'Position estimated within ±{r}','resection.noRefs':'At least two high points or relays are needed in the reference',
   'layers.opacity':'Opacity','draw.opacity':'Transparency','layers.terrain':'Field','layers.operation':'Operation','layers.reference':'ADRASEC reference',
+  'layers.opacityHint':'Touch a name to set its transparency','layers.radio':'Radio','layers.aprsStations':'APRS stations','layers.radioOnly':'Stations heard by radio only','traces.short':'Traces','poi.list':'List','order.countOpen':'{n} in progress','order.countDone':'{n} done',
   'quick.title':'Predefined messages','quick.inPlace':'In place','quick.signalHeard':'Signal heard','quick.signalLost':'Signal lost','quick.backToPco':'Back to the PCO','quick.needHelp':'Need assistance','quick.copy':'Copy, received',
   'groups.addAdrasec':'Add the channels of the ADRASEC model','groups.addedAdrasec':'{n#no channels added|# channel added|# channels added}',
   'messages.everyone':'Everyone','messages.you':'You','messages.info':'Info: received and read by','messages.noAck':'No acknowledgement yet','messages.copy':'Copy','messages.copied':'Message copied','messages.reply':'Reply privately to {who}','messages.ackSummary':'✓✓ read by {r} · received by {n}','messages.empty':'No message in this conversation','operators.chat':'Chat',
@@ -915,7 +916,7 @@ const Texts _en={
   'messages.status.pending':'Waiting to be sent','messages.status.sent':'Sent','messages.status.received':'Received','messages.status.read':'Read','messages.readBy':'read by {n}','messages.unreadSeparator':'{n} unread messages','messages.toBottom':'Latest messages',
   // Lot 19, « Messages : ouvrir une conversation sur le dernier message ».
   'messages.unreadUp':'{n} unread',
-  'map.myPosition':'My position','map.followMeOn':'Following my position (move the map to stop)','map.north':'North up','map.compassOn':'Map turned like the phone (tap for north up)','map.noCompass':'No compass on this device (or access refused)','map.noPosition':'Position unavailable: check the device location',
+  'map.myPosition':'My position','map.followMeOn':'Following my position (move the map to stop)','map.north':'North up','map.outsideZone':'{n## operator out of the area|# operators out of the area}','map.showAll':'Show all','map.compassOn':'Map turned like the phone (tap for north up)','map.noCompass':'No compass on this device (or access refused)','map.noPosition':'Position unavailable: check the device location',
   'search.hint':'Search','search.clear':'Clear','search.none':'No result','search.addressesOff':'Addresses unavailable (offline)','search.kind.coordinates':'Coordinates','search.kind.operator':'Operator','search.kind.reference':'Reference','search.kind.poi':'Point','search.kind.drawing':'Drawing','search.kind.address':'Address','dictation.start':'Dictate','dictation.stop':'Stop dictation','dictation.unavailable':'Dictation unavailable on this device (microphone or speech recognition)','dictation.windows':'On a computer, use the Windows dictation: Windows + H keys in the field',
   'search.kind.aircraft':'Aircraft','search.kind.meshNode':'MeshCore node',
   'ui.dayNight':'Day / night mode','chips.operators':'Operators','chips.drawings':'Drawings','links.title':'Links','links.server':'Server','links.realtime':'Realtime','links.access':'Cloudflare sign-in','links.ok':'OK','links.down':'down','tabs.map':'Map','tabs.teams':'Teams','tabs.logbook':'Logbook','tabs.more':'More','tabs.messages':'Messages','tabs.bearing':'Bearing','teams.list':'List','wakeup.test':'Test the wake-up','wakeup.testHelp':'Close SARCADE: the notification must arrive','wakeup.sent':'Wake-up sent: the notification must arrive, even with SARCADE closed','wakeup.none':'This browser cannot be woken (notifications not allowed?)','wakeup.failed':'Wake-up impossible: server unreachable or too old','map.filters':'Filters',
@@ -931,7 +932,7 @@ const Texts _en={
   'messages.photoDownloaded':'Photo downloaded','messages.saveFailed':'Saving failed: {error}',
   'priority.routine':'Routine','priority.urgent':'Urgent','priority.immediate':'Immediate','priority.distress':'Distress',
   'ack.received':'Received','ack.read':'Read','ack.accepted':'Accepted','ack.rejected':'Refused','messages.to':'To: {to}',
-  'groups.new':'New group','groups.edit':'Edit group','groups.name':'Name','groups.description':'Description',
+  'groups.new':'New group','groups.edit':'Edit group','groups.saved':'Group saved','groups.name':'Name','groups.description':'Description',
   'groups.listenOnly':'Listen only','groups.listenOnlyHelp':'Only designated senders, managers and the command post write',
   'groups.members':'Members','groups.membersHelp':'Comma separated identifiers','groups.senders':'Designated senders',
   'groups.radio':'Associated radio channel (optional)','groups.color':'Colour','groups.archived':'Archived group',
@@ -973,7 +974,7 @@ const Texts _en={
   'weather.code.clear':'Clear sky','weather.code.partly':'Partly cloudy','weather.code.overcast':'Overcast','weather.code.fog':'Fog',
   'weather.code.drizzle':'Drizzle','weather.code.rain':'Rain','weather.code.showers':'Showers','weather.code.snow':'Snow',
   'weather.code.storm':'Thunderstorm','weather.code.unknown':'Unknown',
-  'basemap.title':'Base map','basemap.menu':'Base map','basemap.eventDefault':'default for the event',
+  'basemap.title':'Base map','map.panelTitle':'Map','basemap.short.photos':'Aerial photos','basemap.desc.osm':'Streets, buildings, places','basemap.desc.topo':'Relief, paths, altitudes','basemap.desc.ignPlan':'French official map','basemap.desc.photos':'Seen from the sky','basemap.menu':'Base map','basemap.eventDefault':'default for the event',
   'basemap.offlineAvailable':'available without Internet','basemap.preferOffline':'Use the maps of the local server',
   'basemap.preferOfflineHelp':'Tiles from the SARCADE server (department), without Internet',
   'files.tooLarge':'File limited to 25 MB','files.uploadFailed':'Upload failed: {error}','files.downloadFailed':'Download failed: {error}',
@@ -1209,7 +1210,6 @@ const Texts _en={
   'weather.windLine':'Wind {dir} {speed}',
   'weather.rainLine':'Rain {mm}{p}',
   // Lot 19, « Windows : météo absente de la pastille en haut à droite ».
-  'weather.pillAt':'{text} · at {time}',
   'diag.device':'This device',
   'diag.links':'Links',
   'diag.server':'Server',
