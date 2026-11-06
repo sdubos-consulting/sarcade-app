@@ -201,6 +201,13 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('logbook_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>LogbookEntry.fromJson(e)).toList();
   }
+  /// Manual note of the Main courante (lot 29.5).
+  Future<LogbookEntry> addLogbookNote(String eventId,{required String actorId,required String text,double? lat,double? lon}) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook/notes'),headers:{'content-type':'application/json'},
+      body:jsonEncode({'actor_id':actorId,'text':text,'lat':?lat,'lon':?lon}));
+    if(r.statusCode!=201) throw Exception('logbook_note_http_${r.statusCode}');
+    return LogbookEntry.fromJson(jsonDecode(r.body) as Map<String,dynamic>);
+  }
   /// Every group of the event, archived included (the PCO sees everything).
   /// Channels of a model added to the event (« adrasec »: PCO, Équipes
   /// terrain, Transmissions, Logistique); returns how many were created.
