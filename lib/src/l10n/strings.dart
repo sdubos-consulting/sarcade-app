@@ -237,7 +237,7 @@ const Texts _fr={
   'messages.status.pending':'En attente d’envoi','messages.status.sent':'Envoyé','messages.status.received':'Reçu','messages.status.read':'Lu','messages.readBy':'lu par {n}','messages.unreadSeparator':'{n} messages non lus','messages.toBottom':'Derniers messages',
   // Lot 19, « Messages : ouvrir une conversation sur le dernier message ».
   'messages.unreadUp':'{n## non lu|# non lus}',
-  'map.myPosition':'Ma position','map.followMeOn':'Suivi de ma position (déplacer la carte pour l’arrêter)','map.north':'Nord en haut','map.compassOn':'Carte orientée comme le téléphone (toucher pour le nord en haut)','map.noCompass':'Pas de boussole sur cet appareil (ou accès refusé)','map.noPosition':'Position indisponible : vérifier la localisation de l’appareil',
+  'map.myPosition':'Ma position','map.followMeOn':'Suivi de ma position (déplacer la carte pour l’arrêter)','map.north':'Nord en haut','map.outsideZone':'{n## opérateur hors zone|# opérateurs hors zone}','map.showAll':'Tout montrer','map.compassOn':'Carte orientée comme le téléphone (toucher pour le nord en haut)','map.noCompass':'Pas de boussole sur cet appareil (ou accès refusé)','map.noPosition':'Position indisponible : vérifier la localisation de l’appareil',
   'search.hint':'Rechercher','search.clear':'Effacer','search.none':'Aucun résultat','search.addressesOff':'Adresses indisponibles (hors connexion)','search.kind.coordinates':'Coordonnées','search.kind.operator':'Opérateur','search.kind.reference':'Référentiel','search.kind.poi':'Point','search.kind.drawing':'Dessin','search.kind.address':'Adresse','dictation.start':'Dicter','dictation.stop':'Arrêter la dictée','dictation.unavailable':'Dictée indisponible sur cet appareil (micro ou reconnaissance vocale)','dictation.windows':'Sur ordinateur, utilisez la dictée de Windows : touches Windows + H dans le champ',
   'search.kind.aircraft':'Aéronef','search.kind.meshNode':'Nœud MeshCore',
   'ui.dayNight':'Mode jour / nuit','chips.operators':'Opérateurs','chips.drawings':'Dessins','links.title':'Liaisons','links.server':'Serveur','links.realtime':'Temps réel','links.access':'Connexion Cloudflare','links.ok':'OK','links.down':'coupée','tabs.map':'Carte','tabs.teams':'Équipes','tabs.logbook':'Main courante','tabs.more':'Plus','tabs.messages':'Messages','tabs.bearing':'Relevé','teams.list':'Liste','wakeup.test':'Tester le réveil','wakeup.testHelp':'Fermez SARCADE : la notification doit arriver','wakeup.sent':'Réveil envoyé : la notification doit arriver, même SARCADE fermé','wakeup.none':'Ce navigateur ne peut pas être réveillé (notifications non autorisées ?)','wakeup.failed':'Réveil impossible : serveur injoignable ou trop ancien','map.filters':'Filtres',
@@ -254,7 +254,7 @@ const Texts _fr={
   'priority.routine':'Routine','priority.urgent':'Urgent','priority.immediate':'Immédiat','priority.distress':'Détresse',
   'ack.received':'Reçu','ack.read':'Lu','ack.accepted':'Accepté','ack.rejected':'Refusé','messages.to':'À : {to}',
   // Groups
-  'groups.new':'Nouveau groupe','groups.edit':'Modifier le groupe','groups.name':'Nom','groups.description':'Description',
+  'groups.new':'Nouveau groupe','groups.edit':'Modifier le groupe','groups.saved':'Groupe enregistré','groups.name':'Nom','groups.description':'Description',
   'groups.listenOnly':'Écoute seule','groups.listenOnlyHelp':'Seuls les émetteurs désignés, les responsables et le PCO écrivent',
   'groups.members':'Membres','groups.membersHelp':'Identifiants séparés par des virgules','groups.senders':'Émetteurs désignés',
   'groups.radio':'Canal radio associé (facultatif)','groups.color':'Couleur','groups.archived':'Groupe archivé',
@@ -545,7 +545,6 @@ const Texts _fr={
   'weather.windLine':'Vent {dir} {speed}',
   'weather.rainLine':'Pluie {mm}{p}',
   // Lot 19, « Windows : météo absente de la pastille en haut à droite ».
-  'weather.pillAt':'{text} · à {time}',
   'diag.device':'Cet appareil',
   'diag.links':'Liaisons',
   'diag.server':'Serveur',
@@ -915,7 +914,7 @@ const Texts _en={
   'messages.status.pending':'Waiting to be sent','messages.status.sent':'Sent','messages.status.received':'Received','messages.status.read':'Read','messages.readBy':'read by {n}','messages.unreadSeparator':'{n} unread messages','messages.toBottom':'Latest messages',
   // Lot 19, « Messages : ouvrir une conversation sur le dernier message ».
   'messages.unreadUp':'{n} unread',
-  'map.myPosition':'My position','map.followMeOn':'Following my position (move the map to stop)','map.north':'North up','map.compassOn':'Map turned like the phone (tap for north up)','map.noCompass':'No compass on this device (or access refused)','map.noPosition':'Position unavailable: check the device location',
+  'map.myPosition':'My position','map.followMeOn':'Following my position (move the map to stop)','map.north':'North up','map.outsideZone':'{n## operator out of the area|# operators out of the area}','map.showAll':'Show all','map.compassOn':'Map turned like the phone (tap for north up)','map.noCompass':'No compass on this device (or access refused)','map.noPosition':'Position unavailable: check the device location',
   'search.hint':'Search','search.clear':'Clear','search.none':'No result','search.addressesOff':'Addresses unavailable (offline)','search.kind.coordinates':'Coordinates','search.kind.operator':'Operator','search.kind.reference':'Reference','search.kind.poi':'Point','search.kind.drawing':'Drawing','search.kind.address':'Address','dictation.start':'Dictate','dictation.stop':'Stop dictation','dictation.unavailable':'Dictation unavailable on this device (microphone or speech recognition)','dictation.windows':'On a computer, use the Windows dictation: Windows + H keys in the field',
   'search.kind.aircraft':'Aircraft','search.kind.meshNode':'MeshCore node',
   'ui.dayNight':'Day / night mode','chips.operators':'Operators','chips.drawings':'Drawings','links.title':'Links','links.server':'Server','links.realtime':'Realtime','links.access':'Cloudflare sign-in','links.ok':'OK','links.down':'down','tabs.map':'Map','tabs.teams':'Teams','tabs.logbook':'Logbook','tabs.more':'More','tabs.messages':'Messages','tabs.bearing':'Bearing','teams.list':'List','wakeup.test':'Test the wake-up','wakeup.testHelp':'Close SARCADE: the notification must arrive','wakeup.sent':'Wake-up sent: the notification must arrive, even with SARCADE closed','wakeup.none':'This browser cannot be woken (notifications not allowed?)','wakeup.failed':'Wake-up impossible: server unreachable or too old','map.filters':'Filters',
@@ -931,7 +930,7 @@ const Texts _en={
   'messages.photoDownloaded':'Photo downloaded','messages.saveFailed':'Saving failed: {error}',
   'priority.routine':'Routine','priority.urgent':'Urgent','priority.immediate':'Immediate','priority.distress':'Distress',
   'ack.received':'Received','ack.read':'Read','ack.accepted':'Accepted','ack.rejected':'Refused','messages.to':'To: {to}',
-  'groups.new':'New group','groups.edit':'Edit group','groups.name':'Name','groups.description':'Description',
+  'groups.new':'New group','groups.edit':'Edit group','groups.saved':'Group saved','groups.name':'Name','groups.description':'Description',
   'groups.listenOnly':'Listen only','groups.listenOnlyHelp':'Only designated senders, managers and the command post write',
   'groups.members':'Members','groups.membersHelp':'Comma separated identifiers','groups.senders':'Designated senders',
   'groups.radio':'Associated radio channel (optional)','groups.color':'Colour','groups.archived':'Archived group',
@@ -1209,7 +1208,6 @@ const Texts _en={
   'weather.windLine':'Wind {dir} {speed}',
   'weather.rainLine':'Rain {mm}{p}',
   // Lot 19, « Windows : météo absente de la pastille en haut à droite ».
-  'weather.pillAt':'{text} · at {time}',
   'diag.device':'This device',
   'diag.links':'Links',
   'diag.server':'Server',
