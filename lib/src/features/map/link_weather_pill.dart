@@ -34,7 +34,9 @@ class LinkWeatherPill extends StatelessWidget {
   final String? mesh;
   /// Meshtastic module (lot 28): same tones as [mesh].
   final String? meshtastic;
-  const LinkWeatherPill({super.key,required this.dot,required this.linkTooltip,required this.onLinks,required this.onWeather,
+  /// Weather no longer valid (lot 29.2): temperature and wind in grey.
+  final bool weatherStale;
+  const LinkWeatherPill({this.weatherStale=false,super.key,required this.dot,required this.linkTooltip,required this.onLinks,required this.onWeather,
     this.linkWord,this.weatherIcon,this.weatherText,this.alert,this.compact=false,this.mesh,this.meshtastic});
 
   /// 'off' (lot 19): disconnected on purpose, grey and not red.
@@ -61,8 +63,8 @@ class LinkWeatherPill extends StatelessWidget {
           ]))))),
         if(weather)InkWell(customBorder:shape,onTap:onWeather,child:SizedBox(height:pillTouch,child:Padding(padding:const EdgeInsets.only(left:6,right:14),
           child:Row(mainAxisSize:MainAxisSize.min,children:[
-            if(weatherIcon!=null&&!compact)...[Icon(weatherIcon,size:16),const SizedBox(width:4)],
-            Text(weatherText!,style:const TextStyle(fontSize:13)),
+            if(weatherIcon!=null&&!compact)...[Icon(weatherIcon,size:16,color:weatherStale?s.outline:null),const SizedBox(width:4)],
+            Text(weatherText!,key:const ValueKey('pill-weather'),style:TextStyle(fontSize:13,color:weatherStale?s.outline:null)),
           ])))),
       ])),
     ]));
