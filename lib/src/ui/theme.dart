@@ -60,6 +60,10 @@ ThemeData _base(ColorScheme scheme){
   // computer (1 Nov 2026, a bearing sheet across a whole screen).
   bottomSheetTheme:const BottomSheetThemeData(constraints:BoxConstraints(maxWidth:bottomSheetMaxWidth)),
   scaffoldBackgroundColor:day?scheme.surface:SarcadeColors.ground,
+  // Headers on the background of the screen, never tinted on scroll; a thin
+  // line separates them (card « en-tête sans fond gris », lot 29.3).
+  appBarTheme:AppBarTheme(backgroundColor:day?scheme.surface:SarcadeColors.ground,surfaceTintColor:Colors.transparent,
+    elevation:0,scrolledUnderElevation:0,shape:Border(bottom:BorderSide(color:scheme.outlineVariant.withValues(alpha:day?0.6:1),width:0.5))),
   // Cards and groups: grey-blue background, round corners (no border by day).
   cardTheme:CardThemeData(color:scheme.surfaceContainer,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16),
     side:day?BorderSide.none:BorderSide(color:scheme.outlineVariant))),
