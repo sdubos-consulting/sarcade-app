@@ -51,10 +51,11 @@ double toolButtonWidth(BuildContext context,Iterable<String> labels){
   return (w+12).clamp(54.0,84.0).ceilToDouble();
 }
 
-/// Compact drawing toolbar: drawing tools only, selection, undo/redo and
-/// close (import and export moved to Plus › Fichiers, card of 13 h 27).
+/// Compact drawing toolbar: drawing tools only, undo/redo (no close any
+/// more, lot 29.2) (import and export moved to Plus › Fichiers, card of 13 h 27).
 class DrawingToolbar extends StatelessWidget {
   final DrawingController controller;
+  /// Touching the chosen tool again closes the palette (lot 29.2).
   final VoidCallback onClose;
   /// Times the help of a tool was already shown (full help the first 3).
   final int Function(FeatureKind)? hintSeen;
@@ -65,51 +66,59 @@ class DrawingToolbar extends StatelessWidget {
   Widget build(BuildContext context){
     final c=controller;
     final scheme=Theme.of(context).colorScheme;
-    final width=toolButtonWidth(context,[for(final k in drawingToolbarKinds)k.label]);
+    // Five columns that fit the screen (iPhone in portrait: labels scaled down).
+    final fit=(MediaQuery.sizeOf(context).width-24-8)/5-4;
+    final width=toolButtonWidth(context,[for(final k in drawingToolbarKinds)k.label,S.t('draw.undo'),S.t('draw.redo')]).clamp(44.0,fit<44?44.0:fit).toDouble();
     final tools=<Widget>[
-      for(final k in drawingToolbarKinds)Padding(
+      for(final k in drawingPaletteOrder)Padding(
         padding:const EdgeInsets.symmetric(horizontal:2),
         // Stable identifier for the CI journeys (card L1, lot 17).
-        child:withId('map.draw-${k.name}',_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:()=>c.selectTool(c.tool==k?null:k))),
+        child:withId('map.draw-${k.name}',_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:(){if(c.tool==k){onClose();}else{c.selectTool(k);}})),
       ),
-      // « Sélection » left the drawing bar (17 h 36): long press on an
-      // object, or « Sélectionner une zone » of the point menu.
     ];
-    final undo=IconButton(tooltip:S.t('draw.undo'),onPressed:c.canUndo?c.undo:null,icon:const Icon(Icons.undo));
-    final redo=IconButton(tooltip:S.t('draw.redo'),onPressed:c.canRedo?c.redo:null,icon:const Icon(Icons.redo));
-    final close=IconButton(key:const ValueKey('draw-close'),tooltip:S.t('draw.close'),onPressed:onClose,icon:const Icon(Icons.close));
-    // Phone (revue d'ergonomie n° 21): the tools on two rows, nothing hidden
-    // behind a scroll; « Fermer » and « Annuler » always in sight on the right.
+    // Two rows everywhere, five columns (card « palette d'outils
+    // incohérente », lot 29.2): Ligne, Flèche, Cercle, Rectangle, Zone /
+    // Libre, Texte, (vide), Annuler, Rétablir. No « Fermer »: a touch on the
+    // map without a tool, the pencil again or Échap closes the palette.
+    final undo=_ActionCell(key:const ValueKey('draw-undo'),icon:Icons.undo,label:S.t('draw.undo'),width:width,onTap:c.canUndo?c.undo:null);
+    final redo=_ActionCell(key:const ValueKey('draw-redo'),icon:Icons.redo,label:S.t('draw.redo'),width:width,onTap:c.canRedo?c.redo:null);
+    final rows=drawingPaletteRows(tools,undo,redo,SizedBox(width:width+4));
     // Help of the active tool: one thin line at the bottom of the bar, no
     // separate bubble nor ✕ (card « Dessin : bandeau d'aide trop
     // encombrant », 1 Nov 2026).
     final line=c.tool==null?null:DraftLine(key:ValueKey('draft-line-${c.tool!.name}'),controller:c,
       seen:hintSeen?.call(c.tool!)??0,onShown:onHintShown);
-    if(drawingToolbarWraps(MediaQuery.sizeOf(context).width)){
-      return Material(elevation:4,borderRadius:BorderRadius.circular(14),color:scheme.surface,
-        child:Padding(padding:const EdgeInsets.all(4),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            Expanded(child:Wrap(runSpacing:4,children:[...tools,redo])),
-            Column(mainAxisSize:MainAxisSize.min,children:[close,undo]),
-          ]),
-          ?line,
-        ])));
-    }
-    return Material(
-      elevation:4,borderRadius:BorderRadius.circular(14),color:scheme.surface,
-      child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-        SingleChildScrollView(
-          scrollDirection:Axis.horizontal,
-          padding:const EdgeInsets.symmetric(horizontal:4,vertical:4),
-          child:Row(mainAxisSize:MainAxisSize.min,children:[
-            ...tools,
-            const SizedBox(height:40,child:VerticalDivider(width:12)),
-            undo,redo,close,
-          ]),
-        ),
+    return Material(elevation:4,borderRadius:BorderRadius.circular(14),color:scheme.surface,
+      child:Padding(padding:const EdgeInsets.all(4),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+        for(final r in rows)Padding(padding:const EdgeInsets.symmetric(vertical:2),child:Row(mainAxisSize:MainAxisSize.min,children:r)),
         ?line,
-      ]),
-    );
+      ])));
+  }
+}
+
+/// Order of the palette: five tools on the first row, then Libre, Texte,
+/// an empty cell, Annuler and Rétablir.
+const drawingPaletteOrder=[FeatureKind.line,FeatureKind.arrow,FeatureKind.circle,FeatureKind.rectangle,FeatureKind.zone,FeatureKind.freehand,FeatureKind.text];
+
+/// The two rows of five cells.
+List<List<Widget>> drawingPaletteRows(List<Widget> tools,Widget undo,Widget redo,Widget empty){
+  final cells=[...tools,empty,Padding(padding:const EdgeInsets.symmetric(horizontal:2),child:undo),Padding(padding:const EdgeInsets.symmetric(horizontal:2),child:redo)];
+  return [cells.sublist(0,5),cells.sublist(5)];
+}
+
+/// Annuler / Rétablir with icon and label like the tools, greyed when
+/// unavailable.
+class _ActionCell extends StatelessWidget {
+  final IconData icon; final String label; final double width; final VoidCallback? onTap;
+  const _ActionCell({super.key,required this.icon,required this.label,required this.width,this.onTap});
+  @override Widget build(BuildContext context){
+    final scheme=Theme.of(context).colorScheme; final on=onTap!=null;
+    final fg=on?scheme.onSurface:scheme.onSurface.withValues(alpha:0.38);
+    return Tooltip(message:label,child:InkWell(borderRadius:BorderRadius.circular(10),onTap:onTap,child:Container(width:width,padding:const EdgeInsets.symmetric(vertical:4),
+      child:Column(mainAxisSize:MainAxisSize.min,children:[
+        Icon(icon,color:fg),const SizedBox(height:2),
+        SizedBox(height:15,child:FittedBox(fit:BoxFit.scaleDown,child:Text(label,maxLines:1,softWrap:false,style:TextStyle(fontSize:11,color:fg)))),
+      ]))));
   }
 }
 
