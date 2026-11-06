@@ -91,7 +91,7 @@ Future<void> editRemote(BuildContext context,{Remote? remote})=>showOverlayPage<
 /// map (computer) or as a screen (phone).
 ToolItem remotesToolItem({required void Function(String id,Widget Function() build) open})=>
   ToolItem(id:'remotes',icon:Icons.settings_remote,title:S.t('remote.title'),subtitle:S.t('remote.toolHelp'),
-    color:Colors.deepOrange,group:ToolGroup.pc,onTap:()=>open('remotes',()=>const RemotesPage()));
+    color:Colors.deepOrange,group:ToolGroup.radio,onTap:()=>open('remotes',()=>const RemotesPage()));
 
 /// « Allumer Relais 1 ? Message 1111# envoyé au boîtier par MeshCore.
 /// Réponse attendue en moins de 30 s. »

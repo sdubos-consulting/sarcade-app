@@ -21,9 +21,11 @@ bool isUrgentPriority(String priority)=>priority=='urgent'||priority=='immediate
 /// Sound by priority, local preference of the device (Paramètres ›
 /// Notifications, 29 Oct 2026): routine silent / discreet (vibration only)
 /// / normal; urgent and immediate normal or alarm; SOS always the alarm.
+/// Routine arrives without sound nor vibration by default (lot 29, group 7:
+/// silence is a property of the priority); each device may set a sound back.
 const soundSilent='silent', soundDiscreet='discreet', soundNormal='normal', soundAlarm='alarm';
 const soundChoices={'routine':[soundSilent,soundDiscreet,soundNormal],'urgent':[soundNormal,soundAlarm],'immediate':[soundNormal,soundAlarm]};
-const soundDefaults={'routine':soundNormal,'urgent':soundNormal,'immediate':soundAlarm};
+const soundDefaults={'routine':soundSilent,'urgent':soundNormal,'immediate':soundAlarm};
 
 /// A distress message (« 🆘 DÉTRESSE … », « 🆘 DISTRESS … »).
 bool isSosBody(String body)=>body.trimLeft().startsWith('🆘');
