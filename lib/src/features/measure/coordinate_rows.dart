@@ -51,23 +51,27 @@ class _InfoRowState extends State<InfoRow> {
   bool _reading=false;
   @override Widget build(BuildContext context){
     final t=Theme.of(context); final s=t.colorScheme;
-    final usable=widget.value.isNotEmpty&&widget.value!='—';
+    final usable=widget.value.isNotEmpty&&widget.value!='—'&&widget.value!='…';
+    // Lot 29.5: a touch copies; one ⋮ for « Lire à voix haute » and
+    // « Afficher en grand »; digits of fixed width, scaled down to stay on
+    // one line.
     return InkWell(onTap:usable?()=>copyText(context,widget.value):null,child:Padding(
-      padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(crossAxisAlignment:CrossAxisAlignment.center,children:[
+      padding:const EdgeInsets.fromLTRB(12,4,0,4),child:Row(crossAxisAlignment:CrossAxisAlignment.center,children:[
         if(widget.icon!=null)...[Icon(widget.icon,size:18,color:s.onSurfaceVariant),const SizedBox(width:10)],
         Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           Text(widget.label,style:t.textTheme.labelMedium?.copyWith(color:s.onSurfaceVariant)),
-          Text(widget.value,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w600,fontFeatures:[FontFeature.tabularFigures()])),
+          FittedBox(fit:BoxFit.scaleDown,alignment:Alignment.centerLeft,child:Text(widget.value,maxLines:1,softWrap:false,
+            style:const TextStyle(fontSize:16,fontWeight:FontWeight.w600,fontFeatures:[FontFeature.tabularFigures()]))),
           if(_reading&&usable)Padding(padding:const EdgeInsets.only(top:2),child:Text(radioSpelling(widget.value,lang:S.lang),
             style:t.textTheme.bodySmall?.copyWith(color:s.primary))),
         ])),
-        if(widget.spell&&usable)...[
-          IconButton(tooltip:S.t('info.radio'),visualDensity:VisualDensity.compact,isSelected:_reading,
-            onPressed:()=>setState(()=>_reading=!_reading),icon:const Icon(Icons.record_voice_over_outlined),selectedIcon:const Icon(Icons.record_voice_over)),
-          IconButton(tooltip:S.t('info.big'),visualDensity:VisualDensity.compact,
-            onPressed:()=>showBigValue(context,widget.label,widget.value),icon:const Icon(Icons.text_fields)),
-        ],
-        if(usable)Icon(Icons.copy_outlined,size:16,color:s.onSurfaceVariant),
+        if(widget.spell&&usable)PopupMenuButton<String>(tooltip:S.t('common.more'),icon:Icon(Icons.more_vert,color:s.onSurfaceVariant),
+          onSelected:(v){if(v=='read'){setState(()=>_reading=!_reading);}else{showBigValue(context,widget.label,widget.value);}},
+          itemBuilder:(_)=>[
+            CheckedPopupMenuItem(value:'read',checked:_reading,child:Text(S.t('info.radio'))),
+            PopupMenuItem(value:'big',child:Text(S.t('info.big'))),
+          ])
+        else if(usable)Padding(padding:const EdgeInsets.only(right:12),child:Icon(Icons.copy_outlined,size:16,color:s.onSurfaceVariant)),
       ])));
   }
 }
