@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'conversation_row.dart';
 import '../../ui/keyboard.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -32,9 +33,10 @@ import '../../ui/bottom_menu.dart';
 import '../../ui/action_buttons.dart';
 import '../tv/tv_nearby.dart';
 import '../../ui/link_status.dart';
-import '../../ui/text_fields_dialog.dart';
-import '../meshcore/meshcore_chat_page.dart' show MeshCoreThreadTiles;
-import '../meshtastic/meshtastic_chat_page.dart' show MeshtasticThreadTiles;
+import '../meshcore/meshcore_chat.dart' show MeshCoreChats;
+import '../meshcore/meshcore_chat_page.dart' show MeshCoreThreadTiles, meshCoreThreadTitle, openMeshCoreChat;
+import '../meshtastic/meshtastic_chat.dart' show MeshtasticChats;
+import '../meshtastic/meshtastic_chat_page.dart' show MeshtasticThreadTiles, meshtasticThreadTitle, openMeshtasticChat;
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -333,32 +335,6 @@ class _MessagesPageState extends State<MessagesPage>{
  final _drafts=ConversationDrafts();
  late bool _chatOpen=widget.initialPeer!=null||widget.initialText!=null;
 
- /// « Nouvelle discussion »: a direct chat with an operator of the list.
- Future<void> _pickDirect() async {
-   final all=directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId);
-   final id=await showModalBottomSheet<String>(context:context,showDragHandle:true,isScrollControlled:true,builder:(_)=>TextFieldsHost(initial:const [''],builder:(c,f,set){
-     final filter=f[0];
-     final q=filter.text.trim().toLowerCase();
-     final shown=all.where((x)=>q.isEmpty||x.toLowerCase().contains(q)).toList();
-     final typed=filter.text.trim().toUpperCase();
-     return SafeArea(child:Padding(padding:EdgeInsets.only(bottom:MediaQuery.viewInsetsOf(c).bottom),child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(c).height*0.7),
-       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-         Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Text(S.t('messages.newDirect'),style:Theme.of(c).textTheme.titleMedium)),
-         Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:TextField(key:const ValueKey('direct-filter'),controller:filter,autofocus:all.length>8,
-           decoration:InputDecoration(prefixIcon:const Icon(Icons.search),hintText:S.t('messages.directFilter')),onChanged:(_)=>set((){}),
-           onSubmitted:(_){if(shown.length==1){Navigator.pop(c,shown.first);}else if(typed.isNotEmpty&&shown.isEmpty){Navigator.pop(c,typed);}})),
-         Flexible(child:ListView(shrinkWrap:true,children:[
-           for(final x in shown)ListTile(key:ValueKey('direct-$x'),leading:_personAvatar(x),title:Text(x),onTap:()=>Navigator.pop(c,x)),
-           // Someone not seen yet: the identifier typed.
-           if(typed.isNotEmpty&&typed!=widget.actorId&&!all.contains(typed))ListTile(leading:const Icon(Icons.person_add_alt),
-             title:Text(S.t('messages.directTyped',{'id':typed})),onTap:()=>Navigator.pop(c,typed)),
-           if(all.isEmpty&&typed.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('messages.directNone'))),
-         ])),
-       ]))));
-   }));
-   if(id!=null&&mounted)_open(directKey(id));
- }
-
  void _open(String key){
    if(!_chatOpen)setState(()=>_chatOpen=true);
    if(key==_conv)return;
@@ -394,7 +370,7 @@ class _MessagesPageState extends State<MessagesPage>{
  Color get _otherBg=>_night?const Color(0xFF202C33):Colors.white;
 
  /// Conversation list filters and search (computer).
- String _filter='all'; String _search=''; String? _hovered;
+ String _search=''; String? _hovered;
  final _searchCtl=TextEditingController();
  Set<String> get _favConvs=>(widget.store.preference('msg_fav:${widget.eventId}')??'').split('|').where((s)=>s.isNotEmpty).toSet();
  Future<void> _toggleFavConv(String k) async {
@@ -418,58 +394,61 @@ class _MessagesPageState extends State<MessagesPage>{
      child:Icon(key==allKey?Icons.campaign_outlined:Icons.forum_outlined,size:r));
  }
 
- /// Computer: list of the conversations on the left (WhatsApp Web): chips
- /// Toutes / Non lues / Favoris and a round search on top; pastille, name,
- /// « Auteur : texte », time on the right, unread count in SARCADE blue.
+ /// List of the conversations (lot 29.3): no chips any more; favourites
+ /// first, then unread, then the others, the MeshCore and Meshtastic threads
+ /// among them; lines like WhatsApp. A search also shows « Personnes · pas
+ /// encore de conversation » (the « Nouvelle discussion » screen is gone).
  Widget _convList(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks,{bool search=true}){
-   final t=Theme.of(context); final s=t.colorScheme;
+   final s=Theme.of(context).colorScheme;
+   return ListenableBuilder(listenable:Listenable.merge([MeshCoreChats.instance,MeshtasticChats.instance]),builder:(context,_){
    final lastBy=<String,SarcadeMessage>{};
    for(final m in _eventMessages){final k=conversationOf(m,widget.actorId,by);final l=lastBy[k];if(l==null||m.createdAt.isAfter(l.createdAt))lastBy[k]=m;}
    final fav=_favConvs; final q=_search.trim().toLowerCase();
+   bool match(String title,String preview)=>q.isEmpty||title.toLowerCase().contains(q)||preview.toLowerCase().contains(q);
    Widget star(String k)=>InkWell(onTap:()=>_toggleFavConv(k),customBorder:const CircleBorder(),child:Tooltip(message:S.t(fav.contains(k)?'messages.unfav':'messages.fav'),
-     child:Icon(fav.contains(k)?Icons.star:Icons.star_border,size:18,color:fav.contains(k)?Colors.amber:s.onSurfaceVariant)));
-   final keys=_conversations(by).where((k){
-     if(_filter=='unread'&&_unreadIn(k,by,acks)==0)return false;
-     if(_filter=='fav'&&!fav.contains(k))return false;
-     if(q.isEmpty)return true;
-     return _convName(k,by).toLowerCase().contains(q)||(lastBy[k]?.body.toLowerCase().contains(q)??false);
-   }).toList();
-   Widget chip(String id,String label)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(key:ValueKey('msg-filter-$id'),label:Text(label),selected:_filter==id,showCheckmark:false,
-     // 48 px touch area, the drawn pill unchanged (revue d'ergonomie n° 39).
-     materialTapTargetSize:MaterialTapTargetSize.padded,
-     onSelected:(_)=>setState(()=>_filter=id)));
+     child:Padding(padding:const EdgeInsets.only(left:4),child:Icon(fav.contains(k)?Icons.star:Icons.star_border,size:16,color:fav.contains(k)?Colors.amber:s.onSurfaceVariant))));
+   final convs=_conversations(by);
+   final entries=<ConvEntry>[
+     for(final k in convs)_sarcadeEntry(k,lastBy[k],by,acks,fav),
+     for(final t in MeshCoreChats.instance.threads)if(t.messages.isNotEmpty)(favKey:MeshCoreThreadTiles.favouriteKey(t.prefix),title:meshCoreThreadTitle(t),
+       preview:t.last?.text??'',at:t.last?.at,unread:t.unread,fav:fav.contains(MeshCoreThreadTiles.favouriteKey(t.prefix)),
+       avatar:const CircleAvatar(radius:22,backgroundColor:Color(0xFF00838F),foregroundColor:Colors.white,child:Icon(Icons.hub_outlined)),
+       onTap:()=>unawaited(openMeshCoreChat(context,t.prefix,t.name)),key:ValueKey('mesh-thread-${t.prefix}'),selected:false),
+     for(final t in MeshtasticChats.instance.threads)if(t.messages.isNotEmpty)(favKey:MeshtasticThreadTiles.favouriteKey(t.key),title:meshtasticThreadTitle(t),
+       preview:t.last==null?'':t.last!.sender==null?t.last!.text:'${t.last!.sender} : ${t.last!.text}',at:t.last?.at,unread:t.unread,
+       fav:fav.contains(MeshtasticThreadTiles.favouriteKey(t.key)),
+       avatar:CircleAvatar(radius:22,backgroundColor:const Color(0xFF2E7D32),foregroundColor:Colors.white,child:Icon(t.channel?Icons.groups_outlined:Icons.wifi_tethering)),
+       onTap:()=>unawaited(openMeshtasticChat(context,t.key,t.name)),key:ValueKey('meshtastic-thread-${t.key}'),selected:false),
+   ];
+   final shown=sortConversations(entries.where((e)=>match(e.title,e.preview)));
+   // People not written to yet, only while searching.
+   final talked={for(final k in convs)?peerOf(k)};
+   final people=q.isEmpty?const <String>[]:directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId)
+     .where((p)=>!talked.contains(p)&&p.toLowerCase().contains(q)).toList();
+   final now=DateTime.now();
    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
      if(search)Padding(padding:const EdgeInsets.fromLTRB(12,10,12,6),child:_searchField()),
-     Padding(padding:EdgeInsets.fromLTRB(12,search?0:8,12,6),child:Row(children:[
-       chip('all',S.t('messages.filterAll')),chip('unread',S.t('messages.filterUnread')),chip('fav',S.t('messages.filterFav'))])),
-     Expanded(child:ListView(children:[for(final k in keys)Builder(builder:(_){
-       final last=lastBy[k]; final n=_unreadIn(k,by,acks);
-       return MouseRegion(onEnter:(_)=>setState(()=>_hovered=k),onExit:(_){if(_hovered==k)setState(()=>_hovered=null);},child:ListTile(selected:k==_conv,selectedTileColor:s.primaryContainer.withValues(alpha:0.45),
-         leading:_convIcon(k,by,r:22),
-         title:Text(_convName(k,by),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w600)),
-         subtitle:last==null?null:Text('${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.deleted?S.t(last.deletedByPco?'messages.deletedByPco':'messages.deleted'):last.body}',maxLines:1,overflow:TextOverflow.ellipsis),
-         // Time on the right, unread count in SARCADE blue, star of the
-         // favourites (long press or right click to add or remove).
-         trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,mainAxisSize:MainAxisSize.min,children:[
-           if(last!=null)Text(_hm(last.createdAt),style:TextStyle(fontSize:12,color:n>0?s.primary:s.onSurfaceVariant)),
-           const SizedBox(height:4),
-           Row(mainAxisSize:MainAxisSize.min,children:[
-             // Star on hover (lot 10C): one click adds or removes.
-             if(fav.contains(k)||_hovered==k)star(k),
-             if(n>0)Container(margin:const EdgeInsets.only(left:4),padding:const EdgeInsets.symmetric(horizontal:7,vertical:2),
-               decoration:BoxDecoration(color:s.primary,borderRadius:BorderRadius.circular(12)),
-               child:Text('$n',style:TextStyle(color:s.onPrimary,fontSize:11,fontWeight:FontWeight.w700))),
-           ]),
-         ]),
-         onLongPress:()=>_toggleFavConv(k),
-         onTap:()=>_open(k)));
-     }),
-     // Threads with MeshCore nodes, kept on this device (lot 17).
-     // They follow the filter, the search and the favourites (lot 29).
-     MeshCoreThreadTiles(filter:_filter,query:_search,favourites:fav,onToggleFavourite:_toggleFavConv),
-     MeshtasticThreadTiles(filter:_filter,query:_search,favourites:fav,onToggleFavourite:_toggleFavConv)])), // lot 28
+     Expanded(child:ListView(keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,children:[
+       if(q.isNotEmpty&&shown.isNotEmpty)_sectionHead(S.t('messages.sectionConversations')),
+       for(final e in shown)MouseRegion(onEnter:(_)=>setState(()=>_hovered=e.favKey),onExit:(_){if(_hovered==e.favKey)setState(()=>_hovered=null);},
+         child:ConversationRow(entry:e,now:now,onLongPress:()=>_toggleFavConv(e.favKey),hoverStar:_hovered==e.favKey?star(e.favKey):null)),
+       if(people.isNotEmpty)...[
+         _sectionHead(S.t('messages.sectionPeople')),
+         for(final p in people)ListTile(key:ValueKey('person-$p'),leading:_personAvatar(p,r:22),title:Text(p,style:const TextStyle(fontWeight:FontWeight.w600)),
+           subtitle:Text(S.t('messages.personNew')),onTap:(){_searchCtl.clear();setState(()=>_search='');_open(directKey(p));}),
+       ],
+       if(q.isNotEmpty&&shown.isEmpty&&people.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('messages.searchNone'))),
+     ])),
    ]);
+   });
  }
+
+ ConvEntry _sarcadeEntry(String k,SarcadeMessage? last,Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks,Set<String> fav)=>(favKey:k,title:_convName(k,by),
+   preview:last==null?'':'${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.deleted?S.t(last.deletedByPco?'messages.deletedByPco':'messages.deleted'):last.body}',
+   at:last?.createdAt,unread:_unreadIn(k,by,acks),fav:fav.contains(k),avatar:_convIcon(k,by,r:22),onTap:()=>_open(k),key:ValueKey('conv-$k'),selected:k==_conv);
+
+ Widget _sectionHead(String text)=>Padding(padding:const EdgeInsets.fromLTRB(16,12,16,4),child:Text(text,
+   style:Theme.of(context).textTheme.labelLarge?.copyWith(color:Theme.of(context).colorScheme.primary)));
 
  Widget _searchField(){
    final s=Theme.of(context).colorScheme;
@@ -878,7 +857,6 @@ class _MessagesPageState extends State<MessagesPage>{
      final close=widget.onClose==null?null:IconButton(tooltip:S.t('common.close'),onPressed:widget.onClose,icon:const Icon(Icons.close));
      final listOnly=!wide&&!_chatOpen;
      final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
-     final newChat=RoundIconButton(key:const ValueKey('messages-new-direct'),tooltip:S.t('messages.newDirect'),onPressed:_pickDirect,icon:Icons.add_comment_outlined);
      // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
      // ADRASEC channel models only when the event has the module.
      final adrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec')?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
@@ -888,7 +866,7 @@ class _MessagesPageState extends State<MessagesPage>{
      final pending=_pendingPill();
      if(listOnly){
        return Scaffold(
-         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newChat,newGroup,?adrasec,?close]),
+         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,?adrasec,?close]),
          body:_convList(by,acks));
      }
      // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
@@ -900,7 +878,7 @@ class _MessagesPageState extends State<MessagesPage>{
        return Scaffold(body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
          SizedBox(height:60,child:Row(children:[
            SizedBox(width:360,child:Padding(padding:const EdgeInsets.fromLTRB(12,8,4,8),child:Row(children:[
-             Expanded(child:_searchField()),newChat,newGroup,?adrasec]))),
+             Expanded(child:_searchField()),newGroup,?adrasec]))),
            const VerticalDivider(width:1),
            const SizedBox(width:12),
            // Selection (lot 21): « N sélectionnés », Copier, Supprimer in place of the conversation.
