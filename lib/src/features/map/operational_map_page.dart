@@ -5,7 +5,13 @@ import 'package:geolocator/geolocator.dart' show Position;
 import '../../ui/car_mode.dart';
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
-import '../messages/conversations.dart' show avatarInitials;
+import '../messages/conversations.dart' show avatarInitials, conversationOf;
+import '../messages/reactions.dart' show Reactions;
+import '../messages/typing.dart' show Typing;
+import '../messages/important.dart' show Important;
+import '../messages/mute.dart' show Mutes, ringsThroughMute;
+import '../messages/mentions.dart' show mentionsMe;
+import '../profile/profile_photo.dart' show ProfilePhotos;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -363,7 +369,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
   }
-  void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId&&!p.deleted)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
+  void _loadLocal(){ProfilePhotos.instance.load(widget.store,widget.eventId);for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId&&!p.deleted)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
   /// Initial load followed by the Diagnostic and the dot (lot 19, map_load_status.dart).
   late final _mapLoad=MapLoadStatus()..onRetry=_retryLinks;
   void _retryLinks(){if(!mounted)return;if(!_started){unawaited(_start());}else if(!_realtime.connected){_realtime.reconnectNow();}}
@@ -481,16 +487,45 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ].join(' · ');
   }
 
+  /// Profile photos (lot 29, group 7): the ones new or changed only.
+  Future<void> _refreshPhotos() async {
+    try{await ProfilePhotos.instance.refresh(widget.api,widget.store,widget.eventId);}catch(_){/* offline: the ones kept */}
+  }
+  Future<void> _photoChanged(Map data) async {
+    try{await ProfilePhotos.instance.changed(widget.api,widget.store,widget.eventId,data);}catch(_){return;}
+    // Removed by a PCO or an administrator: the operator is told.
+    if(data['device_id']==widget.deviceId&&data['removed_by']!=null&&mounted){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('profile.photoRemovedByPco'))));
+    }
+  }
+
+  /// PCO or administrator: a photo not suitable; the operator is told.
+  Future<void> _removePhotoOf(String deviceId) async {
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('profile.photoRemoveOther')),
+      content:Text(S.t('profile.photoRemoveOtherHelp',{'who':deviceId})),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('profile.photoRemove')))]));
+    if(ok!=true||!mounted)return;
+    try{await ProfilePhotos.instance.remove(widget.api,widget.store,widget.eventId,deviceId);}
+    catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('profile.photoFailed'))));}
+    if(mounted)setState((){});
+  }
+
   void _onRealtime(RealtimeEvent e){
     if(e.type.startsWith('adsb.')){_adsb.onRealtime(e.type,e.data);return;}
     if(e.type=='aprs.class.updated'){unawaited(_applyFixedClass(e.data));}
     if(e.type=='operator.status'||e.type=='device.updated'){_statuses.applyJson(e.data);}
     if(e.type=='device.updated'){final id='${e.data['device_id']??''}';if(id.isNotEmpty&&mounted)setState(()=>_devices[id]=Map<String,dynamic>.from(e.data));}
-    if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());unawaited(_loadRoles());return;}
+    if(e.type==RealtimeService.reconnectedType){unawaited(_refreshPhotos());unawaited(_reloadPositions());unawaited(_loadRoles());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());_traces.add(p);if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'||e.type=='poi.updated'||e.type=='poi.deleted'){unawaited(applyRemotePoi(_pois,widget.store,Map<String,dynamic>.from(e.data),widget.eventId).then((c){if(c&&mounted)setState((){});}));}
     if(e.type=='message.created'){_receiveMessage(e.data);}
     if(e.type=='message.deleted'){unawaited(widget.store.cacheMessage(Map<String,dynamic>.from(e.data)));}
+    if(e.type=='message.updated'){unawaited(widget.store.cacheMessage(Map<String,dynamic>.from(e.data)));}
+    if(e.type=='photo.updated'){unawaited(_photoChanged(e.data));}
+    if(e.type=='typing'){Typing.instance.received(e.data,widget.deviceId);}
+    if(e.type=='message.created'){Typing.instance.sent('${e.data['sender_id']??''}');}
+    if(e.type=='reaction.updated'){unawaited(Reactions.instance.apply(widget.store,widget.eventId,e.data));}
     if(e.type=='map_feature.upserted'||e.type=='map_feature.deleted'){_applyRemoteFeature(e.data,persist:true);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
     if(e.type=='group.upserted'&&!_sync.isPending('${e.data['id']}')){widget.store.saveGroup(e.data);}
@@ -536,11 +571,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       }
       // Realtime and synchronisation may both bring the message: only the
       // first arrival notifies; an old message caught up later stays silent.
-      if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
+      // « Sourdine » (lot 29, group 7): silent, except distress, IMMÉDIAT and orders.
+      Mutes.instance.load(widget.store,widget.eventId);
+      final mention=mentionsMe(m,widget.deviceId,pco:isPco(widget.deviceId));
+      final muted=Mutes.instance.muted(conversationOf(m,widget.deviceId,groups))&&!ringsThroughMute(m,mentionsMe:mention);
+      if(!muted&&shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
         // Conversation format for Android Auto (lot 1b): the channel by its name.
         final gid=m.recipientIds.where((r)=>r.startsWith('group:')).map((r)=>r.substring(6)).firstOrNull;
         final g=gid==null?null:groups[gid];
-        await _notifications.message(title:'SARCADE · ${S.t(priorityKey(m.priority))} · ${m.senderId}',body:m.body,priority:m.priority,
+        await _notifications.message(title:'SARCADE · ${S.t(priorityKey(m.priority))} · ${m.senderId}',body:m.body,priority:m.priority,mention:mention,
           payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m),senderId:m.senderId),
           car:carConversation(m,me:widget.deviceId,channelName:g==null?null:(g.kind=='all'?S.t('car.allChannel'):g.name),
             earlier:carThread(m,widget.store.messages().map(SarcadeMessage.fromJson),me:widget.deviceId)));
@@ -2157,6 +2196,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         await widget.store.setPreference('rail_pins',jsonEncode([for(final x in pins)'$x']));
         if(mounted)setState((){});
       }
+      // « Messages importants » of the person (lot 29, group 7).
+      await Important.instance.fromServer(widget.store,p['important_messages']);
       final remote=p['favourites'];
       if(remote is List){
         await widget.store.setPreference('favourites',encodeFavourites({for(final x in remote)'$x'}));
@@ -2302,7 +2343,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return Container(padding:const EdgeInsets.all(14),decoration:glass(context,radius:18,border:_stationColor(p).withValues(alpha:0.6)),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Row(children:[
-          _stationIcon(p,size:40),const SizedBox(width:10),
+          // The photo of the operator in his sheet (lot 29, group 7); the map keeps the symbols.
+          !p.isAprs&&ProfilePhotos.instance.of(p.deviceId)!=null?operatorAvatar(p.deviceId,label:p.label,radius:20):_stationIcon(p,size:40),const SizedBox(width:10),
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             // APRS station linked to a terminal: its callsign stays visible
             // (« PCO-demo · F4JPO-5 », decision of 28 Oct 2026).
@@ -2313,6 +2355,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])),
           IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
           // « Discuter »: direct chat with this operator (not with myself, not an APRS station).
+          if(!p.isAprs&&p.deviceId!=widget.deviceId&&isPco(widget.deviceId)&&ProfilePhotos.instance.of(p.deviceId)!=null)IconButton(key:const ValueKey('photo-remove-other'),
+            tooltip:S.t('profile.photoRemoveOther'),onPressed:()=>unawaited(_removePhotoOf(p.deviceId)),icon:const Icon(Icons.no_photography_outlined)),
           if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>setState((){_chatPeer=p.deviceId;_deskPage=null;_deskId=null;}),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),

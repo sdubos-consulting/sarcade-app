@@ -65,13 +65,13 @@ class NotificationService {
   /// Refused once: only the site settings of the browser can change it.
   bool get permissionBlocked=>_permission=='denied';
 
-  void _show(String title,String body,String priority,NotificationPayload? payload){
+  void _show(String title,String body,String priority,NotificationPayload? payload,{bool mention=false}){
     final n=web.Notification(title,web.NotificationOptions(body:body,
       // One notification per message (or per distress): the same tag
       // replaces it, renotify rings again (30 Oct 2026, 12 h 45).
       tag:payload==null?'sarcade-${DateTime.now().millisecondsSinceEpoch}':'sarcade-${payload.key}',renotify:payload!=null,
       requireInteraction:isUrgentPriority(priority),
-      silent:const {soundSilent,soundDiscreet}.contains(soundFor(priority,sounds,sos:isSosBody(body)))));
+      silent:const {soundSilent,soundDiscreet}.contains(soundFor(priority,sounds,sos:isSosBody(body),mention:mention))));
     if(payload!=null){
       n.onclick=((web.Event _){
         web.window.focus();
@@ -81,11 +81,11 @@ class NotificationService {
     }
   }
 
-  Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload,CarConversation? car}) async {
+  Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload,CarConversation? car,bool mention=false}) async {
     if(_permission!='granted'){debugPrint('SARCADE notification [$priority] $title: $body');return;}
     try{
       if(payload!=null){for(final t in _timers.remove(payload.key)??const <Timer>[]){t.cancel();}}
-      _show(title,body,priority,payload);
+      _show(title,body,priority,payload,mention:mention);
       if(priority=='immediate'&&payload!=null){
         final times=reminderTimes(DateTime.now().toUtc());
         for(var k=1;k<=times.length;k++){

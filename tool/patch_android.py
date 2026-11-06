@@ -86,6 +86,8 @@ PERMISSIONS = [
     "android.permission.POST_NOTIFICATIONS",
     # Dictation (speech_to_text): microphone, speech service of the device.
     "android.permission.RECORD_AUDIO",
+    # PTT natif (WebRTC, lot 29): speaker, earpiece and Bluetooth headset.
+    "android.permission.MODIFY_AUDIO_SETTINGS",
     # Beacon: positions keep going screen off, from a location foreground service.
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_LOCATION",

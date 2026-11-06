@@ -288,9 +288,9 @@ class NotificationService {
     return _urgentChannel;
   }
 
-  Future<NotificationDetails> _details(String priority,NotificationPayload? payload,{bool sos=false,int? timeoutAfter,CarConversation? car}) async {
+  Future<NotificationDetails> _details(String priority,NotificationPayload? payload,{bool sos=false,int? timeoutAfter,CarConversation? car,bool mention=false}) async {
     final urgent=isUrgentPriority(priority), immediate=priority=='immediate';
-    final sound=soundFor(priority,sounds,sos:sos);
+    final sound=soundFor(priority,sounds,sos:sos,mention:mention);
     final quiet=sound==soundSilent||sound==soundDiscreet;
     final channel=await _channelFor(sos?'immediate':priority,sound);
     final actions=payload==null?const <String>[]:actionsFor(priority);
@@ -324,7 +324,7 @@ class NotificationService {
   /// Shows a notification; with [payload] (a message addressed to this
   /// terminal) it carries the actions, and an immediate message is reminded
   /// every 2 minutes, at most 3 times, until the operator answers.
-  Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload,CarConversation? car}) async {
+  Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload,CarConversation? car,bool mention=false}) async {
     if(!_ready){debugPrint('SARCADE notification [$priority] $title: $body');return;}
     try{
       final id=payload==null?(_id++ & 0x0fffffff)|0x40000000:notificationIdFor(payload.key);
@@ -339,7 +339,7 @@ class NotificationService {
         await _stop(key);
         try{await _plugin.cancel(notificationIdFor(key));}catch(_){/* already gone */}
       }
-      await _plugin.show(id,title,body,await _details(priority,payload,sos:isSosBody(body),timeoutAfter:reminded&&_schedules?_replacedAfter:null,car:car),payload:payload?.encode());
+      await _plugin.show(id,title,body,await _details(priority,payload,sos:isSosBody(body),timeoutAfter:reminded&&_schedules?_replacedAfter:null,car:car,mention:mention),payload:payload?.encode());
       if(reminded)await _scheduleReminders(title,body,payload,car:car);
     }catch(e){
       debugPrint('SARCADE notification failed: $e');
