@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../account/rights.dart';
 import '../l10n/strings.dart';
+import '../ui/chevron_row.dart';
 import 'admin_accounts_page.dart';
 import 'admin_api.dart';
 import 'admin_errors.dart';
@@ -104,28 +105,25 @@ class _AdminSectionState extends State<AdminSection> {
   Widget build(BuildContext context){
     final row=widget.row;
     final r=widget.rights;
-    Widget open(String key,IconData icon,String label,Widget Function() page)=>Align(alignment:Alignment.centerRight,
-      child:OutlinedButton.icon(key:ValueKey(key),icon:Icon(icon),label:Text(label),onPressed:()=>_open(page)));
+    // One line per entry, all of it touchable, « › » (lot 29.4).
+    Widget open(String key,IconData icon,String title,String help,Widget Function() page)=>
+      ChevronRow(key:ValueKey(key),icon:icon,title:title,subtitle:help,onTap:()=>_open(page));
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Padding(padding:const EdgeInsets.only(top:12),child:AdminHint(S.t('admin.intro',{'who':[
+      Padding(padding:const EdgeInsets.only(top:12,bottom:4),child:AdminHint(S.t('admin.intro',{'who':[
         if(r?.isServerAdmin==true)S.t('admin.serverAdmin'),
         for(final a in r?.adminRights??const <Map<String,dynamic>>[])
           if(a['right']!='server_admin')'${S.t('admin.right.${a['right']}')}${a['scope_name']==null?'':' · ${a['scope_name']}'}',
       ].join(', ')}))),
-      row(S.t('admin.groups'),help:S.t('admin.groupsHelp'),child:open('admin-open-groups',Icons.account_tree_outlined,S.t('admin.open'),
-        ()=>AdminGroupsPage(api:_api,rights:r))),
-      row(S.t('admin.why'),help:S.t('admin.whyHelp'),child:open('admin-open-why',Icons.help_outline,S.t('admin.open'),()=>AdminWhyPage(api:_api))),
-      row(S.t('admin.invitations'),help:S.t('admin.invitationsHelp'),child:open('admin-open-invitations',Icons.mail_outline,S.t('admin.open'),
-        ()=>AdminInvitationsPage(api:_api))),
+      open('admin-open-groups',Icons.account_tree_outlined,S.t('admin.groups'),S.t('admin.groupsHelp'),()=>AdminGroupsPage(api:_api,rights:r)),
+      open('admin-open-why',Icons.help_outline,S.t('admin.why'),S.t('admin.whyHelp'),()=>AdminWhyPage(api:_api)),
+      open('admin-open-invitations',Icons.mail_outline,S.t('admin.invitations'),S.t('admin.invitationsHelp'),()=>AdminInvitationsPage(api:_api)),
       if(_serverAdmin)...[
-        row(S.t('admin.accounts'),help:S.t('admin.accountsHelp'),child:open('admin-open-accounts',Icons.devices_outlined,S.t('admin.open'),
-          ()=>AdminAccountsPage(api:_api))),
-        row(S.t('admin.transition'),help:_transitionText(),child:Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
-          OutlinedButton.icon(key:const ValueKey('admin-transition'),icon:const Icon(Icons.event_outlined),label:Text(S.t('admin.transitionChange')),
-            onPressed:_transition==null?null:_changeTransition),
-          if(_transition?['active']!=false)Padding(padding:const EdgeInsets.only(top:6),child:AdminHint(S.t('admin.transitionWarning'),
-            color:Theme.of(context).colorScheme.error)),
-        ])),
+        open('admin-open-accounts',Icons.devices_outlined,S.t('admin.accounts'),S.t('admin.accountsHelp'),()=>AdminAccountsPage(api:_api)),
+        // « Période de transition » with its value before « › ».
+        ChevronRow(key:const ValueKey('admin-transition'),icon:Icons.event_outlined,title:S.t('admin.transition'),value:_transitionText(),
+          onTap:_transition==null?null:_changeTransition),
+        if(_transition?['active']!=false)Padding(padding:const EdgeInsets.only(left:42,bottom:6),child:AdminHint(S.t('admin.transitionWarning'),
+          color:Theme.of(context).colorScheme.error)),
         row(S.t('admin.mail'),help:_mailText(),child:Align(alignment:Alignment.centerRight,child:Wrap(spacing:8,runSpacing:8,children:[
           if(_mail?['delivery']=='simulated')OutlinedButton(key:const ValueKey('admin-codes'),onPressed:_showCodes,child:Text(S.t('admin.simulatedCodes'))),
           IconButton(tooltip:S.t('settings.eventsRefresh'),onPressed:_load,icon:const Icon(Icons.refresh)),

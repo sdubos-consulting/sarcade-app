@@ -226,10 +226,10 @@ void main(){
     expect(remoteCanDeclare('TEL-1'),isFalse);
   });
 
-  test('Outils › Télécommandes: group « Au PC »',(){
+  test('Outils › Télécommandes: famille « Radio et liaisons »',(){
     String? opened;
     final item=remotesToolItem(open:(id,build){opened=id;});
-    expect(item.id,'remotes'); expect(item.title,'Télécommandes'); expect(item.group,ToolGroup.pc);
+    expect(item.id,'remotes'); expect(item.title,'Télécommandes'); expect(item.group,ToolGroup.radio);
     item.onTap();
     expect(opened,'remotes');
   });

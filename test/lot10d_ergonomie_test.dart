@@ -22,23 +22,24 @@ void main(){
     expect(diagnosticsAlert(),isFalse);
   });
 
-  test('Outils: « Itinéraires » and the two groups',(){
+  test('Outils: « Itinéraires » and the families (lot 29.5)',(){
     expect(S.t('routes.menu'),'Itinéraires');
-    expect(S.t('tools.groupField'),'Sur le terrain');
-    expect(S.t('tools.groupPc'),'Au PC');
+    expect(S.t('tools.group.terrain'),'Carte et terrain');
+    expect(S.t('tools.group.radio'),'Radio et liaisons');
   });
 
-  testWidgets('Outils: « Sur le terrain » then « Au PC », in the given order',(tester) async {
+  testWidgets('Outils: families in their order, the given order inside',(tester) async {
     void none(){}
     await tester.pumpWidget(MaterialApp(home:ToolsPage(items:[
       ToolItem(icon:Icons.cloud_outlined,title:'Météo',subtitle:'',color:Colors.orange,onTap:none),
-      ToolItem(icon:Icons.tv,title:'Afficher sur une TV',subtitle:'',color:Colors.purple,onTap:none,group:ToolGroup.pc),
+      ToolItem(icon:Icons.tv,title:'Afficher sur une TV',subtitle:'',color:Colors.purple,onTap:none,group:ToolGroup.display),
       ToolItem(icon:Icons.route,title:'Itinéraires',subtitle:'',color:Colors.green,onTap:none),
     ])));
     double y(String text)=>tester.getTopLeft(find.text(text)).dy;
-    expect(y('Sur le terrain'),lessThan(y('Météo')));
-    expect(y('Itinéraires'),lessThan(y('Au PC')));
-    expect(y('Au PC'),lessThan(y('Afficher sur une TV')));
+    expect(y('Carte et terrain'),lessThan(y('Météo')));
+    expect(y('Itinéraires'),lessThan(y('Affichage')));
+    expect(y('Affichage'),lessThan(y('Afficher sur une TV')));
+    expect(find.text('Sur le terrain'),findsNothing);
   });
 
   testWidgets('Relevé à la souris: one line, help behind the ⓘ',(tester) async {
