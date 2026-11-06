@@ -34,49 +34,96 @@ class RoutesPanel extends StatelessWidget {
 
   @override Widget build(BuildContext context){
     final selected=selectedRouteId==null?null:controller.route(selectedRouteId!);
-    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      // One line whatever the width: on a phone the title was written one
-      // letter per line, squeezed by the buttons (lot 29, 5 Nov 2026).
-      Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:LayoutBuilder(builder:(c,box){
-        final narrow=box.maxWidth<480;
-        return Row(children:[
+    return Stack(children:[Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      // Header (card « Itinéraires : liste lisible et rangée », lot 29.5):
+      // « Itinéraires », link dot, ✕; refresh by pulling the list.
+      Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[
         Expanded(child:Text(S.t('routes.title'),maxLines:1,softWrap:false,overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
-        IconButton(tooltip:S.t('routes.refresh'),onPressed:controller.refresh,icon:const Icon(Icons.refresh)),
-        // ⊘ with its words (revue n° 54); the icon alone on a phone.
-        if(isPco(actorId))narrow
-          ?IconButton(tooltip:S.t('closures.new'),onPressed:onDrawClosure,icon:const Icon(Icons.block))
-          :TextButton.icon(onPressed:onDrawClosure,icon:const Icon(Icons.block),label:Text(S.t('closures.new'))),
+        if(selected!=null)IconButton(tooltip:S.t('routes.refresh'),onPressed:controller.refresh,icon:const Icon(Icons.refresh)),
         // Full screen on a phone: the map pill is hidden, the link shows here.
         if(onClose!=null)const LinkStatusPill(),
         if(onClose!=null)IconButton(key:const ValueKey('routes-close'),tooltip:S.t('common.close'),onPressed:onClose,icon:const Icon(Icons.close)),
-      ]);})),
-      // « Nouvel itinéraire »: full blue button with the route icon (1 h 43, option A).
-      if(selected==null)Padding(padding:const EdgeInsets.fromLTRB(14,4,14,4),child:Align(alignment:Alignment.centerLeft,
-        child:FilledButton.icon(key:const ValueKey('routes-new'),onPressed:()=>_newRoute(context),icon:const Icon(Icons.route),label:Text(S.t('routes.new'))))),
-      Expanded(child:selected==null?_list(context):_details(context,selected)),
+      ])),
+      Expanded(child:selected==null?RefreshIndicator(onRefresh:()async{await controller.refresh();},child:_list(context)):_details(context,selected)),
+    ]),
+    // « Nouvel itinéraire »: a round « + » at the bottom right.
+    if(selected==null)Positioned(right:16,bottom:16,child:FloatingActionButton(key:const ValueKey('routes-new'),heroTag:'routes-new',
+      tooltip:S.t('routes.new'),onPressed:()=>_newRoute(context),child:const Icon(Icons.add))),
     ]);
   }
 
+  /// « 3 points · 1,2 km · 05/11 », the date of the route when known.
+  String _routeLine(RoutePlan r){
+    final n=controller.ordered(r).length;
+    final at=DateTime.tryParse('${r.json['created_at']??r.json['updated_at']??''}')?.toLocal();
+    String two(int v)=>v.toString().padLeft(2,'0');
+    return [S.t('routes.pointsN',{'n':n}),if(n>1)formatDistance(_total(r)),if(at!=null)'${two(at.day)}/${two(at.month)}',
+      if(r.assigned)S.t('routes.assigned')].join(' · ');
+  }
+
+  Widget _routeTile(BuildContext context,RoutePlan r){
+    final editable=r.canEdit(actorId);
+    return ListTile(key:ValueKey('route-${r.id}'),dense:true,
+      leading:Icon(Icons.route,color:Color(r.color)),
+      title:Text(r.name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:15,fontWeight:FontWeight.w600)),
+      subtitle:Text(_routeLine(r)),
+      // ⋮: Renommer, Partager, Suivre, Supprimer.
+      trailing:PopupMenuButton<String>(key:ValueKey('route-menu-${r.id}'),onSelected:(a) async {
+          switch(a){
+            case 'rename':
+              final name=await _askText(context,S.t('routes.rename'),r.name);
+              if(name!=null&&name.trim().isNotEmpty)await controller.updateRoute(r,{'name':name.trim()});
+            case 'share':
+              final ordered=controller.ordered(r);final lengths=legLengths(ordered);
+              onSend?.call(S.t('routes.sendText',{'name':r.name,'km':formatDistance(lengths.isEmpty?0:lengths.last.cumulative),'n':ordered.length,
+                'from':ordered.first.name,'to':ordered.last.name}));
+            case 'follow':
+              final first=controller.ordered(r).firstOrNull;
+              if(first!=null)onNavigate(first.point,r.name);
+            case 'delete':
+              if(context.mounted)await _deleteRoute(context,r);
+          }
+        },
+        itemBuilder:(_)=>[
+          if(editable)PopupMenuItem(value:'rename',child:Text(S.t('routes.rename'))),
+          if(onSend!=null&&controller.ordered(r).length>1)PopupMenuItem(value:'share',child:Text(S.t('routes.send'))),
+          if(controller.ordered(r).isNotEmpty)PopupMenuItem(value:'follow',child:Text(S.t('routes.follow'))),
+          if(editable)PopupMenuItem(value:'delete',child:Text(S.t('routes.delete'))),
+        ]),
+      onTap:(){onSelect(r.id);onFocus(controller.ordered(r).map((w)=>w.point).toList());},
+    );
+  }
+
+  /// Sections: En cours, Mes itinéraires, Partagés avec moi, Brouillons
+  /// (less than two points, folded); « Couper une route » at the bottom.
   Widget _list(BuildContext context){
     final routes=controller.routes, closures=controller.closures;
-    return ListView(children:[
+    final t=Theme.of(context);
+    final drafts=routes.where((r)=>controller.ordered(r).length<2).toList();
+    final real=routes.where((r)=>controller.ordered(r).length>=2).toList();
+    final active=real.where((r)=>r.status=='active').toList();
+    final mine=real.where((r)=>r.status!='active'&&r.createdBy==actorId).toList();
+    final shared=real.where((r)=>r.status!='active'&&r.createdBy!=actorId).toList();
+    Widget head(String text)=>Padding(padding:const EdgeInsets.fromLTRB(16,12,16,2),child:Text(text,
+      style:t.textTheme.labelLarge?.copyWith(color:t.colorScheme.primary)));
+    return ListView(physics:const AlwaysScrollableScrollPhysics(),padding:const EdgeInsets.only(bottom:88),children:[
       if(routes.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('routes.empty'))),
-      for(final r in routes)ListTile(
-        leading:Icon(Icons.route,color:Color(r.color)),
-        title:Text(r.name),
-        subtitle:Text('${controller.ordered(r).length} ${S.t('routes.points')} · ${formatDistance(_total(r))}'
-          '${r.assigned?' · ${S.t('routes.assigned')}':''}'),
-        onTap:(){onSelect(r.id);onFocus(controller.ordered(r).map((w)=>w.point).toList());},
-      ),
-      if(closures.isNotEmpty)Padding(padding:const EdgeInsets.fromLTRB(16,16,16,4),child:Text(S.t('closures.title'),style:Theme.of(context).textTheme.titleSmall)),
-      for(final c in closures)ListTile(
+      if(active.isNotEmpty)...[head(S.t('routes.section.active')),for(final r in active)_routeTile(context,r)],
+      if(mine.isNotEmpty)...[head(S.t('routes.section.mine')),for(final r in mine)_routeTile(context,r)],
+      if(shared.isNotEmpty)...[head(S.t('routes.section.shared')),for(final r in shared)_routeTile(context,r)],
+      if(drafts.isNotEmpty)_DraftsSection(title:S.t('routes.section.drafts',{'n':drafts.length}),children:[for(final r in drafts)_routeTile(context,r)]),
+      if(closures.isNotEmpty)head(S.t('closures.title')),
+      for(final c in closures)ListTile(dense:true,
         leading:Icon(Icons.block,color:c.active?Colors.red:Colors.grey),
         title:Text(c.label),
         subtitle:Text(c.active?S.t('closures.active'):S.t('closures.lifted')),
         onTap:()=>onFocus(c.points),
-        trailing:isPco(actorId)?OutlinedButton(onPressed:()=>controller.setClosureActive(c,!c.active),
+        trailing:isPco(actorId)?TextButton(onPressed:()=>controller.setClosureActive(c,!c.active),
           child:Text(c.active?S.t('closures.lift'):S.t('closures.restore'))):null,
       ),
+      // « Couper une route »: a line at the bottom with its explanation.
+      if(isPco(actorId))ListTile(key:const ValueKey('routes-closure'),leading:const Icon(Icons.block),
+        title:Text(S.t('closures.new')),subtitle:Text(S.t('closures.newHelp')),trailing:const Icon(Icons.chevron_right),onTap:onDrawClosure),
     ]);
   }
 
@@ -246,5 +293,24 @@ Future<void> editWaypointDialog(BuildContext context,RoutesController controller
   if(texts!=null&&texts.$1.isNotEmpty){
     await controller.updateWaypoint(w,{'name':texts.$1,'type':type,'radius_m':radius.roundToDouble(),
       'comment':texts.$2,'leg_mode':legMode});
+  }
+}
+
+/// « Brouillons · 4 », folded until touched.
+class _DraftsSection extends StatefulWidget {
+  final String title; final List<Widget> children;
+  const _DraftsSection({required this.title,required this.children});
+  @override State<_DraftsSection> createState()=>_DraftsSectionState();
+}
+class _DraftsSectionState extends State<_DraftsSection> {
+  bool _open=false;
+  @override Widget build(BuildContext context){
+    final t=Theme.of(context);
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      InkWell(key:const ValueKey('routes-drafts'),onTap:()=>setState(()=>_open=!_open),child:Padding(padding:const EdgeInsets.fromLTRB(16,12,8,2),child:Row(children:[
+        Expanded(child:Text(widget.title,style:t.textTheme.labelLarge?.copyWith(color:t.colorScheme.onSurfaceVariant))),
+        Icon(_open?Icons.expand_less:Icons.expand_more,size:20,color:t.colorScheme.onSurfaceVariant)]))),
+      if(_open)...widget.children,
+    ]);
   }
 }
