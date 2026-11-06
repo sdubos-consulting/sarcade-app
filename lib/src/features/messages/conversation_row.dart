@@ -43,7 +43,9 @@ class ConversationRow extends StatelessWidget {
   final ConvEntry entry; final VoidCallback? onLongPress; final Widget? hoverStar; final DateTime? now;
   /// « Sourdine » (lot 29, group 7): crossed speaker after the name.
   final bool muted;
-  const ConversationRow({super.key,required this.entry,this.onLongPress,this.hoverStar,this.now,this.muted=false});
+  /// A mention « @ » of me still unread (lot 29, group 7).
+  final bool mention;
+  const ConversationRow({super.key,required this.entry,this.onLongPress,this.hoverStar,this.now,this.muted=false,this.mention=false});
   @override Widget build(BuildContext context){
     final t=Theme.of(context); final s=t.colorScheme; final e=entry;
     final news=e.unread>0;
@@ -59,6 +61,9 @@ class ConversationRow extends StatelessWidget {
         Expanded(child:Text(e.preview,maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(color:s.onSurfaceVariant))),
         if(e.fav)const Padding(padding:EdgeInsets.only(left:4,top:2),child:Icon(Icons.star,size:16,color:Color(0xFFF9A825)))
         else ?hoverStar,
+        if(mention)Container(key:const ValueKey('conv-mention'),margin:const EdgeInsets.only(left:6,top:2),width:20,height:20,alignment:Alignment.center,
+          decoration:BoxDecoration(color:s.primary,shape:BoxShape.circle),
+          child:Text('@',style:TextStyle(color:s.onPrimary,fontSize:12,fontWeight:FontWeight.w800))),
         if(news)Container(margin:const EdgeInsets.only(left:6,top:2),padding:const EdgeInsets.symmetric(horizontal:7,vertical:2),
           decoration:BoxDecoration(color:s.primary,borderRadius:BorderRadius.circular(12)),
           child:Text('${e.unread}',style:TextStyle(color:s.onPrimary,fontSize:11,fontWeight:FontWeight.w700))),

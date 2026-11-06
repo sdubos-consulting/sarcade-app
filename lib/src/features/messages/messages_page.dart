@@ -7,6 +7,7 @@ import 'reactions.dart';
 import 'important.dart';
 import 'forward.dart';
 import 'mute.dart';
+import 'mentions.dart';
 import 'typing.dart';
 import '../../services/realtime_service.dart' show RealtimeService;
 import '../../services/power_state.dart' show PowerState;
@@ -321,7 +322,7 @@ class _MessagesPageState extends State<MessagesPage>{
 
  /// The round button switches between the microphone and « Envoyer ».
  bool _wasEmpty=true;
- void _onTextChanged(){_signalTyping();final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
+ void _onTextChanged(){_signalTyping();_onMentionQuery();final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
 
  late final bool Function() _backFn=_backToList;
  bool _wide=false;
@@ -448,7 +449,7 @@ class _MessagesPageState extends State<MessagesPage>{
      Expanded(child:ListView(keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,children:[
        if(q.isNotEmpty&&shown.isNotEmpty)_sectionHead(S.t('messages.sectionConversations')),
        for(final e in shown)MouseRegion(onEnter:(_)=>setState(()=>_hovered=e.favKey),onExit:(_){if(_hovered==e.favKey)setState(()=>_hovered=null);},
-         child:ConversationRow(entry:e,now:now,muted:Mutes.instance.muted(e.favKey),onLongPress:()=>_toggleFavConv(e.favKey),hoverStar:_hovered==e.favKey?star(e.favKey):null)),
+         child:ConversationRow(entry:e,now:now,muted:Mutes.instance.muted(e.favKey),mention:_unreadMention(e.favKey,by,acks),onLongPress:()=>_toggleFavConv(e.favKey),hoverStar:_hovered==e.favKey?star(e.favKey):null)),
        if(people.isNotEmpty)...[
          _sectionHead(S.t('messages.sectionPeople')),
          for(final p in people)ListTile(key:ValueKey('person-$p'),leading:_personAvatar(p,r:22),title:Text(p,style:const TextStyle(fontWeight:FontWeight.w600)),
@@ -702,6 +703,43 @@ class _MessagesPageState extends State<MessagesPage>{
      ]);
  }
 
+ // --- Mentions « @nom » (lot 29, group 7) ---
+ String? _mentionQ;
+ void _onMentionQuery(){
+   final sel=_text.selection;
+   final q=sel.isValid&&sel.isCollapsed?mentionQuery(_text.text,sel.start):null;
+   if(q!=_mentionQ&&mounted)setState(()=>_mentionQ=q);
+ }
+ /// The participants of the open conversation.
+ Iterable<String> _participants(){
+   final g=_group;
+   if(g!=null&&g.kind!='all'&&g.members.isNotEmpty)return g.members;
+   final peer=peerOf(_conv);
+   if(peer!=null)return [peer];
+   return directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId);
+ }
+ Widget? _mentionBar(){
+   final q=_mentionQ;
+   if(q==null)return null;
+   final list=mentionSuggestions(q,_participants(),me:widget.actorId);
+   if(list.isEmpty)return null;
+   return Material(key:const ValueKey('mention-bar'),color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),
+     child:SingleChildScrollView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.fromLTRB(8,6,8,0),child:Row(children:[
+       for(final n in list)Padding(padding:const EdgeInsets.only(right:6),child:ActionChip(key:ValueKey('mention-$n'),
+         avatar:n==mentionPco?const Icon(Icons.shield_outlined,size:16):operatorAvatar(n,radius:10),label:Text('@$n'),
+         onPressed:(){
+           final r=insertMention(_text.text,_text.selection.start,n);
+           _text.value=TextEditingValue(text:r.text,selection:TextSelection.collapsed(offset:r.cursor));
+         })),
+     ])));
+ }
+ /// « @ » on the line while a mention of me is unread.
+ bool _unreadMention(String key,Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
+   final pco=isPco(widget.actorId);
+   return _eventMessages.any((m)=>conversationOf(m,widget.actorId,by)==key&&mentionsMe(m,widget.actorId,pco:pco)
+     &&!(acks[m.id]??const []).any((a)=>a.actorId==widget.actorId&&a.status!='received'));
+ }
+
  /// « Supprimer pour moi »: hidden on this device only.
  Future<void> _hideForMe(Iterable<String> ids) async {
    await widget.store.setPreference(hiddenMessagesKey(widget.eventId),formatHidden({..._hidden,...ids}));
@@ -777,7 +815,7 @@ class _MessagesPageState extends State<MessagesPage>{
      if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
        for(final p in photos)_PhotoThumb(key:ValueKey(p.fileId),attachment:p,api:widget.api,store:widget.store,eventId:widget.eventId),
      ])),
-     Text(m.body,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
+     MentionText(m.body,color:s.primary,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
      const SizedBox(height:2),
      Align(alignment:Alignment.bottomRight,widthFactor:1,child:meta),
      ReactionChips(of:Reactions.instance.value[m.id],me:widget.actorId,onTap:()=>_showReactions(m)),
@@ -964,8 +1002,9 @@ class _MessagesPageState extends State<MessagesPage>{
    ]))));
    // Answering (31 Oct 2026): the quoted message above the field, ✕ to cancel.
    final r=_replyTo;
-   if(r==null)return bar;
-   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[_replyBar(r),bar]);
+   final mentions=_mentionBar();
+   if(r==null&&mentions==null)return bar;
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[?mentions,if(r!=null)_replyBar(r),bar]);
  }
 
  Widget _chat(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
