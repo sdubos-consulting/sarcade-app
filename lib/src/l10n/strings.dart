@@ -269,6 +269,7 @@ const Texts _fr={
   'groups.listenOnlyBadge':'écoute seule',
   // Routes
   'routes.title':'Itinéraires','routes.refresh':'Actualiser','routes.new':'Nouvel itinéraire','routes.empty':'Aucune route pour cet événement.',
+  'routes.pointsN':'{n## point|# points}','routes.rename':'Renommer','routes.follow':'Suivre','routes.section.active':'En cours','routes.section.mine':'Mes itinéraires','routes.section.shared':'Partagés avec moi','routes.section.drafts':'Brouillons · {n}','closures.newHelp':'Dessiner une route fermée : elle est évitée par les itinéraires',
   'routes.points':'points','routes.assigned':'affectée','routes.assignedTo':'Affectée à {name}','routes.addPoints':'Ajouter des points',
   'routes.stopAdding':'Terminer les points','routes.assign':'Affecter','routes.unassigned':'Non affectée','routes.computeLegs':'Calculer',
   'routes.delete':'Supprimer','routes.deleteConfirm':'Supprimer la route « {name} » ?','routes.readOnly':'Route affectée : seuls son auteur et le PCO la modifient.',
@@ -953,6 +954,7 @@ const Texts _en={
   'groups.archivedNotice':'Archived group: no more messages.','groups.managers':'Managers: {names}',
   'groups.listenOnlyBadge':'listen only',
   'routes.title':'Routes','routes.refresh':'Refresh','routes.new':'New route','routes.empty':'No route for this event.',
+  'routes.pointsN':'{n## point|# points}','routes.rename':'Rename','routes.follow':'Follow','routes.section.active':'In progress','routes.section.mine':'My routes','routes.section.shared':'Shared with me','routes.section.drafts':'Drafts · {n}','closures.newHelp':'Draw a closed road: the routes avoid it',
   'routes.points':'points','routes.assigned':'assigned','routes.assignedTo':'Assigned to {name}','routes.addPoints':'Add points',
   'routes.stopAdding':'Finish points','routes.assign':'Assign','routes.unassigned':'Not assigned','routes.computeLegs':'Compute',
   'routes.delete':'Delete','routes.deleteConfirm':'Delete the route “{name}”?','routes.readOnly':'Assigned route: only its author and the command post change it.',
