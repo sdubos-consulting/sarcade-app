@@ -1869,48 +1869,72 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _faded(String k,Widget layer)=>fadedLayer(_layerOpacity(k),layer);
   List<Widget> _fadedAll(String k,List<Widget> layers)=>fadedLayers(_layerOpacity(k),layers);
 
+  /// Layers of the panel « Carte » (card « panneau Affichage plus compact »,
+  /// lot 29.2): sections Équipes, Opération, Référentiel, Radio; one compact
+  /// row per layer (icon, name, switch), the transparency under the name on
+  /// a touch; the orders and the length of the traces open apart.
   List<Widget> _layerSections(BuildContext c,StateSetter refresh){
-    Widget row(String label,bool on,Future<void> Function(bool) set,{String? op,Widget? trailing})=>LayerRow(label:label,on:on,trailing:trailing,
+    Widget row(String label,bool on,Future<void> Function(bool) set,{String? op,Widget? trailing,IconData? icon,Widget? detail})=>LayerRow(label:label,on:on,trailing:trailing,icon:icon,detail:detail,
       onShown:(v) async {await set(v);refresh((){});},
       opacity:op==null?null:_layerOpacity(op),onOpacity:op==null?null:(v) async {await _setLayerOpacity(op,v);refresh((){});});
+    final orders=isPco(widget.deviceId)?_moveOrders:_moveOrders.where((o)=>o.targetId==widget.deviceId||o.createdBy==widget.deviceId).toList();
+    final live=orders.where((o)=>o.status!='cancelled').toList();
+    final openOrders=live.where((o)=>o.open).length, doneOrders=live.length-openOrders;
+    final ordersText=openOrders>0?S.t('order.countOpen',{'n':openOrders}):doneOrders>0?S.t('order.countDone',{'n':doneOrders}):null;
+    final mesh=MeshCoreLink.instance, tastic=MeshtasticLink.instance;
+    final radio=_adrasec||mesh.remembered||tastic.remembered;
     return [
       layerSectionTitle(c,S.t('layers.teams'),first:true),
-      row(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v),op:'ops'),
-      if(_adrasec)...[
-        row('APRS',_showAprs,(v) async =>setState(()=>_showAprsPref=v),op:'aprs'),
-        row(S.t('fixed.layer'),_showFixed,(v)=>_setFlag('show_fixed',v)),
-      ],
-      // A filter, not a layer: no slider.
-      row(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
+      row(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v),op:'ops',icon:Icons.groups_outlined),
+      if(_adrasec)row(S.t('fixed.layer'),_showFixed,(v)=>_setFlag('show_fixed',v),icon:Icons.home_work_outlined),
       layerSectionTitle(c,S.t('layers.operation')),
-      row(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v),op:'draw'),
-      if(_adrasec)...[
-        row(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v),op:'brg'),
-        _bearingColorBy(refresh),
-      ],
-      row('${S.t('poi.layer')} (${_pois.length})',_showPois,(v)=>_setShown('show_poi',v),op:'poi',
+      row(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v),op:'draw',icon:Icons.draw_outlined),
+      if(_adrasec)row(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v),op:'brg',icon:Icons.explore_outlined,detail:_bearingColorBy(refresh)),
+      row('${S.t('poi.layer')} (${_pois.length})',_showPois,(v)=>_setShown('show_poi',v),op:'poi',icon:Icons.place_outlined,
         trailing:poiSeeListLink(_pois.length,onTap:(){Navigator.pop(c);_openPoiList();})),
-      row(S.t('order.layer'),_showOrders,(v)=>_setShown('show_orders',v)),
-      if(_showOrders)...moveOrderList(c,isPco(widget.deviceId)?_moveOrders:_moveOrders.where((o)=>o.targetId==widget.deviceId||o.createdBy==widget.deviceId).toList(),
-        onOpen:(o){Navigator.pop(c);_fitPoints([o.destination]);_showMoveOrder(o);}),
-      row(S.t('traces.layer'),_allTraces,(v)=>_setFlag('traces_all',v),op:'traces'),
-      // « Toutes les traces » → « Durée des traces » → « Inclure les stations
-      // APRS » as a sub-option, indented (card of 30 Oct 2026, 17 h 45).
-      if(_allTraces||_traces.pinned.isNotEmpty)traceWindowChips(_traceWindow,(w) async {await widget.store.setPreference('trace_window',w==defaultTraceWindow?null:'$w');refresh((){});if(mounted)setState((){});}),
-      if(_allTraces&&_adrasec)Padding(padding:const EdgeInsets.only(left:24),child:row(S.t('traces.aprsInclude'),_aprsTraces,
+      row(S.t('order.layer'),_showOrders,(v)=>_setShown('show_orders',v),icon:Icons.flag_outlined,
+        trailing:ordersText==null?null:layerLink(ordersText,()=>_showOrdersList(c),key:const ValueKey('orders-link'))),
+      row(S.t('traces.short'),_allTraces,(v)=>_setFlag('traces_all',v),op:'traces',icon:Icons.timeline,
+        trailing:_allTraces||_traces.pinned.isNotEmpty?layerLink(traceWindowLabel(_traceWindow),()=>_chooseTraceWindow(c,refresh),key:const ValueKey('traces-link')):null),
+      if(_allTraces&&_adrasec)Padding(padding:const EdgeInsets.only(left:32),child:row(S.t('traces.aprsInclude'),_aprsTraces,
         (v) async {await widget.store.setPreference('traces_aprs:${widget.eventId}',v?null:'0');if(mounted)setState((){});})),
       if(_adrasec)...[
         layerSectionTitle(c,S.t('layers.reference')),
-        row(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPointsPref=v),op:'high'),
-        row(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelaysPref=v),op:'relay'),
-        row(S.t('adsb.layer'),_adsb.on,(v) async {await _adsb.setOn(v);refresh((){});}),
-        if(_adsb.on)Padding(padding:const EdgeInsets.only(left:24,right:8),child:AdsbFiltersTiles(adsb:_adsb)),
+        row(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPointsPref=v),op:'high',icon:Icons.terrain_outlined),
+        row(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelaysPref=v),op:'relay',icon:Icons.cell_tower),
+        row(S.t('adsb.layer'),_adsb.on,(v) async {await _adsb.setOn(v);refresh((){});},icon:Icons.flight,
+          detail:Padding(padding:const EdgeInsets.only(left:8,right:8),child:AdsbFiltersTiles(adsb:_adsb))),
       ],
+      if(radio)layerSectionTitle(c,S.t('layers.radio')),
+      // « Sans Internet seulement » renamed and moved into the detail of
+      // « Stations APRS » (lot 29.2).
+      if(_adrasec)row(S.t('layers.aprsStations'),_showAprs,(v) async =>setState(()=>_showAprsPref=v),op:'aprs',icon:Icons.router_outlined,
+        detail:SwitchListTile(dense:true,value:_withoutInternetOnly,title:Text(S.t('layers.radioOnly')),
+          onChanged:(v){setState(()=>_withoutInternetOnly=v);refresh((){});})),
       // Lot 17: « Nœuds MeshCore » (Core), set too in Outils › MeshCore.
-      if(MeshCoreLink.instance.remembered)row(S.t('mesh.layer'),MeshCoreLink.instance.showOnMap,(v)=>MeshCoreLink.instance.setShowOnMap(v)),
-      if(MeshtasticLink.instance.remembered)row(S.t('meshtastic.layer'),MeshtasticLink.instance.showOnMap,(v)=>MeshtasticLink.instance.setShowOnMap(v)), // lot 28
+      if(mesh.remembered)row(S.t('mesh.layer'),mesh.showOnMap,(v)=>mesh.setShowOnMap(v),icon:Icons.settings_input_antenna),
+      if(tastic.remembered)row(S.t('meshtastic.layer'),tastic.showOnMap,(v)=>tastic.setShowOnMap(v),icon:Icons.wifi_tethering), // lot 28
+      layerOpacityHint(c),
       const SizedBox(height:12),
     ];
+  }
+
+  /// « Ordres · n › »: the list of the orders, apart (lot 29.2).
+  void _showOrdersList(BuildContext c){
+    final orders=isPco(widget.deviceId)?_moveOrders:_moveOrders.where((o)=>o.targetId==widget.deviceId||o.createdBy==widget.deviceId).toList();
+    showModalBottomSheet<void>(context:c,showDragHandle:true,builder:(s)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+      Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Text(S.t('order.layer'),style:Theme.of(s).textTheme.titleMedium)),
+      ...moveOrderList(s,orders,onOpen:(o){Navigator.pop(s);Navigator.pop(c);_fitPoints([o.destination]);_showMoveOrder(o);}),
+    ])));
+  }
+
+  /// « Traces · 6 h › »: the length of the traces, apart (lot 29.2).
+  void _chooseTraceWindow(BuildContext c,StateSetter refresh){
+    showModalBottomSheet<void>(context:c,showDragHandle:true,builder:(s)=>SafeArea(child:traceWindowChips(_traceWindow,(w) async {
+      await widget.store.setPreference('trace_window',w==defaultTraceWindow?null:'$w');
+      refresh((){});if(mounted)setState((){});
+      if(s.mounted)Navigator.pop(s);
+    })));
   }
 
   /// « Colorer les relevés par : Signal / Opérateur » (Filtres).
