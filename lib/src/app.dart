@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'ui/keyboard.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:http/http.dart' as http;
 import 'config/app_config.dart';
@@ -185,6 +186,8 @@ class _SarcadeAppState extends State<SarcadeApp> {
     locale:Locale(S.lang),supportedLocales:const [Locale('fr'),Locale('en')],
     localizationsDelegates:GlobalMaterialLocalizations.delegates,
     theme:dayTheme(),darkTheme:nightTheme(),themeMode:mode,
+    // Keyboard closed by a touch outside the field (lot 29, 5 Nov 2026).
+    builder:(context,child)=>closeKeyboardOnTapOutside(child??const SizedBox.shrink()),
     home:_needsSetup
       ? _settingsPage(firstRun:true)
       : OperationalMapPage(

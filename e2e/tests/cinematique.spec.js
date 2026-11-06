@@ -138,7 +138,8 @@ for (const size of SIZES) {
       expect(info.bottom, 'ⓘ above « Suivi de position »').toBeLessThanOrEqual(track.top + 1);
       expect(track.bottom, '« Suivi de position » above the tab bar').toBeLessThanOrEqual(barTop + 1);
       expect(scale.left, 'scale on the right of « Suivi de position »').toBeGreaterThanOrEqual(track.right - 1);
-      expect(Math.abs(scale.cy - track.cy), 'scale on the line of « Suivi de position »').toBeLessThanOrEqual(2);
+      // Lot 29.2: the scale sits on the bottom of the line, like the SOS disc.
+      expect(Math.abs(scale.bottom - track.bottom), 'scale on the bottom of the line of « Suivi de position »').toBeLessThanOrEqual(2);
       const sos = await rectOf(page, 'map.sos');
       const last = sos || (await rectOf(page, 'map.map-me'));
       expect(scale.right, 'scale clear of the right column').toBeLessThanOrEqual(last.left);
