@@ -167,7 +167,7 @@ class _MeshCorePageState extends State<MeshCorePage> {
           MeshCoreNodeList(nodes:nodes,me:_me,initialQuery:meshCoreFocusQuery(widget.focus),tile:(n)=>_node(n,now)),
           Padding(padding:const EdgeInsets.all(4),child:Text(S.t('mesh.local'),style:t.textTheme.bodySmall)),
         ],
-      ]))))),
+      ])))),
     );
   }
 }
