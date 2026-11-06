@@ -8,7 +8,9 @@ import 'package:sarcade_app/src/l10n/strings.dart';
 void main(){
   setUp(()=>S.setLanguage('fr'));
   testWidgets('two rows of five, no « Fermer », Annuler and Rétablir labelled',(t) async {
-    await t.binding.setSurfaceSize(const Size(390,844));
+    // The size the code reads (MediaQuery), not only the surface.
+    t.view.physicalSize=const Size(390,844); t.view.devicePixelRatio=1;
+    addTearDown(t.view.reset);
     final c=DrawingController(eventId:'e',actorId:'T1'); var closed=0;
     await t.pumpWidget(MaterialApp(home:Scaffold(body:Align(alignment:Alignment.topLeft,child:DrawingToolbar(controller:c,onClose:()=>closed++)))));
     expect(find.byKey(const ValueKey('draw-close')),findsNothing);
@@ -24,6 +26,5 @@ void main(){
     expect(c.tool,FeatureKind.line);
     await t.tap(find.byKey(const ValueKey('draw-tool-line'))); await t.pump();
     expect(closed,1);
-    await t.binding.setSurfaceSize(null);
   });
 }
