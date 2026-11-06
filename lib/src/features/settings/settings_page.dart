@@ -618,7 +618,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final t=Theme.of(context);
     return Scaffold(
       // Same surface as the content in both themes (revue n° 68).
-      appBar:LinkedAppBar(linkStatus:!widget.firstRun,automaticallyImplyLeading:!widget.firstRun,backgroundColor:t.colorScheme.surface,surfaceTintColor:Colors.transparent,scrolledUnderElevation:0),
+      appBar:LinkedAppBar(linkStatus:!widget.firstRun,automaticallyImplyLeading:!widget.firstRun,backgroundColor:t.colorScheme.surface),
       // Fixed save bar at the bottom (charte « style Play Console »); none on
       // Diagnostic and À propos, nothing to save there (revue n° 64).
       bottomNavigationBar:settingsShowsSaveBar(tab:_tabs[_tab.clamp(0,_tabs.length-1)],firstRun:widget.firstRun,dirty:_dirty)?SaveBar(changed:widget.firstRun||_dirty,saving:_saving,onSave:_trySave,
