@@ -19,7 +19,7 @@ Map<String,dynamic> _forecast(DateTime now)=>{'stale':false,'forecast':{'provide
 Widget _pill(MapWeather w){
   final next=w.report?.upcoming(DateTime.now(),n:1)??const <WeatherHour>[];
   final h=next.isEmpty?null:next.first;
-  return MaterialApp(home:Scaffold(body:Center(child:LinkWeatherPill(dot:Colors.green,linkTooltip:'',onLinks:(){},onWeather:(){},
+  return MaterialApp(home:Scaffold(body:Center(child:LinkWeatherPill(dot:Colors.green,linkTooltip:'',onLinks:(){},onWeather:(){},weatherStale:w.stale,
     weatherText:h==null?null:w.pillText(pillWeatherText(temperatureC:h.temperatureC,compact:false,
       wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'))))));
 }
@@ -41,14 +41,15 @@ void main(){
     expect(cache.keys.toList(),['weather:E1'],reason:'same cache as the Weather screen');
     await t.pumpWidget(_pill(w));
     expect(find.text('7° · E 11 km/h'),findsOneWidget);
-    // Offline: the last forecast stays, with its time.
+    // Offline: the last forecast stays, in grey and without time (lot 29.2).
     online=false;
     await w.refresh();
-    expect(w.failed,isTrue);
+    expect(w.failed,isTrue); expect(w.stale,isTrue);
     await t.pumpWidget(_pill(w));
-    final l=DateTime.utc(2026,11,1,13,5).toLocal();
-    final hm='${l.hour.toString().padLeft(2,'0')}:${l.minute.toString().padLeft(2,'0')}';
-    expect(find.text('7° · E 11 km/h · à $hm'),findsOneWidget);
+    expect(find.text('7° · E 11 km/h'),findsOneWidget);
+    expect(find.textContaining(' à '),findsNothing);
+    final grey=t.widget<Text>(find.byKey(const ValueKey('pill-weather'))).style?.color;
+    expect(grey,isNotNull,reason:'stale weather in grey');
     w.stop();
   });
 
