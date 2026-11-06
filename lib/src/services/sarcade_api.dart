@@ -160,6 +160,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('messages_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>SarcadeMessage.fromJson(e)).toList();
   }
+  /// Rain radar (lot 29): images of the last hour, legend, source.
+  Future<Map<String,dynamic>> rainRadar() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/weather/radar'));
+    if(r.statusCode!=200) throw SarcadeHttpException('radar',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// « Main courante intègre » or the entry where it breaks (PCO, administrators).
   Future<Map<String,dynamic>> logbookVerify(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook/verify'));
