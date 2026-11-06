@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'conversation_row.dart';
 import 'message_edit.dart';
 import 'reactions.dart';
+import 'important.dart';
 import 'typing.dart';
 import '../../services/realtime_service.dart' show RealtimeService;
 import '../../services/power_state.dart' show PowerState;
@@ -90,6 +91,8 @@ class _MessagesPageState extends State<MessagesPage>{
    _selection.addListener(_onSelection);
    Reactions.instance.load(widget.store,widget.eventId);
    Reactions.instance.addListener(_onSelection);
+   Important.instance.load(widget.store);
+   Important.instance.addListener(_onSelection);
    Typing.instance.addListener(_onTyping);
    unawaited(_loadReactions());
    _refreshGroups();
@@ -327,7 +330,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){Important.instance.removeListener(_onSelection);_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -513,6 +516,8 @@ class _MessagesPageState extends State<MessagesPage>{
      if(!mine&&peerOf(_conv)==null)item('direct',Icons.chat_outlined,S.t('messages.reply',{'who':m.senderId}),key:const ValueKey('msg-direct')),
      if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])item(s,s=='rejected'?Icons.close:Icons.check,S.t('ack.$s')),
      if(!m.deleted)item('copy',Icons.copy,S.t('messages.copy')),
+     if(!m.deleted)item('important',Important.instance.has(widget.eventId,m.id)?Icons.star:Icons.star_border,
+       S.t(Important.instance.has(widget.eventId,m.id)?'messages.importantOff':'messages.importantOn'),key:const ValueKey('msg-important')),
      if(canEditMessage(m,widget.actorId,now:DateTime.now()))item('edit',Icons.edit_outlined,S.t('messages.edit'),key:const ValueKey('msg-edit')),
      if(m.edited&&!m.deleted&&isPco(widget.actorId))item('history',Icons.history,S.t('messages.history'),key:const ValueKey('msg-history')),
      item('info',Icons.info_outline,S.t('messages.info')),
@@ -527,6 +532,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(choice=='direct'){_open(directKey(m.senderId));return;}
    if(choice=='delete'){await _delete(m);return;}
    if(choice=='edit'){await _edit(m);return;}
+   if(choice=='important'){await Important.instance.toggle(widget.store,widget.api,widget.eventId,m.id);return;}
    if(choice=='history'){await _history(m);return;}
    if(choice.startsWith('react:')){await _react(m,choice.substring(6));return;}
    if(choice=='select'){_selection.start(m.id);_selectFocus.requestFocus();return;}
@@ -634,6 +640,24 @@ class _MessagesPageState extends State<MessagesPage>{
        style:const TextStyle(fontSize:12,fontStyle:FontStyle.italic,fontWeight:FontWeight.normal))]);
  }
 
+ /// « Messages importants »: a touch opens the message in its conversation.
+ void _showImportant(){
+   final by=_byId;
+   final byId={for(final m in _eventMessages)m.id:m};
+   final prefix='${widget.eventId}/';
+   final list=[for(final id in Important.instance.value)
+     if(id.startsWith(prefix)&&byId[id.substring(prefix.length)]!=null)byId[id.substring(prefix.length)]!];
+   showModalBottomSheet<void>(context:context,showDragHandle:true,isScrollControlled:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.importantList'),style:Theme.of(c).textTheme.titleMedium)),
+     if(list.isEmpty)ListTile(title:Text(S.t('messages.importantNone'))),
+     for(final m in list)ListTile(leading:const Icon(Icons.star,color:Color(0xFFF9A825)),
+       title:Text(m.deleted?S.t('messages.deleted'):m.body,maxLines:2,overflow:TextOverflow.ellipsis),
+       subtitle:Text('${_convName(conversationOf(m,widget.actorId,by),by)} · ${m.senderId} · ${_hm(m.createdAt)}'),
+       onTap:(){Navigator.pop(c);_open(conversationOf(m,widget.actorId,by));
+         WidgetsBinding.instance.addPostFrameCallback((_){unawaited(_goToMessage(m.id));});}),
+   ])));
+ }
+
  /// « Supprimer pour moi »: hidden on this device only.
  Future<void> _hideForMe(Iterable<String> ids) async {
    await widget.store.setPreference(hiddenMessagesKey(widget.eventId),formatHidden({..._hidden,...ids}));
@@ -690,6 +714,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(m.deleted)return _deletedBubble(m,ma,mine:mine,showAuthor:showAuthor&&named,grey:grey);
    final needsAnswer=!mine&&m.priority=='immediate'&&!myAck.contains('accepted')&&!myAck.contains('rejected');
    final meta=Row(mainAxisSize:MainAxisSize.min,children:[
+     if(Important.instance.has(widget.eventId,m.id))Padding(padding:const EdgeInsets.only(right:3),child:Icon(Icons.star,key:const ValueKey('msg-star'),size:12,color:grey)),
      if(m.edited)Text('${S.t(editedAfterAck(m,ma)?'messages.editedAfterAck':'messages.edited')} ',key:const ValueKey('msg-edited'),style:TextStyle(fontSize:11,fontStyle:FontStyle.italic,color:grey)),
      Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
      if(mine)...[const SizedBox(width:4),_ticks(m,ma)],
@@ -956,17 +981,21 @@ class _MessagesPageState extends State<MessagesPage>{
      final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
      // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
      // ADRASEC channel models only when the event has the module.
-     final adrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec')?PopupMenuButton<String>(key:const ValueKey('messages-more'),icon:const Icon(Icons.more_horiz),tooltip:S.t('messages.more'),
-       onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
+     final canAdrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec');
+     final adrasec=PopupMenuButton<String>(key:const ValueKey('messages-more'),icon:const Icon(Icons.more_horiz),tooltip:S.t('messages.more'),
+       onSelected:(v){if(v=='adrasec'){_addTemplate();}else{_showImportant();}},itemBuilder:(_)=>[
+       // « Messages importants », all conversations together (lot 29, group 7).
+       PopupMenuItem(value:'important',key:const ValueKey('messages-important'),child:menuEntry(context,icon:Icons.star_outline,color:const Color(0xFFF9A825),
+         title:S.t('messages.importantList'),detail:S.t('messages.importantListDetail'))),
        // Round coloured icon, short label, detail under it (lot 29.3).
-       PopupMenuItem(value:'adrasec',child:menuEntry(context,icon:Icons.shield_outlined,color:const Color(0xFF1565C0),
-         title:S.t('groups.addAdrasecShort'),detail:S.t('groups.addAdrasecDetail')))]):null;
+       if(canAdrasec)PopupMenuItem(value:'adrasec',child:menuEntry(context,icon:Icons.shield_outlined,color:const Color(0xFF1565C0),
+         title:S.t('groups.addAdrasecShort'),detail:S.t('groups.addAdrasecDetail')))]);
      final editGroup=group!=null&&group.canManage(widget.actorId)
        ?RoundIconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:Icons.edit_outlined):null;
      final pending=_pendingPill();
      if(listOnly){
        return Scaffold(
-         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,?adrasec,?close]),
+         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,adrasec,?close]),
          body:_convList(by,acks));
      }
      // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
@@ -978,7 +1007,7 @@ class _MessagesPageState extends State<MessagesPage>{
        return Scaffold(body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
          SizedBox(height:60,child:Row(children:[
            SizedBox(width:360,child:Padding(padding:const EdgeInsets.fromLTRB(12,8,4,8),child:Row(children:[
-             Expanded(child:_searchField()),newGroup,?adrasec]))),
+             Expanded(child:_searchField()),newGroup,adrasec]))),
            const VerticalDivider(width:1),
            const SizedBox(width:12),
            // Selection (lot 21): « N sélectionnés », Copier, Supprimer in place of the conversation.
