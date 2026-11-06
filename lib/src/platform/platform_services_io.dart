@@ -136,6 +136,8 @@ Future<String?> webPushSubscription(String publicKey) async=>null;
 /// Installed apps: the wake-up signals come by Firebase (wakeup_fcm.dart).
 Stream<Map<String,dynamic>> webWakeSignals()=>const Stream<Map<String,dynamic>>.empty();
 bool get browserOnline=>false;
+/// No browser on an installed app.
+String get browserUserAgent=>'';
 
 /// Installed apps keep their data in their own folder.
 Future<bool> requestPersistentStorage() async=>true;
