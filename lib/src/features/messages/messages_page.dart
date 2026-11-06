@@ -28,6 +28,7 @@ import 'chat_bottom.dart';
 import '../../services/notification_keys.dart';
 import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
 import '../dictation/dictation_button.dart';
+import '../../ui/bottom_menu.dart';
 import '../../ui/action_buttons.dart';
 import '../tv/tv_nearby.dart';
 import '../../ui/link_status.dart';
@@ -293,7 +294,9 @@ class _MessagesPageState extends State<MessagesPage>{
    }
    await widget.store.saveGroup(g.toJson());
    await widget.sync.queue(objectId:g.id,objectType:'comm_group',action:initial==null?'create':'update',payload:g.toJson());
-   if(mounted)setState(()=>_conv=g.archived?allKey:groupKey(g.id));
+   if(mounted)setState(()=>_conv=g.kind=='all'?allKey:(g.archived?allKey:groupKey(g.id)));
+   // Saved: said in so many words (lot 29).
+   if(mounted)_snack(S.t('groups.saved'));
  }
 
 
@@ -407,7 +410,10 @@ class _MessagesPageState extends State<MessagesPage>{
  Widget _convIcon(String key,Map<String,CommGroup> by,{double r=18}){
    final g=groupOf(key);
    if(key!=allKey&&g==null)return operatorAvatar(peerOf(key)!,radius:r);
-   final color=key==allKey?const Color(0xFF546E7A):Color(by[g]?.color??0xFF546E7A);
+   // « Tous » shows its saved colour like any group: it was forced to
+   // grey-blue, so changing it had no visible effect (lot 29, 5 Nov 2026).
+   final all=key==allKey?by.values.where((x)=>x.kind=='all').firstOrNull:null;
+   final color=Color(key==allKey?(all?.color??0xFF1565C0):(by[g]?.color??0xFF546E7A));
    return CircleAvatar(radius:r,backgroundColor:color,foregroundColor:Colors.white,
      child:Icon(key==allKey?Icons.campaign_outlined:Icons.forum_outlined,size:r));
  }
@@ -459,8 +465,9 @@ class _MessagesPageState extends State<MessagesPage>{
          onTap:()=>_open(k)));
      }),
      // Threads with MeshCore nodes, kept on this device (lot 17).
-     const MeshCoreThreadTiles(),
-     const MeshtasticThreadTiles()])), // lot 28
+     // They follow the filter, the search and the favourites (lot 29).
+     MeshCoreThreadTiles(filter:_filter,query:_search,favourites:fav,onToggleFavourite:_toggleFavConv),
+     MeshtasticThreadTiles(filter:_filter,query:_search,favourites:fav,onToggleFavourite:_toggleFavConv)])), // lot 28
    ]);
  }
 
@@ -502,17 +509,24 @@ class _MessagesPageState extends State<MessagesPage>{
 
  /// Long press (phone) or right click (computer): actions on a message.
  Future<void> _actions(SarcadeMessage m,List<SarcadeAck> acks,bool mine) async {
-   final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+   // Card « menu d'un message trop haut » (lot 29.3): « Répondre en privé »
+   // second, dense rows (about 44 px), the safe area plus 16 px under the
+   // last row so that it never falls in the gesture bar of the iPhone.
+   final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c){
+     Widget item(String id,IconData icon,String label,{Key? key})=>ListTile(key:key,dense:true,visualDensity:const VisualDensity(vertical:-1),
+       minTileHeight:44,leading:Icon(icon,size:22),title:Text(label,style:const TextStyle(fontSize:15)),onTap:()=>Navigator.pop(c,id));
+     return Padding(padding:EdgeInsets.only(bottom:bottomMenuMargin(c)),
+     child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
      // « Répondre » first (31 Oct 2026): the answer quotes this message.
-     if(!m.deleted&&_canWrite)ListTile(key:const ValueKey('msg-reply'),leading:const Icon(Icons.reply),title:Text(S.t('messages.replyQuote')),onTap:()=>Navigator.pop(c,'reply')),
-     if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])ListTile(leading:Icon(s=='rejected'?Icons.close:Icons.check),title:Text(S.t('ack.$s')),onTap:()=>Navigator.pop(c,s)),
-     if(!m.deleted)ListTile(leading:const Icon(Icons.copy),title:Text(S.t('messages.copy')),onTap:()=>Navigator.pop(c,'copy')),
-     ListTile(leading:const Icon(Icons.info_outline),title:Text(S.t('messages.info')),onTap:()=>Navigator.pop(c,'info')),
-     if(!mine&&peerOf(_conv)==null)ListTile(leading:const Icon(Icons.chat_outlined),title:Text(S.t('messages.reply',{'who':m.senderId})),onTap:()=>Navigator.pop(c,'direct')),
+     if(!m.deleted&&_canWrite)item('reply',Icons.reply,S.t('messages.replyQuote'),key:const ValueKey('msg-reply')),
+     if(!mine&&peerOf(_conv)==null)item('direct',Icons.chat_outlined,S.t('messages.reply',{'who':m.senderId}),key:const ValueKey('msg-direct')),
+     if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])item(s,s=='rejected'?Icons.close:Icons.check,S.t('ack.$s')),
+     if(!m.deleted)item('copy',Icons.copy,S.t('messages.copy')),
+     item('info',Icons.info_outline,S.t('messages.info')),
      // Several messages at once (lot 21): this one already checked.
-     ListTile(key:const ValueKey('msg-select'),leading:const Icon(Icons.check_circle_outline),title:Text(S.t('messages.select')),onTap:()=>Navigator.pop(c,'select')),
-     ListTile(leading:const Icon(Icons.delete_outline),title:Text(S.t('messages.delete')),onTap:()=>Navigator.pop(c,'delete')),
-   ])));
+     item('select',Icons.check_circle_outline,S.t('messages.select'),key:const ValueKey('msg-select')),
+     item('delete',Icons.delete_outline,S.t('messages.delete')),
+   ])));});
    if(choice==null||!mounted)return;
    if(choice=='reply'){_startReply(m);return;}
    if(choice=='copy'){await Clipboard.setData(ClipboardData(text:m.body));_snack(S.t('messages.copied'));return;}
@@ -793,9 +807,11 @@ class _MessagesPageState extends State<MessagesPage>{
        ?const Padding(padding:EdgeInsets.all(14),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
        :IconButton(tooltip:S.t('messages.photo'),onPressed:_photo,icon:Icon(Icons.photo_camera_outlined,size:26,color:iconColor))),
      const SizedBox(width:4),
-     SizedBox(width:48,height:48,child:empty
+     // The microphone stays while dictating, even once words are written
+     // (it turned into « Envoyer » after 2 or 3 seconds and stopped; lot 29).
+     ValueListenableBuilder<bool>(valueListenable:dictationActive,builder:(c,dictating,w)=>SizedBox(width:48,height:48,child:empty||dictating
        ? DictationButton(controller:_text,filled:true)
-       : IconButton.filled(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send))),
+       : IconButton.filled(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)))),
    ]))));
    // Answering (31 Oct 2026): the quoted message above the field, ✕ to cancel.
    final r=_replyTo;
