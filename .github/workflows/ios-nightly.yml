@@ -18,6 +18,11 @@ on:
   schedule:
     - cron: "23 4 * * *"
   workflow_dispatch:
+    inputs:
+      intel_only:
+        description: skip the arm64 machine and build on the Intel Mac (check of the fallback)
+        type: boolean
+        default: false
   # Self-test of this workflow when it changes (unsigned build, issue not
   # written): a workflow can only be run by hand once it is on main.
   pull_request:
@@ -36,6 +41,7 @@ concurrency:
 jobs:
   arm64:
     name: TestFlight (macOS arm64)
+    if: ${{ !inputs.intel_only }}
     uses: ./.github/workflows/ios-build.yml
     with:
       runs-on: macos-latest
