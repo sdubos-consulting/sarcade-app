@@ -5,6 +5,7 @@ import 'conversation_row.dart';
 import 'message_edit.dart';
 import 'reactions.dart';
 import 'important.dart';
+import 'forward.dart';
 import 'typing.dart';
 import '../../services/realtime_service.dart' show RealtimeService;
 import '../../services/power_state.dart' show PowerState;
@@ -516,6 +517,7 @@ class _MessagesPageState extends State<MessagesPage>{
      if(!mine&&peerOf(_conv)==null)item('direct',Icons.chat_outlined,S.t('messages.reply',{'who':m.senderId}),key:const ValueKey('msg-direct')),
      if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])item(s,s=='rejected'?Icons.close:Icons.check,S.t('ack.$s')),
      if(!m.deleted)item('copy',Icons.copy,S.t('messages.copy')),
+     if(canForward(m))item('forward',Icons.forward_outlined,S.t('messages.forward'),key:const ValueKey('msg-forward')),
      if(!m.deleted)item('important',Important.instance.has(widget.eventId,m.id)?Icons.star:Icons.star_border,
        S.t(Important.instance.has(widget.eventId,m.id)?'messages.importantOff':'messages.importantOn'),key:const ValueKey('msg-important')),
      if(canEditMessage(m,widget.actorId,now:DateTime.now()))item('edit',Icons.edit_outlined,S.t('messages.edit'),key:const ValueKey('msg-edit')),
@@ -532,6 +534,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(choice=='direct'){_open(directKey(m.senderId));return;}
    if(choice=='delete'){await _delete(m);return;}
    if(choice=='edit'){await _edit(m);return;}
+   if(choice=='forward'){await _forward(m);return;}
    if(choice=='important'){await Important.instance.toggle(widget.store,widget.api,widget.eventId,m.id);return;}
    if(choice=='history'){await _history(m);return;}
    if(choice.startsWith('react:')){await _react(m,choice.substring(6));return;}
@@ -658,6 +661,23 @@ class _MessagesPageState extends State<MessagesPage>{
    ])));
  }
 
+ /// « Transférer »: one copy per conversation ticked, through the Outbox.
+ Future<void> _forward(SarcadeMessage m) async {
+   final by=_byId;
+   final targets=[for(final k in _conversations(by))
+     if(groupOf(k)==null||(by[groupOf(k)]?.canSend(widget.actorId)??true))(key:k,title:_convName(k,by),icon:_convIcon(k,by,r:16))];
+   final picked=await showDialog<List<String>>(context:context,builder:(c)=>ForwardDialog(targets:targets));
+   if(picked==null||picked.isEmpty)return;
+   final now=DateTime.now().toUtc();
+   for(final k in picked){
+     final copy=forwardedCopy(m,id:_uuid.v4(),me:widget.actorId,recipients:recipientsFor(k,by),now:now);
+     await widget.store.cacheMessage(copy.toJson());
+     await widget.sync.queue(objectId:copy.id,objectType:'message',payload:copy.toJson());
+   }
+   _snack(S.t('messages.forwarded',{'n':picked.length}));
+   if(mounted)setState((){});
+ }
+
  /// « Supprimer pour moi »: hidden on this device only.
  Future<void> _hideForMe(Iterable<String> ids) async {
    await widget.store.setPreference(hiddenMessagesKey(widget.eventId),formatHidden({..._hidden,...ids}));
@@ -725,6 +745,10 @@ class _MessagesPageState extends State<MessagesPage>{
        child:Text(S.t(priorityKey(m.priority)).toUpperCase(),style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:prio,letterSpacing:0.4)))),
      if(showAuthor&&named&&!mine)Padding(padding:const EdgeInsets.only(bottom:2),child:Text(m.senderId,
        style:TextStyle(fontWeight:FontWeight.w700,fontSize:13,color:Color(authorColor(m.senderId))))),
+     if(m.forwardedSender!=null)Padding(padding:const EdgeInsets.only(bottom:2),child:Row(key:const ValueKey('msg-forwarded'),mainAxisSize:MainAxisSize.min,children:[
+       Icon(Icons.forward,size:13,color:grey),const SizedBox(width:3),
+       Flexible(child:Text(forwardedLabel(m,_hm),style:TextStyle(fontSize:12,fontStyle:FontStyle.italic,color:grey))),
+     ])),
      if(m.replyTo!=null)_quoteInBubble(m.replyTo!),
      if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
        for(final p in photos)_PhotoThumb(key:ValueKey(p.fileId),attachment:p,api:widget.api,store:widget.store,eventId:widget.eventId),
