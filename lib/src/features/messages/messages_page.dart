@@ -10,6 +10,7 @@ import 'mute.dart';
 import 'mentions.dart';
 import 'conversation_search.dart';
 import 'swipe_reply.dart';
+import 'pdf_export.dart';
 import 'typing.dart';
 import '../../services/realtime_service.dart' show RealtimeService;
 import '../../services/power_state.dart' show PowerState;
@@ -695,6 +696,7 @@ class _MessagesPageState extends State<MessagesPage>{
      onSelected:(v){
        if(v=='fav'){_toggleFavConv(_conv);return;}
        if(v=='find'){setState((){_finding=true;_findQ='';_findCtl.clear();});return;}
+       if(v=='pdf'){unawaited(_exportPdf());return;}
        unawaited(Mutes.instance.set(widget.store,widget.eventId,_conv,v=='unmute'?null:v));
      },
      itemBuilder:(_)=>[
@@ -702,6 +704,9 @@ class _MessagesPageState extends State<MessagesPage>{
          color:const Color(0xFF1565C0),title:S.t('messages.find'))),
        if(narrow)PopupMenuItem(value:'fav',key:const ValueKey('conv-fav'),child:menuEntry(context,icon:fav?Icons.star:Icons.star_border,
          color:const Color(0xFFF9A825),title:S.t(fav?'messages.unfav':'messages.fav'))),
+       // « Exporter en PDF » (lot 29, group 7).
+       if(canExport(group:_group,me:widget.actorId,pco:isPco(widget.actorId)))PopupMenuItem(value:'pdf',key:const ValueKey('conv-pdf'),
+         child:menuEntry(context,icon:Icons.picture_as_pdf_outlined,color:const Color(0xFFC62828),title:S.t('messages.pdf'),detail:S.t('messages.pdfDetail'))),
        if(muted)PopupMenuItem(value:'unmute',key:const ValueKey('conv-unmute'),child:menuEntry(context,icon:Icons.volume_up_outlined,color:const Color(0xFF2E7D32),
          title:S.t('messages.unmute')))
        else for(final c in muteChoices.keys)PopupMenuItem(value:c,key:ValueKey('conv-mute-$c'),child:menuEntry(context,icon:Icons.volume_off_outlined,
@@ -771,6 +776,43 @@ class _MessagesPageState extends State<MessagesPage>{
      IconButton(key:const ValueKey('find-next'),tooltip:S.t('messages.findNext'),onPressed:hits.isEmpty?null:()=>_findMove(hits,1),icon:const Icon(Icons.keyboard_arrow_down)),
      IconButton(key:const ValueKey('find-close'),tooltip:S.t('common.close'),onPressed:()=>setState(_closeFind),icon:const Icon(Icons.close)),
    ])));
+ }
+
+ /// « Exporter en PDF »: period, then the file opened with the system
+ /// application, which shares it (e-mail, files).
+ Future<void> _exportPdf() async {
+   final now=DateTime.now();
+   final today=DateTime(now.year,now.month,now.day);
+   final choice=await showDialog<String>(context:context,builder:(c)=>SimpleDialog(title:Text(S.t('messages.pdfPeriodTitle')),children:[
+     SimpleDialogOption(key:const ValueKey('pdf-all'),onPressed:()=>Navigator.pop(c,'all'),child:Text(S.t('messages.pdfAll'))),
+     SimpleDialogOption(key:const ValueKey('pdf-today'),onPressed:()=>Navigator.pop(c,'today'),child:Text(S.t('messages.pdfToday'))),
+     SimpleDialogOption(key:const ValueKey('pdf-range'),onPressed:()=>Navigator.pop(c,'range'),child:Text(S.t('messages.pdfRange'))),
+   ]));
+   if(choice==null||!mounted)return;
+   DateTime? from,to; String period=S.t('messages.pdfAll');
+   if(choice=='today'){from=today;to=today.add(const Duration(days:1));period=S.t('messages.pdfToday');}
+   if(choice=='range'){
+     final r=await showDateRangePicker(context:context,firstDate:DateTime(2024),lastDate:today.add(const Duration(days:1)),
+       initialDateRange:DateTimeRange(start:today.subtract(const Duration(days:1)),end:today));
+     if(r==null||!mounted)return;
+     from=r.start;to=r.end.add(const Duration(days:1));
+     period=S.t('messages.pdfFromTo',{'from':pdfDay(r.start),'to':pdfDay(r.end)});
+   }
+   final by=_byId;
+   final list=inPeriod(_messages,from:from,to:to);
+   final acks=<String,List<SarcadeAck>>{};
+   for(final a in widget.store.acks().map(SarcadeAck.fromJson)){(acks[a.messageId]??=[]).add(a);}
+   final photos=<String,Uint8List>{};
+   for(final m in list){for(final a in m.attachments.where((a)=>a.isImage)){final b=await widget.store.attachment(a.fileId);if(b!=null)photos[a.fileId]=b;}}
+   var event=widget.eventId;
+   try{event='${(await widget.api.event(widget.eventId))['name']??event}';}catch(_){/* offline: the identifier */}
+   final title=_convName(_conv,by);
+   final bytes=conversationPdf(title:title,event:event,period:period,messages:list,acks:acks,photo:(id)=>photos[id],now:now);
+   final name='sarcade-${title.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'),'-')}-${now.year}${now.month.toString().padLeft(2,'0')}${now.day.toString().padLeft(2,'0')}.pdf';
+   try{
+     final path=await saveFile(name,bytes,mimeType:'application/pdf');
+     if(canOpenSavedFiles){await openSavedFile(path);}else{_snack(S.t('messages.pdfSaved',{'path':path}));}
+   }catch(_){_snack(S.t('messages.pdfFailed'));}
  }
 
  /// « Supprimer pour moi »: hidden on this device only.
