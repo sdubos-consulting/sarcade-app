@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'conversation_row.dart';
+import 'message_edit.dart';
+import '../../ui/menu_entry.dart';
 import '../../ui/keyboard.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -501,6 +503,8 @@ class _MessagesPageState extends State<MessagesPage>{
      if(!mine&&peerOf(_conv)==null)item('direct',Icons.chat_outlined,S.t('messages.reply',{'who':m.senderId}),key:const ValueKey('msg-direct')),
      if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])item(s,s=='rejected'?Icons.close:Icons.check,S.t('ack.$s')),
      if(!m.deleted)item('copy',Icons.copy,S.t('messages.copy')),
+     if(canEditMessage(m,widget.actorId,now:DateTime.now()))item('edit',Icons.edit_outlined,S.t('messages.edit'),key:const ValueKey('msg-edit')),
+     if(m.edited&&!m.deleted&&isPco(widget.actorId))item('history',Icons.history,S.t('messages.history'),key:const ValueKey('msg-history')),
      item('info',Icons.info_outline,S.t('messages.info')),
      // Several messages at once (lot 21): this one already checked.
      item('select',Icons.check_circle_outline,S.t('messages.select'),key:const ValueKey('msg-select')),
@@ -512,6 +516,8 @@ class _MessagesPageState extends State<MessagesPage>{
    if(choice=='info'){_showInfo(m,acks);return;}
    if(choice=='direct'){_open(directKey(m.senderId));return;}
    if(choice=='delete'){await _delete(m);return;}
+   if(choice=='edit'){await _edit(m);return;}
+   if(choice=='history'){await _history(m);return;}
    if(choice=='select'){_selection.start(m.id);_selectFocus.requestFocus();return;}
    await _ack(m,choice);
  }
@@ -538,6 +544,32 @@ class _MessagesPageState extends State<MessagesPage>{
    if(choice==null)return;
    if(choice=='me'){await _hideForMe([m.id]);return;}
    await _deleteForEveryone(m,pco:pco,now:DateTime.now().toUtc());
+   if(mounted)setState((){});
+ }
+
+ /// « Historique » (PCO): every version, kept by the server in the logbook.
+ Future<void> _history(SarcadeMessage m) async {
+   final Map<String,dynamic> j;
+   try{j=await widget.api.messageVersions(widget.eventId,m.id);}catch(_){_snack(S.t('messages.historyOffline'));return;}
+   if(!mounted)return;
+   final list=versionsOf(j);
+   showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.history'),style:Theme.of(c).textTheme.titleMedium)),
+     for(final (i,v) in list.indexed)ListTile(dense:true,title:Text(v.body),
+       subtitle:Text('${i==list.length-1?S.t('messages.historyNow'):S.t('messages.historyBefore')}${v.at==null?'':' · ${_hm(v.at!)}'}')),
+   ])));
+ }
+
+ /// « Modifier »: the new text in place, « modifié » for everyone; offline,
+ /// the change waits in the Outbox like any other.
+ Future<void> _edit(SarcadeMessage m) async {
+   final typed=await showDialog<String>(context:context,builder:(c)=>EditMessageDialog(initial:m.body));
+   if(typed==null||!mounted)return;
+   final body=editedText(m,typed);
+   if(body==null)return;
+   if(!canEditMessage(m,widget.actorId,now:DateTime.now())){_snack(S.t('messages.editTooLate'));return;}
+   await widget.store.cacheMessage(editedLocally(m,body));
+   await widget.sync.queue(objectId:m.id,objectType:'message',action:'update',payload:editPayload(m,body,widget.actorId));
    if(mounted)setState((){});
  }
 
@@ -597,6 +629,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(m.deleted)return _deletedBubble(m,ma,mine:mine,showAuthor:showAuthor&&named,grey:grey);
    final needsAnswer=!mine&&m.priority=='immediate'&&!myAck.contains('accepted')&&!myAck.contains('rejected');
    final meta=Row(mainAxisSize:MainAxisSize.min,children:[
+     if(m.edited)Text('${S.t(editedAfterAck(m,ma)?'messages.editedAfterAck':'messages.edited')} ',key:const ValueKey('msg-edited'),style:TextStyle(fontSize:11,fontStyle:FontStyle.italic,color:grey)),
      Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
      if(mine)...[const SizedBox(width:4),_ticks(m,ma)],
    ]);
@@ -780,7 +813,9 @@ class _MessagesPageState extends State<MessagesPage>{
            // « Message » shown in the empty field (revue d'ergonomie n° 37).
            decoration:InputDecoration(hintText:S.t('messages.hint'),hintStyle:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant),counterText:'',border:InputBorder.none,isDense:true,
              contentPadding:const EdgeInsets.symmetric(vertical:13))))),
-         IconButton(tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
+         // Phone and tablet: the keyboard has its emojis (card « bouton emoji
+         // inutile sur téléphone », lot 29.3); kept on computers and Tesla.
+         if(!touchKeyboard)IconButton(key:const ValueKey('messages-emoji'),tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
        ]))),
      if(empty)SizedBox(height:48,child:_picking
        ?const Padding(padding:EdgeInsets.all(14),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
@@ -859,8 +894,11 @@ class _MessagesPageState extends State<MessagesPage>{
      final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
      // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
      // ADRASEC channel models only when the event has the module.
-     final adrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec')?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
-       PopupMenuItem(value:'adrasec',child:Text(S.t('groups.addAdrasec')))]):null;
+     final adrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec')?PopupMenuButton<String>(key:const ValueKey('messages-more'),icon:const Icon(Icons.more_horiz),tooltip:S.t('messages.more'),
+       onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
+       // Round coloured icon, short label, detail under it (lot 29.3).
+       PopupMenuItem(value:'adrasec',child:menuEntry(context,icon:Icons.shield_outlined,color:const Color(0xFF1565C0),
+         title:S.t('groups.addAdrasecShort'),detail:S.t('groups.addAdrasecDetail')))]):null;
      final editGroup=group!=null&&group.canManage(widget.actorId)
        ?RoundIconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:Icons.edit_outlined):null;
      final pending=_pendingPill();

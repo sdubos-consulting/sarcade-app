@@ -159,6 +159,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('messages_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>SarcadeMessage.fromJson(e)).toList();
   }
+  /// « Historique » of a changed message (PCO and administrators).
+  Future<Map<String,dynamic>> messageVersions(String eventId,String messageId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/messages/$messageId/versions'));
+    if(r.statusCode!=200) throw SarcadeHttpException('message_versions',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   Future<List<LogbookEntry>> logbook(String eventId,{int after=0}) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook?after=$after'));
     if(r.statusCode!=200) throw Exception('logbook_http_${r.statusCode}');
