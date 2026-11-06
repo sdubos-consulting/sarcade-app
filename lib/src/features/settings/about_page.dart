@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+// Flutter now has its own appBuildNumber: only the clipboard from here.
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
