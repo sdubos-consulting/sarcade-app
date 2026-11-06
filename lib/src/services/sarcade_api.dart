@@ -209,6 +209,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('reactions',r.statusCode);
     return (jsonDecode(r.body) as List).whereType<Map>().toList();
   }
+  /// Rain radar (lot 29): images of the last hour, legend, source.
+  Future<Map<String,dynamic>> rainRadar() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/weather/radar'));
+    if(r.statusCode!=200) throw SarcadeHttpException('radar',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   Future<List<LogbookEntry>> logbook(String eventId,{int after=0}) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook?after=$after'));
     if(r.statusCode!=200) throw Exception('logbook_http_${r.statusCode}');
