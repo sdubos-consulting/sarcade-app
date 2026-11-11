@@ -53,7 +53,13 @@ extension TabStack on GlobalKey<NavigatorState> {
     return true;
   }
 
-  /// Android Back: closes the screen on top; false when only the first one is left.
+  /// Android Back as the ← of the screen (card « Navigation : la flèche
+  /// retour remonte d'un seul cran », 11 Nov 2026): the screen on top, or
+  /// the first screen, may go back inside itself first (PopScope: a sub-page,
+  /// a folder); false when nothing was left to close in the tab.
+  Future<bool> maybeBack() async => await currentState?.maybePop() ?? false;
+
+  /// Closes the screen on top; false when only the first one is left.
   bool back() {
     final nav = currentState;
     if (nav == null || !nav.canPop()) return false;

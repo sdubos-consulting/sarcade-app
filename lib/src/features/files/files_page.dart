@@ -553,7 +553,15 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     ])));
   }
 
-  @override Widget build(BuildContext context){
+  /// ←, Android Back: « Photos des messages » → the list, a folder → its
+  /// parent, then Fichiers closes (card « Navigation : la flèche retour
+  /// remonte d'un seul cran », 11 Nov 2026).
+  bool get _atTop=>!_messagePhotos&&_path.isEmpty;
+  void _up()=>setState((){if(_messagePhotos){_messagePhotos=false;}else{_path=parentFolder(_path);}});
+
+  @override Widget build(BuildContext context)=>PopScope(canPop:_atTop,onPopInvokedWithResult:(did,_){if(!did)_up();},child:_page(context));
+
+  Widget _page(BuildContext context){
     final t=Theme.of(context);
     return LayoutBuilder(builder:(context,c){
       _wide=c.maxWidth>=760;

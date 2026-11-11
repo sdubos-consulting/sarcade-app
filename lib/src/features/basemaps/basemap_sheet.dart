@@ -67,8 +67,11 @@ Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catal
       ...?layers?.call(c,set),
       const SizedBox(height:12),
     ];
-    return SafeArea(child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(c).height*0.85),
-      child:ListView(shrinkWrap:true,children:children)));
+    // Android Back on « Fond de carte » returns to the panel, as its ←
+    // (one step, 11 Nov 2026).
+    return PopScope(canPop:!choosing,onPopInvokedWithResult:(did,_){if(!did)set(()=>choosing=false);},
+      child:SafeArea(child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(c).height*0.85),
+      child:ListView(shrinkWrap:true,children:children))));
   }));
 }
 

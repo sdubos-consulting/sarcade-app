@@ -19,10 +19,12 @@ class ResectionPanel extends StatefulWidget {
   final ResectionController controller;
   final List<ReferenceSite> sites;
   final VoidCallback onClose;
+  /// Full screen on a phone: ← at the top left instead of ✕ (11 Nov 2026).
+  final bool backArrow;
   final void Function(int index) onPickOnMap;
   final void Function(LatLng) onFocus, onCreatePoint, onSendPosition, onCopy;
   final bool canCompass;
-  const ResectionPanel({super.key,required this.controller,required this.sites,required this.onClose,required this.onPickOnMap,
+  const ResectionPanel({super.key,this.backArrow=false,required this.controller,required this.sites,required this.onClose,required this.onPickOnMap,
     required this.onFocus,required this.onCreatePoint,required this.onSendPosition,required this.onCopy,this.canCompass=false});
   @override State<ResectionPanel> createState()=>_ResectionPanelState();
 }
@@ -100,10 +102,11 @@ class _ResectionPanelState extends State<ResectionPanel> {
     final t=Theme.of(context);
     final r=c.result; final angle=c.narrowestAngle;
     return Material(elevation:3,child:SafeArea(child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Padding(padding:const EdgeInsets.fromLTRB(16,8,4,0),child:Row(children:[
-        Icon(Icons.my_location,color:t.colorScheme.primary),const SizedBox(width:8),
+      Padding(padding:EdgeInsets.fromLTRB(widget.backArrow?4:16,8,4,0),child:Row(children:[
+        if(widget.backArrow)IconButton(key:const ValueKey('resection-back'),tooltip:S.t('common.back'),onPressed:widget.onClose,icon:const Icon(Icons.arrow_back))
+        else ...[Icon(Icons.my_location,color:t.colorScheme.primary),const SizedBox(width:8)],
         Expanded(child:Text(S.t('resection.title'),style:t.textTheme.titleLarge)),
-        IconButton(tooltip:S.t('common.close'),onPressed:widget.onClose,icon:const Icon(Icons.close)),
+        if(!widget.backArrow)IconButton(tooltip:S.t('common.close'),onPressed:widget.onClose,icon:const Icon(Icons.close)),
       ])),
       Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,4,16,16),children:[
         // Help with a small drawing: from where you are, aim at known points.

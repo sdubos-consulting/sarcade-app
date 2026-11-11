@@ -359,7 +359,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _openDesk(String id,Widget Function() build){
     if(_drawing.selectMode)_drawing.endSelection();
     // Phone: the screen opens in the Outils tab, the bottom bar stays (8 Nov 2026).
-    if(_isCompact){_toolsNav.open(build);_goTab(3);return;}
+    // A tool opened from another tab (the map, a point, the weather pill)
+    // goes back there, one step (11 Nov 2026); opened from Outils, to Outils.
+    if(_isCompact){
+      final from=_tab;
+      _toolsNav.open(from==3?build:()=>PopScope(onPopInvokedWithResult:(did,_){if(did&&mounted&&_tab==3)_goTab(from);},child:build()));
+      _goTab(3);return;
+    }
     setState((){
       if(_deskId==id){_deskId=null;_deskPage=null;return;}
       _deskId=id;_deskPage=build();_showPanel=false;_showMessagesPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
@@ -994,7 +1000,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _openResection(){
     final me=_positions[widget.deviceId];
     _resectionCtl.around=me!=null?LatLng(me.lat,me.lon):_mapCentre();
-    setState((){_tab=0;_deskPage=null;_deskId=null;_showResection=true;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
+    setState((){_resectionFromTools=_isCompact&&_tab==3;_tab=0;_deskPage=null;_deskId=null;_showResection=true;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
+  }
+  /// Résection opened from the Outils tab of a phone: ← goes back there
+  /// (11 Nov 2026, as Itinéraire).
+  bool _resectionFromTools=false;
+  void _resectionBack(){
+    final back=_resectionFromTools&&_isCompact;
+    setState((){_showResection=false;_resectionCtl.result=null;_resectionFromTools=false;if(back){_tab=3;_builtTabs.add(3);}});
   }
 
   void _resectionPick(int i){
@@ -1063,7 +1076,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _resectionPanel(double width)=>SizedBox(width:width,child:ResectionPanel(controller:_resectionCtl,
     sites:_references.values.where((r)=>r.isHighPoint||r.isRelay).toList(),
     canCompass:_phoneOrTablet,
-    onClose:()=>setState((){_showResection=false;_resectionCtl.result=null;}),
+    onClose:_resectionBack,backArrow:sidePanelFullScreen(MediaQuery.sizeOf(context).width),
     onPickOnMap:_resectionPick,
     onFocus:(p)=>_map.move(p,14),
     onCreatePoint:(p)=>_saveDesignated(p,S.t('resection.pointLabel',{'t':hhmm(DateTime.now())})),
@@ -2017,7 +2030,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
   bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
     case 'teams':_showPanel=false; case 'messages':_showMessagesPanel=false; case 'routes':_routesBackInEscape();
-    case 'reference':_showReferencePanel=false;_selectedReference=null; case 'chat':_chatPeer=null; case 'resection':_showResection=false;_resectionCtl.result=null;
+    case 'reference':_showReferencePanel=false;_selectedReference=null; case 'chat':_chatPeer=null; case 'resection':_showResection=false;_resectionCtl.result=null;if(_resectionFromTools&&_isCompact){_tab=3;_builtTabs.add(3);}_resectionFromTools=false;
     default:_deskId=null;_deskPage=null;}}));}
   final ResectionController _resectionCtl=ResectionController();
   void Function(LatLng point,ReferenceSite? site)? _pickPoint; String? _pickHint;
@@ -3191,7 +3204,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // A panel over the map is closed first (31 Oct 2026); a selection of
       // messages is left first (lot 21).
       canPop:!compact||(_tab==0&&!_mapPanelOpen&&!_drawing.selectMode&&!_drawing.hasSelection&&_pickPoint==null),
-      onPopInvokedWithResult:(didPop,_){if(didPop||MessageSelection.anyActive)return;if(_pickPoint!=null){_cancelPick();}else if(_drawing.selectMode||_drawing.hasSelection){_drawing.endSelection();}else if(_mapPanelOpen){_escapePanel();}else if(_tab==3&&_toolsNav.back()){}else if(_tab==4&&_settingsNav.back()){}else if(_tab!=0){_goTab(0);}},
+      onPopInvokedWithResult:(didPop,_){if(didPop||MessageSelection.anyActive)return;if(_pickPoint!=null){_cancelPick();}else if(_drawing.selectMode||_drawing.hasSelection){_drawing.endSelection();}else if(_mapPanelOpen){_escapePanel();}else if(_tab==1&&_messagesNav.backToList()){}else if(_tab==3||_tab==4){final tab=_tab;unawaited((tab==3?_toolsNav:_settingsNav).maybeBack().then((done){if(!done&&mounted&&_tab==tab)_goTab(0);}));}else if(_tab!=0){_goTab(0);}},
       child:Scaffold(
       extendBody:fullBleed,
       body:SafeArea(top:!fullBleed,bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -3437,7 +3450,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ]))
       
         ]),
-        if(fullPanel&&_showResection&&_pickPoint==null)phonePanel(_resectionPanel(screenWidth)),
+        if(fullPanel&&_showResection&&_pickPoint==null)phonePanel(EdgeSwipeBack(onBack:_resectionBack,child:_resectionPanel(screenWidth))),
         if(fullPanel&&_showRoutesPanel&&routeEntry==null)phonePanel(EdgeSwipeBack(onBack:_routesBack,child:routesPanel())),
         ]),
         _deskPage??const SizedBox.shrink(),
