@@ -22,7 +22,8 @@ Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catal
     required String eventDefault,required bool preferOffline,
     required void Function(String id) onChoose,required ValueChanged<bool> onPreferOffline,
     List<Widget> Function(BuildContext context,StateSetter refresh)? layers,
-    String? Function(Basemap b)? tileUrlOf,({double lat,double lon})? around,String? serverUrl}) {
+    String? Function(Basemap b)? tileUrlOf,({double lat,double lon})? around,String? serverUrl,
+    KeepPrefs? keepPrefs,List<double>? Function()? keepView,({double lat,double lon})? me,({double lat,double lon})? centre}) {
   var offline=preferOffline;
   var selected=current.id;
   var choosing=false;
@@ -59,7 +60,8 @@ Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catal
       BasemapRow(key:const ValueKey('basemap-current'),basemap:chosen,selected:true,tiles:tilesOf(chosen,columns:4),compact:true,
         onTap:()=>set(()=>choosing=true)),
       // Offline package of the server: kept on this phone (9 Nov 2026).
-      if(serverUrl!=null&&canKeepOnPhone(chosen))KeepOnPhoneTile(basemap:chosen,serverUrl:serverUrl),
+      if(serverUrl!=null&&canKeepOnPhone(chosen))KeepOnPhoneTile(basemap:chosen,serverUrl:serverUrl,
+        prefs:keepPrefs,view:keepView,me:me,centre:centre,all:[for(final b in catalog)if(canKeepOnPhone(b))b]),
       const SizedBox(height:4),
       const ThemeChoice(),
       ...?layers?.call(c,set),

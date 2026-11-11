@@ -225,17 +225,20 @@ class TileKeeper extends ChangeNotifier {
 
   /// Takes every image of [package] not yet on the phone. Returns the
   /// number of images that could not be taken.
-  Future<int> keep(Basemap basemap, String serverUrl, {Map<String, String> headers = const {}, int parallel = 6}) async {
+  /// [tiles] and [count]: those of the plan chosen (card of 10 and 11 Nov
+  /// 2026), else every tile of the package.
+  Future<int> keep(Basemap basemap, String serverUrl, {Map<String, String> headers = const {}, int parallel = 6,
+      Iterable<({int z, int x, int y})>? tiles, int? count}) async {
     final f = files, p = basemap.package;
     if (f == null || p == null || !p.keepable || busy) return -1;
     running = basemap.id;
     done = 0;
     failed = 0;
-    total = packageTileCount(p);
+    total = tiles == null ? packageTileCount(p) : count ?? tiles.length;
     _stop = false;
     notifyListeners();
     final template = basemap.offlineUrl(serverUrl);
-    final it = packageTiles(p).iterator;
+    final it = (tiles ?? packageTiles(p)).iterator;
     var last = DateTime.now();
     Future<void> worker() async {
       while (!_stop) {

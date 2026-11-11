@@ -693,6 +693,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     preferOffline:_preferOffline,layers:_layerSections,
     // Real thumbnails: a tile of each base map around me (lot 29.2).
     tileUrlOf:(b)=>b.tileUrl(widget.api.baseUrl,preferOffline:_preferOffline),around:_thumbAround(),serverUrl:widget.api.baseUrl,
+    // Level, zone and détail local of « Garder sur ce téléphone » (11 Nov 2026).
+    keepPrefs:(read:widget.store.preference,save:widget.store.setPreference),
+    keepView:(){try{final v=_map.camera.visibleBounds;return [v.west,v.south,v.east,v.north];}catch(_){return null;}},
+    me:_me==null?null:(lat:_me!.latitude,lon:_me!.longitude),
+    centre:(){try{final c=_map.camera.center;return (lat:c.latitude,lon:c.longitude);}catch(_){return null;}}(),
     onChoose:(id) async {await widget.store.setPreference('basemap:${widget.eventId}',id);if(mounted)setState((){});},
     onPreferOffline:(v) async {await widget.store.setPreference('basemap_offline',v?'1':null);if(mounted)setState((){});});
 

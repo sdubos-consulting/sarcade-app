@@ -137,14 +137,19 @@ void main() {
     expect(() => f.write(TileShelf.kept, '../x', 1, 1, 1, [1]), throwsArgumentError);
   });
 
-  testWidgets('panel: offer with the size, Wi-Fi asked before the mobile network', (t) async {
+  testWidgets('panel: level and zone chosen first, Wi-Fi asked before the mobile network', (t) async {
     const small = OfflinePackage(bounds: [1.9, 48.7, 2.0, 48.8], minZoom: 10, maxZoom: 11, tiles: 0, sizeBytes: 3 * 1024 * 1024);
     const m = Basemap(id: 'osm', name: 'OSM', attribution: '', hasOfflinePackage: true, package: small);
     await t.pumpWidget(MaterialApp(home: Scaffold(body: KeepOnPhoneTile(basemap: m, serverUrl: 'https://s', onWifi: () async => false))));
     await t.pump();
     expect(find.text('Garder sur ce téléphone'), findsOneWidget);
-    expect(find.textContaining('environ 3 Mo'), findsOneWidget);
-    await t.tap(find.byKey(const ValueKey('keep-start')));
+    await t.tap(find.byKey(const ValueKey('keep-choose')));
+    await t.pumpAndSettle();
+    // A package up to zoom 11: Aperçu only (up to 11), the others not given.
+    expect(find.textContaining('villes, grands axes, forêts · ≈ 3 Mo'), findsOneWidget);
+    expect(find.text('Télécharger (≈ 3 Mo)'), findsOneWidget);
+    expect(find.text('non fourni par ce serveur'), findsNWidgets(4));
+    await t.tap(find.byKey(const ValueKey('keep-go')));
     await t.pumpAndSettle();
     expect(find.text('Pas de Wi-Fi'), findsOneWidget);
     await t.tap(find.text('Annuler'));
