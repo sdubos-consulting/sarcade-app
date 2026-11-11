@@ -2146,6 +2146,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// « Équipes »: the stations and « À proximité » in one place, a screen on
   /// the phone, a panel next to the map on a computer.
   bool _showOld=false, _showFavs=true;
+  /// « Plus anciens » of À proximité, folded by default (11 Nov 2026).
+  bool _showNearbyOld=false;
   /// Search of Équipes, common to both tabs (lot 29.4).
   final _teamSearch=TextEditingController(); String _teamQuery='';
 
@@ -2569,21 +2571,21 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final s=Theme.of(context).colorScheme; final fav=_favourites;
     final from=_me??_mapCentre();
     final fromLabel=_me!=null?S.t('nearby.fromMe'):S.t('nearby.fromCentre');
-    final items=<({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap,String? device})>[
+    final items=<_NearbyItem>[
       for(final p in _positions.values)if(p.deviceId!=widget.deviceId&&_teamMatch(p))(title:p.label,
         subtitle:[if(_statuses.statusOf(p.deviceId) case final st?)operatorStatusLabel(st),if(sourceOf(p)!=PositionSource.app)_sourceLabel(p),ageLabel(p.time.toUtc(),DateTime.now().toUtc())].join(' · '),
-        at:LatLng(p.lat,p.lon),icon:_stationIcon(p,size:30),onTap:()=>_select(p),device:p.deviceId),
+        at:LatLng(p.lat,p.lon),icon:_stationIcon(p,size:30),onTap:()=>_select(p),device:p.deviceId,time:p.time),
       for(final r in _references.values)if(teamMatches(_teamQuery,name:r.name))(title:r.name,subtitle:r.subtitle,at:LatLng(r.lat,r.lon),
-        icon:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:s.secondary),onTap:()=>_selectReference(r),device:null),
+        icon:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:s.secondary),onTap:()=>_selectReference(r),device:null,time:null),
     ];
-    final all=from==null?<Nearby<({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap,String? device})>>[]:nearest(from,items,(i)=>i.at);
-    final list=[...all.where((n)=>n.item.device!=null&&fav.contains(n.item.device)),...all.where((n)=>n.item.device==null||!fav.contains(n.item.device))];
-    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      if(closable)Padding(padding:const EdgeInsets.fromLTRB(14,12,6,0),child:Text(S.t('nearby.title'),style:Theme.of(context).textTheme.titleMedium))
-      else const SizedBox(height:4),
-      Padding(padding:const EdgeInsets.symmetric(horizontal:14),child:Text(fromLabel,style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
-      const SizedBox(height:4),
-      Expanded(child:ListView(keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,children:[for(final n in list)ListTile(dense:true,
+    // Recent ones on top, old ones in « Plus anciens », folded (card of
+    // 11 Nov 2026, choices 1 to 5).
+    final sec=from==null?null:nearbySections(from,items,(i)=>i.at,(i)=>i.time,DateTime.now(),oldMin:_oldMin);
+    List<Nearby<_NearbyItem>> favFirst(List<Nearby<_NearbyItem>> l)=>
+      [...l.where((n)=>n.item.device!=null&&fav.contains(n.item.device)),...l.where((n)=>n.item.device==null||!fav.contains(n.item.device))];
+    final recent=favFirst(sec?.recent??[]), older=favFirst(sec?.older??[]);
+    final olderOpen=_showNearbyOld||(_teamQuery.trim().isNotEmpty&&older.isNotEmpty);
+    Widget tile(Nearby<_NearbyItem> n)=>ListTile(dense:true,
         visualDensity:const VisualDensity(vertical:-2),leading:SizedBox(width:34,child:Center(child:n.item.icon)),
         title:highlighted(n.item.title,_teamQuery,style:const TextStyle(fontSize:15,fontWeight:FontWeight.w600)),
         subtitle:Text(n.item.subtitle,maxLines:1,overflow:TextOverflow.ellipsis),
@@ -2594,7 +2596,25 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ]),
           if(n.item.device case final d?)IconButton(tooltip:S.t(fav.contains(d)?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(d),
             visualDensity:VisualDensity.compact,iconSize:18,icon:Icon(fav.contains(d)?Icons.star:Icons.star_border,color:fav.contains(d)?s.tertiary:s.outline)),
-        ]),onTap:n.item.onTap)])),
+        ]),onTap:n.item.onTap);
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      if(closable)Padding(padding:const EdgeInsets.fromLTRB(14,12,6,0),child:Text(S.t('nearby.title'),style:Theme.of(context).textTheme.titleMedium))
+      else const SizedBox(height:4),
+      Padding(padding:const EdgeInsets.symmetric(horizontal:14),child:Text(fromLabel,style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
+      const SizedBox(height:4),
+      Expanded(child:ListView(keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,children:[
+        if(sec!=null&&!recent.any((n)=>n.item.device!=null))Padding(key:const ValueKey('nearby-no-recent'),padding:const EdgeInsets.fromLTRB(16,8,16,4),
+          child:Text(S.t('nearby.noRecent'),style:TextStyle(color:s.onSurfaceVariant))),
+        for(final n in recent)tile(n),
+        if(older.isNotEmpty)...[
+          InkWell(key:const ValueKey('nearby-older'),onTap:()=>setState(()=>_showNearbyOld=!_showNearbyOld),child:Padding(
+            padding:const EdgeInsets.fromLTRB(16,10,8,2),child:Row(children:[
+              Expanded(child:Text(S.t('nearby.older',{'n':'${older.length}'}),style:Theme.of(context).textTheme.labelLarge?.copyWith(color:s.onSurfaceVariant))),
+              Icon(olderOpen?Icons.expand_less:Icons.expand_more,size:20,color:s.onSurfaceVariant),
+            ]))),
+          if(olderOpen)for(final n in older)tile(n),
+        ],
+      ])),
     ]);
   }
 
@@ -3564,3 +3584,7 @@ bool mapPanelOpen({required bool teams,required bool reference,required bool rou
 
 /// At most 6 tools pinned in the left bar.
 const railMaxPins=6;
+
+/// One line of « À proximité »: an operator or station (with its time) or a
+/// reference site (no time).
+typedef _NearbyItem=({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap,String? device,DateTime? time});

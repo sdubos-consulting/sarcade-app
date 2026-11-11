@@ -91,6 +91,17 @@ List<Nearby<T>> nearest<T>(LatLng from,Iterable<T> items,LatLng Function(T) at,{
   return out.take(limit).toList();
 }
 
+/// « À proximité » split like the Liste tab (card « Personnes, À proximité :
+/// séparer récents et anciens », 11 Nov 2026, choices 1 to 3): the same
+/// « old » threshold as the list ([sectionOf], `position_old_min`), recent
+/// ones on top and old ones apart, both sorted by distance. Items without a
+/// time (reference sites) stay with the recent ones.
+({List<Nearby<T>> recent,List<Nearby<T>> older}) nearbySections<T>(LatLng from,Iterable<T> items,LatLng Function(T) at,
+    DateTime? Function(T) time,DateTime now,{int oldMin=120,int limit=30}){
+  bool isOld(T i){final t=time(i);return t!=null&&sectionOf(t.toUtc(),now.toUtc(),oldMin:oldMin)==Section.old;}
+  return (recent:nearest(from,items.where((i)=>!isOld(i)),at,limit:limit),older:nearest(from,items.where(isOld),at,limit:limit));
+}
+
 /// Groups of markers closer than [radiusPx] on screen (Tesla « 11 »);
 /// [screen] gives the screen offset of a position.
 List<List<T>> clusterOnScreen<T>(List<T> items,Offset Function(T) screen,{double radiusPx=44}){
