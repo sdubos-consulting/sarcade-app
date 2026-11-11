@@ -128,6 +128,7 @@ import '../routes/routes_controller.dart';
 import '../routes/routes_layers.dart';
 import '../routes/route_entry_bar.dart';
 import '../routes/routes_panel.dart';
+import '../../ui/edge_swipe_back.dart';
 import '../tv/tv_view.dart';
 import '../tv/tv_nearby.dart';
 import '../tv/tv_screens_button.dart';
@@ -1093,7 +1094,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Menu « Outils »: tiles of the tools used less often.
   /// Itinéraires panel beside the map (from « Outils » on a computer, 29 Oct 2026).
-  void _openRoutesPanel()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_showResection=false;});
+  void _openRoutesPanel()=>setState((){_routesFromTools=_isCompact&&_tab==3;_tab=0;_deskPage=null;_deskId=null;_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_showResection=false;});
+  /// Itinéraire opened from the Outils tab of a phone: ← goes back there,
+  /// one step (11 Nov 2026); opened from the map, back to the map.
+  bool _routesFromTools=false;
+  /// ← of Itinéraire, Back of Android, Esc, swipe from the left edge: the
+  /// route shown → the list → where it was opened from. The routes keep
+  /// what they had, as with the former ✕.
+  void _routesBack(){
+    if(_selectedRouteId!=null){setState((){_selectedRouteId=null;_drawingRouteId=null;});return;}
+    final back=_routesFromTools&&_isCompact;
+    setState((){_showRoutesPanel=false;_drawingRouteId=null;_routesFromTools=false;});
+    if(back)_goTab(3);
+  }
 
   /// « Outils »: Itinéraires first; « Mesure » removed, the measure starts
   /// from the point menu (30 Oct 2026, 1 h 48). Phone: the « Outils » tab.
@@ -1995,8 +2008,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     });
   }
 
+  /// Same step as [_routesBack], inside the setState of [_escapePanel].
+  void _routesBackInEscape(){
+    if(_selectedRouteId!=null){_selectedRouteId=null;_drawingRouteId=null;return;}
+    _showRoutesPanel=false;_drawingRouteId=null;
+    if(_routesFromTools&&_isCompact){_tab=3;_builtTabs.add(3);}
+    _routesFromTools=false;
+  }
   bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
-    case 'teams':_showPanel=false; case 'messages':_showMessagesPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
+    case 'teams':_showPanel=false; case 'messages':_showMessagesPanel=false; case 'routes':_routesBackInEscape();
     case 'reference':_showReferencePanel=false;_selectedReference=null; case 'chat':_chatPeer=null; case 'resection':_showResection=false;_resectionCtl.result=null;
     default:_deskId=null;_deskPage=null;}}));}
   final ResectionController _resectionCtl=ResectionController();
@@ -3095,7 +3115,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // under the status bar; folded while points are added on the map.
     final fullPanel=sidePanelFullScreen(screenWidth);
     final routeEntry=fullPanel&&_showRoutesPanel&&_drawingRouteId!=null?_routes.route(_drawingRouteId!):null;
-    Widget routesPanel()=>RoutesPanel(onClose:_showMapOnly,onOpenIn:(p,l)=>unawaited(_openElsewhere(p,l)),
+    Widget routesPanel()=>RoutesPanel(onClose:_routesBack,onOpenIn:(p,l)=>unawaited(_openElsewhere(p,l)),
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
           onSelect:(id)=>setState((){_selectedRouteId=id;if(id==null)_drawingRouteId=null;}),
@@ -3418,7 +3438,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       
         ]),
         if(fullPanel&&_showResection&&_pickPoint==null)phonePanel(_resectionPanel(screenWidth)),
-        if(fullPanel&&_showRoutesPanel&&routeEntry==null)phonePanel(routesPanel()),
+        if(fullPanel&&_showRoutesPanel&&routeEntry==null)phonePanel(EdgeSwipeBack(onBack:_routesBack,child:routesPanel())),
         ]),
         _deskPage??const SizedBox.shrink(),
         ])),

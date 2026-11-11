@@ -221,7 +221,7 @@ const Texts _fr={
 
   // General
   'app.title':'SARCADE',
-  'common.cancel':'Annuler','common.ok':'OK','common.save':'Enregistrer','common.close':'Fermer',
+  'common.cancel':'Annuler','common.ok':'OK','common.save':'Enregistrer','common.close':'Fermer','common.back':'Retour',
   'common.retry':'Réessayer','common.copy':'Copier','common.copied':'Copié',
   'webUpdate.available':'Nouvelle version disponible','webUpdate.loaded':'Version {v} chargée','webUpdate.notLoaded':'Version {v} toujours en place ({e} attendue) : rechargez la page','webUpdate.reload':'Mettre à jour',
   'notifications.prompt':'Activer les notifications pour être averti des messages, même quand SARCADE est en arrière-plan.','notifications.enable':'Activer','notifications.later':'Plus tard','notifications.refused':'Notifications refusées : les autoriser dans les paramètres du site du navigateur.',
@@ -959,7 +959,7 @@ const Texts _en={
   'about.linkFailed':'Unable to open this link. Check that a browser is available.',
 
   'app.title':'SARCADE',
-  'common.cancel':'Cancel','common.ok':'OK','common.save':'Save','common.close':'Close',
+  'common.cancel':'Cancel','common.ok':'OK','common.save':'Save','common.close':'Close','common.back':'Back',
   'common.retry':'Retry','common.copy':'Copy','common.copied':'Copied',
   'webUpdate.available':'New version available','webUpdate.loaded':'Version {v} loaded','webUpdate.notLoaded':'Version {v} still running ({e} expected): reload the page','webUpdate.reload':'Update',
   'notifications.prompt':'Turn on notifications to be told about messages, even when SARCADE is in the background.','notifications.enable':'Turn on','notifications.later':'Later','notifications.refused':'Notifications refused: allow them in the browser site settings.',

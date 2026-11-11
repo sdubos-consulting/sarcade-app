@@ -25,8 +25,8 @@ class RoutesPanel extends StatelessWidget {
   final ValueChanged<List<LatLng>> onFocus;
   /// « Ouvrir dans… » a waypoint in Waze, Google Maps… (31 Oct 2026).
   final void Function(LatLng point,String label)? onOpenIn;
-  /// ✕ of the list (phone, full screen; card « bloqué dans Itinéraires »,
-  /// 31 Oct 2026): back to the map.
+  /// ← of the list (phone, full screen; card « bloqué dans Itinéraires »,
+  /// 31 Oct 2026, then ← at the top left, 11 Nov 2026): one step back.
   final VoidCallback? onClose;
   const RoutesPanel({super.key,this.onOpenIn,this.onClose,required this.controller,required this.api,required this.actorId,required this.selectedRouteId,
     required this.drawingRouteId,required this.groups,required this.onSelect,required this.onDraw,required this.onDrawClosure,
@@ -36,13 +36,16 @@ class RoutesPanel extends StatelessWidget {
     final selected=selectedRouteId==null?null:controller.route(selectedRouteId!);
     return Stack(children:[Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       // Header (card « Itinéraires : liste lisible et rangée », lot 29.5):
-      // « Itinéraires », link dot, ✕; refresh by pulling the list.
-      Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[
+      // « Itinéraires », link dot; refresh by pulling the list. Full screen
+      // on a phone: ← at the top left as the other screens of Outils, one
+      // step back (route → list → Outils), no more ✕ (11 Nov 2026).
+      Padding(padding:EdgeInsets.fromLTRB(onClose!=null?4:14,8,6,0),child:Row(children:[
+        if(onClose!=null)IconButton(key:const ValueKey('routes-back'),tooltip:S.t('common.back'),
+          onPressed:()=>selected!=null?onSelect(null):onClose!(),icon:const Icon(Icons.arrow_back)),
         Expanded(child:Text(S.t('routes.title'),maxLines:1,softWrap:false,overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
         if(selected!=null)IconButton(tooltip:S.t('routes.refresh'),onPressed:controller.refresh,icon:const Icon(Icons.refresh)),
         // Full screen on a phone: the map pill is hidden, the link shows here.
         if(onClose!=null)const LinkStatusPill(),
-        if(onClose!=null)IconButton(key:const ValueKey('routes-close'),tooltip:S.t('common.close'),onPressed:onClose,icon:const Icon(Icons.close)),
       ])),
       Expanded(child:selected==null?RefreshIndicator(onRefresh:()async{await controller.refresh();},child:_list(context)):_details(context,selected)),
     ]),
@@ -138,7 +141,8 @@ class RoutesPanel extends StatelessWidget {
     final group=groups.where((g)=>g.id==r.assignedGroupId).firstOrNull;
     return ListView(children:[
       ListTile(
-        leading:IconButton(tooltip:S.t('common.close'),onPressed:()=>onSelect(null),icon:const Icon(Icons.arrow_back)),
+        // Phone: the ← of the header goes back to the list (one ← only).
+        leading:onClose!=null?null:IconButton(tooltip:S.t('common.back'),onPressed:()=>onSelect(null),icon:const Icon(Icons.arrow_back)),
         title:Text(r.name,style:const TextStyle(fontWeight:FontWeight.bold)),
         subtitle:Text('${S.t('routes.profile.${r.profile}')} · ${S.t('routes.leg.${r.defaultLegMode}')} · ${formatDistance(lengths.isEmpty?0:lengths.last.cumulative)}'
           '${group!=null?'\n${S.t('routes.assignedTo',{'name':group.name})}':''}'),

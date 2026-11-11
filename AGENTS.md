@@ -36,6 +36,10 @@ Décision du porteur, 28 octobre 2026, 23 h 10.
 7. **Découpage** (23 h 15) : Claude = serveur (dont toutes les migrations), Paramètres, structure de l'application (rail, onglets, démarrage, pastille des liaisons) ; ChatGPT = carte et relevés (signal recherché, sélection, édition graphique, filtres, couches, couleurs des opérateurs, favoris dans Équipes, liste par fraîcheur). Messages, Fichiers, Météo, Itinéraires : au premier libre, sur attribution du porteur.
 6. **Coffre partagé** : `git pull` juste avant d'écrire, petit commit juste après ; section « Qui fait quoi » dans la note de reprise.
 
+## Consignes d'interface
+Règles du porteur, à respecter sur tout écran nouveau ou modifié.
+1. **Flèche ← en haut à gauche** : un écran ouvert depuis un menu (Outils, Paramètres, une liste…) se ferme par la flèche ← en haut à gauche, jamais par une croix × à droite (fiche « Outils : fermer chaque écran avec la flèche retour en haut à gauche », 11 novembre 2026). Le geste retour du système fait la même chose : glisser depuis le bord gauche sur iPhone, Retour sur Android, Échap sur Windows et le web. Un écran dessiné par-dessus la carte plutôt qu'ouvert comme une page utilise `EdgeSwipeBack` (`lib/src/ui/edge_swipe_back.dart`) pour le glissement iPhone.
+
 ## Pièges connus
 - Test Android « urgent message notification not shown » : stabilisé le 31 octobre 2026 (attente de la notification via `getActiveNotifications`, puis 4 s réelles). S'il revient, relancer le job une fois avant de chercher un bug.
 - `lib/src/features/map/operational_map_page.dart` est gros et souvent en conflit : fusionner `main` dans la branche avant la PR.
