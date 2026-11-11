@@ -213,7 +213,7 @@ void main(){
 
     testWidgets('« Afficher le pourcentage de batterie » in Outils',(tester) async {
       await tester.pumpWidget(const MaterialApp(home:Scaffold(body:LoraBatteryShownTile())));
-      expect(find.text('Afficher le pourcentage de batterie'),findsOneWidget);
+      expect(find.text('Pourcentage de batterie'),findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('lora-battery-shown')));
       await tester.pump();
       expect(LoraBatteryMonitor.instance.percentShown,isFalse);

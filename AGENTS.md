@@ -42,6 +42,14 @@ Règles du porteur, à respecter sur tout écran nouveau ou modifié.
 
 2. **Retour d'un seul cran** : toute sous-page s'ouvre comme une vraie page (route poussée, ou pile de l'onglet `_toolsNav` / `_settingsNav`), avec son propre titre ; la flèche ← et le geste retour remontent d'un seul cran, jamais plus (fiche « Navigation : la flèche retour remonte d'un seul cran sur tous les écrans », 11 novembre 2026). Une sous-vue affichée à la place du contenu de la même page (variable d'état du type `_showOld`, dossier courant) est interdite, sauf si la page la déclare avec un `PopScope(canPop:…)` qui ramène à la vue parente : le Retour d'Android passe par `TabStack.maybeBack()`, qui respecte ces `PopScope`. Un écran ouvert depuis un autre onglet (outil ouvert depuis la carte) revient à cet onglet.
 
+3. **Textes courts** (fiche « Textes de l'application : raccourcir partout », 11 novembre 2026), dans `lib/src/l10n/strings.dart`, en français et en anglais :
+   - titre de 4 mots au plus, sans verbe quand c'est possible ;
+   - sous-titre d'une ligne au plus, seulement s'il apprend quelque chose que le titre ne dit pas ;
+   - pas de « où » (« sur la carte, en haut à droite ») quand l'utilisateur le voit déjà ;
+   - pas de rappel de ce qui ne change pas (« les alertes restent actives ») ;
+   - les explications longues vont dans une aide (ⓘ) ou disparaissent ;
+   - messages d'erreur et de sécurité (SOS, alertes) : complets et compréhensibles sans contexte ; textes juridiques (licences, mentions, confidentialité) : non raccourcis.
+
 ## Pièges connus
 - Test Android « urgent message notification not shown » : stabilisé le 31 octobre 2026 (attente de la notification via `getActiveNotifications`, puis 4 s réelles). S'il revient, relancer le job une fois avant de chercher un bug.
 - `lib/src/features/map/operational_map_page.dart` est gros et souvent en conflit : fusionner `main` dans la branche avant la PR.
