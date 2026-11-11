@@ -1,0 +1,66 @@
+import '../platform/platform_services.dart';
+
+/// Server of the applications by default (decision of 23 October 2026),
+/// always changeable in the settings; a local address works without sign-in.
+const defaultServerUrl='https://app.sarcade.org';
+
+class AppConfig {
+  final String serverUrl, eventId, deviceId, tileUrl, tileAttribution;
+  /// 'system', 'fr' or 'en' (note « Langues de l'application »).
+  final String language;
+  /// Radio callsign of the operator (APRS positions attach to this terminal)
+  /// and consent to have positions relayed on local radio.
+  final String callsign;
+  final bool aprsTxConsent;
+  /// Consent of the operator to ring the immediate messages in Do Not
+  /// Disturb mode (Android, decision of 10 Oct 2026).
+  final bool immediateBypassDnd;
+  /// Colour of new drawings (profile), null: the application default.
+  final int? drawColor;
+  const AppConfig({required this.serverUrl,required this.eventId,required this.deviceId,required this.tileUrl,required this.tileAttribution,
+    this.language='system',this.callsign='',this.aprsTxConsent=false,this.immediateBypassDnd=false,this.drawColor});
+  factory AppConfig.fromEnvironment()=>AppConfig(
+    // The web app is served by the SARCADE server itself: same origin as the API.
+    serverUrl:const bool.hasEnvironment('SARCADE_SERVER_URL')?const String.fromEnvironment('SARCADE_SERVER_URL'):(servingOrigin()??defaultServerUrl),
+    eventId:const String.fromEnvironment('SARCADE_EVENT_ID',defaultValue:'evt-demo'),
+    deviceId:const String.fromEnvironment('SARCADE_DEVICE_ID',defaultValue:'device-demo'),
+    tileUrl:const String.fromEnvironment('SARCADE_TILE_URL',defaultValue:'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+    tileAttribution:const String.fromEnvironment('SARCADE_TILE_ATTRIBUTION',defaultValue:'© OpenStreetMap contributors'),
+    language:const String.fromEnvironment('SARCADE_LANGUAGE',defaultValue:'system'),
+  );
+
+  /// Runtime settings saved on the device override the build-time defaults.
+  /// Only the operator-specific fields are stored, tile settings stay build-time.
+  factory AppConfig.fromStored(Map<String,dynamic> j,AppConfig fallback)=>fallback.copyWith(
+    serverUrl:j['server_url'] as String?,
+    eventId:j['event_id'] as String?,
+    deviceId:j['device_id'] as String?,
+    language:j['language'] as String?,
+    callsign:j['callsign'] as String?,
+    aprsTxConsent:j['aprs_tx_consent'] as bool?,
+    immediateBypassDnd:j['immediate_bypass_dnd'] as bool?,
+    drawColor:j['draw_color'] as int?,
+  );
+
+  Map<String,dynamic> toStored()=>{'server_url':serverUrl,'event_id':eventId,'device_id':deviceId,
+    'language':language,'callsign':callsign,'aprs_tx_consent':aprsTxConsent,'immediate_bypass_dnd':immediateBypassDnd,if(drawColor!=null)'draw_color':drawColor};
+
+  AppConfig copyWith({String? serverUrl,String? eventId,String? deviceId,String? tileUrl,String? tileAttribution,
+      String? language,String? callsign,bool? aprsTxConsent,bool? immediateBypassDnd,int? drawColor})=>AppConfig(
+    serverUrl:serverUrl??this.serverUrl,
+    eventId:eventId??this.eventId,
+    deviceId:deviceId??this.deviceId,
+    tileUrl:tileUrl??this.tileUrl,
+    tileAttribution:tileAttribution??this.tileAttribution,
+    language:language??this.language,
+    callsign:callsign??this.callsign,
+    aprsTxConsent:aprsTxConsent??this.aprsTxConsent,
+    immediateBypassDnd:immediateBypassDnd??this.immediateBypassDnd,
+    drawColor:drawColor??this.drawColor,
+  );
+
+  bool get isComplete=>serverUrl.trim().isNotEmpty&&eventId.trim().isNotEmpty&&deviceId.trim().isNotEmpty;
+
+  /// Identity of the operational session, used to rebuild the map when it changes.
+  String get sessionKey=>'$serverUrl|$eventId|$deviceId';
+}

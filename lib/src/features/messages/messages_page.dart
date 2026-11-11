@@ -1,0 +1,1373 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'conversation_row.dart';
+import 'message_edit.dart';
+import 'reactions.dart';
+import 'important.dart';
+import 'forward.dart';
+import 'mute.dart';
+import 'mentions.dart';
+import 'conversation_search.dart';
+import 'swipe_reply.dart';
+import 'pdf_export.dart';
+import '../ptt/ptt.dart';
+import '../ptt/ptt_bar.dart';
+import 'typing.dart';
+import '../../services/realtime_service.dart' show RealtimeService;
+import '../../services/power_state.dart' show PowerState;
+import '../../ui/menu_entry.dart';
+import '../../ui/keyboard.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:pasteboard/pasteboard.dart';
+import 'package:uuid/uuid.dart';
+import '../../l10n/strings.dart';
+import '../../models/comm_group.dart';
+import '../../operations/event_settings.dart' show eventModules;
+import '../../account/rights.dart' show RightsState;
+import 'conversations.dart';
+import 'operator_avatar.dart';
+import '../../models/message.dart';
+import '../../models/message_status.dart';
+import '../../models/message_unread.dart';
+import 'package:flutter/services.dart';
+import '../groups/group_editor_page.dart';
+import '../groups/group_templates.dart' show templateAdded;
+import '../../offline/local_store.dart';
+import '../../offline/sync_service.dart';
+import '../../platform/platform_services.dart';
+import '../../services/notification_service.dart';
+import '../../services/sarcade_api.dart';
+import 'photo_attachment.dart';
+import 'message_deletion.dart';
+import 'message_selection.dart';
+import 'messages_nav.dart';
+import 'chat_bottom.dart';
+import '../../services/notification_keys.dart';
+import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
+import '../dictation/dictation_button.dart';
+import '../../ui/bottom_menu.dart';
+import '../../ui/action_buttons.dart';
+import '../tv/tv_nearby.dart';
+import '../../ui/link_status.dart';
+import '../meshcore/meshcore_chat.dart' show MeshCoreChats;
+import '../meshcore/meshcore_chat_page.dart' show MeshCoreThreadTiles, meshCoreThreadTitle, openMeshCoreChat;
+import '../meshtastic/meshtastic_chat.dart' show MeshtasticChats;
+import '../meshtastic/meshtastic_chat_page.dart' show MeshtasticThreadTiles, meshtasticThreadTitle, openMeshtasticChat;
+import '../../ui/app_sheet.dart';
+import '../../ui/theme.dart' show searchInputBorder;
+
+class MessagesPage extends StatefulWidget {
+ final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
+ /// Text prepared by another screen (a point sent from the measure).
+ final String? initialText;
+ /// Direct chat to open (« Discuter » from an operator).
+ final String? initialPeer;
+ /// False while the screen is kept behind another tab (phone): nothing is
+ /// marked seen or read until the operator comes back to it.
+ final bool active;
+ /// A new press on Messages comes back to the list (lot 10C).
+ final MessagesNavigator? navigator;
+ /// Side panel (chat opened from an operator's sheet): ✕ closes it.
+ final VoidCallback? onClose;
+ const MessagesPage({super.key,required this.api,required this.eventId,required this.actorId,required this.sync,required this.store,this.initialText,this.initialPeer,this.active=true,this.navigator,this.onClose});
+ @override State<MessagesPage> createState()=>_MessagesPageState();
+}
+class _MessagesPageState extends State<MessagesPage>{
+ final _text=TextEditingController(); final _uuid=const Uuid(); String _priority='routine';
+ bool _picking=false;
+ /// Conversation open (« Tous », a channel, a direct chat): it is also the
+ /// recipient of what is written.
+ late String _conv=widget.initialPeer!=null?directKey(widget.initialPeer!):allKey;
+ String? get _groupId=>groupOf(_conv);
+
+ final _watch=<StreamSubscription>[];
+ /// Opening on the last message (lot 19), « ↑ N non lus », ⌄ button,
+ /// automatic « read ».
+ final _scroll=ScrollController();
+ /// The « N non lus » separator, seen or not (« ↑ N non lus »).
+ var _separator=SeparatorWatch();
+ GlobalKey get _separatorKey=>_separator.key;
+ bool _atBottom=true; int _maxBuilt=-1; final _readSent=<String>{};
+ /// Unread when the screen opened: shown in bold; everything shown counts as
+ /// seen (the pastille of the map goes back to zero).
+ Set<String> _unreadAtOpen={};
+ /// Computer keyboard: Enter sends, Alt+Enter or Shift+Enter adds a line.
+ final bool _enterSends=enterSends(defaultTargetPlatform.name);
+ // Messages received while this screen is open appear without the button.
+ @override void initState(){
+   super.initState();
+   if(widget.initialText!=null)_text.text=widget.initialText!;
+   _text.addListener(_onTextChanged);
+   widget.navigator?.attach(_backFn);
+   _selection.addListener(_onSelection);
+   Reactions.instance.load(widget.store,widget.eventId);
+   Reactions.instance.addListener(_onSelection);
+   Important.instance.load(widget.store);
+   Mutes.instance.load(widget.store,widget.eventId);
+   unawaited(Ptt.instance.load(widget.api,widget.eventId,widget.actorId));
+   Mutes.instance.addListener(_onSelection);
+   Important.instance.addListener(_onSelection);
+   Typing.instance.addListener(_onTyping);
+   unawaited(_loadReactions());
+   _refreshGroups();
+   _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
+     deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
+   _markSeen();
+   for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){
+     if(widget.active)_markSeen();
+     if(!mounted)return;
+     final follow=_atBottom; setState((){});
+     // At the bottom, a new message stays in view (as on WhatsApp).
+     if(follow)WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
+   }));}
+   _scroll.addListener((){
+     final atBottom=chatAtBottom(_scroll);
+     if(atBottom!=_atBottom&&mounted)setState(()=>_atBottom=atBottom);
+     _watchSeparator();
+   });
+   // Always on the last message, even when everything is unread (lot 19).
+   WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
+ }
+
+ void _toBottom(){
+   chatJumpToBottom(_scroll,alive:()=>mounted);
+   // Short conversation, separator already on screen: no « ↑ N non lus ».
+   _watchSeparator();
+ }
+ void _watchSeparator()=>_separator.check(alive:()=>mounted,changed:()=>setState((){}));
+
+ /// « ↑ N non lus »: up to the separator, the first unread message under it.
+ Future<void> _toUnread() async {
+   final shown=_messages; final first=firstUnreadIndex(shown,_unreadAtOpen);
+   // Leaving the bottom: the list no longer sticks to the last message.
+   setState((){_separator.seen=true;_atBottom=false;});
+   if(first==null)return;
+   await chatScrollToKey(_scroll,_separatorKey,first,shown.length,alive:()=>mounted);
+ }
+
+ /// A received message shown on screen goes to « read » by itself.
+ @override void didUpdateWidget(MessagesPage old){
+   super.didUpdateWidget(old);
+   // Tab left: no selection kept behind the map (Back would stay on it).
+   if(!widget.active&&old.active)_selection.clear(notify:false);
+   // Back on the Messages tab: same opening as a new screen (last message).
+   if(widget.active&&!old.active){
+     _refreshGroups();
+     _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
+       deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
+     _separator=SeparatorWatch();
+     _markSeen();
+     WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
+   }
+ }
+
+ void _autoRead(SarcadeMessage m,List<SarcadeAck> acks){
+   if(!widget.active)return;
+   if(_readSent.contains(m.id)||!needsAutoRead(message:m,deviceId:widget.actorId,acks:acks))return;
+   _readSent.add(m.id);
+   WidgetsBinding.instance.addPostFrameCallback((_)=>unawaited(_ack(m,'read')));
+ }
+
+ Widget _ticks(SarcadeMessage m,List<SarcadeAck> acks){
+   final status=sentStatus(pending:widget.sync.isPending(m.id),senderId:m.senderId,acks:acks);
+   final readers=readersCount(m.senderId,acks);
+   final several=m.recipientIds.isEmpty||m.recipientIds.any((r)=>r.startsWith('group:'));
+   final (icon,color)=switch(status){
+     SentStatus.pending=>(Icons.schedule,Colors.grey),
+     SentStatus.sent=>(Icons.done,Colors.grey),
+     SentStatus.received=>(Icons.done_all,Colors.grey),
+     SentStatus.read=>(Icons.done_all,Colors.blue),
+   };
+   // One acknowledgement per bubble (30 Oct 2026, 2 h 49): « ✓✓ 3/4 »
+   // (read / received) next to the time, the detail on touch.
+   final sum=ackSummary(m.senderId,acks);
+   return Tooltip(message:S.t('messages.status.${status.name}'),child:InkWell(onTap:several?()=>_showInfo(m,acks):null,child:Row(mainAxisSize:MainAxisSize.min,children:[
+     Icon(icon,size:18,color:color),
+     if(several&&sum.received>0)Padding(padding:const EdgeInsets.only(left:2),child:Text(ackCount(read:readers,received:sum.received),
+       semanticsLabel:S.t('messages.ackSummary',{'r':readers,'n':sum.received}),style:const TextStyle(fontSize:11,color:Color(0xFF53BDEB)))),
+   ])));
+ }
+ /// « Supprimer pour moi »: hidden on this device only.
+ Set<String> get _hidden=>parseHidden(widget.store.preference(hiddenMessagesKey(widget.eventId)));
+ Iterable<SarcadeMessage> get _eventMessages{final h=_hidden;return widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId&&!h.contains(m.id));}
+ void _markSeen()=>unawaited(widget.store.markMessagesSeen(widget.eventId,_eventMessages.map((m)=>m.id)));
+
+ /// Enter on a computer keyboard sends; Alt+Enter and Shift+Enter insert a
+ /// new line. Text being composed (accents, IME) is left alone.
+ KeyEventResult _onKey(FocusNode node,KeyEvent event){
+   // Ctrl+V (Cmd+V): an image in the clipboard is offered as a photo; the
+   // text, if any, is pasted as usual (card « coller une image »).
+   if(event is KeyDownEvent&&event.logicalKey==LogicalKeyboardKey.keyV&&
+       (HardwareKeyboard.instance.isControlPressed||HardwareKeyboard.instance.isMetaPressed)){
+     unawaited(_pasteImage(quiet:true));
+     return KeyEventResult.ignored;
+   }
+   if(!_enterSends||event is! KeyDownEvent)return KeyEventResult.ignored;
+   if(event.logicalKey!=LogicalKeyboardKey.enter&&event.logicalKey!=LogicalKeyboardKey.numpadEnter)return KeyEventResult.ignored;
+   if(_text.value.composing.isValid)return KeyEventResult.ignored;
+   final keys=HardwareKeyboard.instance;
+   if(keys.isAltPressed||keys.isShiftPressed){
+     final v=_text.value; final sel=v.selection.isValid?v.selection:TextSelection.collapsed(offset:v.text.length);
+     final text=v.text.replaceRange(sel.start,sel.end,'\n');
+     _text.value=TextEditingValue(text:text,selection:TextSelection.collapsed(offset:sel.start+1));
+     return KeyEventResult.handled;
+   }
+   _send();
+   return KeyEventResult.handled;
+ }
+
+ List<CommGroup> get _groups=>widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList();
+ CommGroup? get _group{
+   final id=_groupId;
+   for(final g in _groups){if(id==null?(_conv==allKey&&g.kind=='all'):g.id==id)return g;}
+   return null;
+ }
+ Map<String,CommGroup> get _byId=>{for(final g in _groups)g.id:g};
+
+ Future<void> _refreshGroups() async {
+   try{
+     final list=await widget.api.groups(widget.eventId);
+     for(final g in list){
+       if(widget.sync.isPending(g['id'] as String))continue;
+       if(g['deleted']==true){await widget.store.deleteGroup(g['id'] as String);}else{await widget.store.saveGroup(g);}
+     }
+     if(mounted)setState((){});
+   }catch(_){/* offline: groups known on the device */}
+ }
+
+ List<SarcadeMessage> get _messages{
+   final by=_byId;
+   final shown=_eventMessages.where((m)=>conversationOf(m,widget.actorId,by)==_conv);
+   return shown.toList()..sort((a,b)=>a.createdAt.compareTo(b.createdAt));
+ }
+ Map<String,List<SarcadeAck>> get _acks {
+   final out=<String,List<SarcadeAck>>{};
+   for(final j in widget.store.acks()){final a=SarcadeAck.fromJson(j);(out[a.messageId]??=[]).add(a);}
+   return out;
+ }
+ // Phones, tablets and the web app can open the camera; desktop apps pick a file.
+ static bool get _hasCamera=>kIsWeb||defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS;
+
+ void _snack(String text){if(!mounted)return;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(text)));}
+
+ /// Recipients frozen at sending: the group, a direct recipient, or nobody
+ /// (general broadcast).
+ List<String> _recipients()=>recipientsFor(_conv,_byId);
+
+ bool get _canWrite=>_group?.canSend(widget.actorId)??true;
+
+ Future<void> _post(String body,{List<SarcadeAttachment> attachments=const []}) async {
+   if(!_canWrite)return;
+   final m=SarcadeMessage(id:_uuid.v4(),eventId:widget.eventId,senderId:widget.actorId,recipientIds:_recipients(),priority:_priority,body:body,createdAt:DateTime.now().toUtc(),attachments:attachments,
+     replyTo:_replyTo?.id);
+   await widget.store.cacheMessage(m.toJson());
+   await widget.sync.queue(objectId:m.id,objectType:'message',payload:m.toJson());
+   if(mounted)setState(()=>_replyTo=null); _text.clear();
+ }
+ Future<void> _send() async {
+   final body=_text.text.trim(); if(body.isEmpty)return;
+   // Phone, tablet: the keyboard closes after sending, the bottom menu is
+   // visible again (lot 29); computer: the cursor stays to go on writing.
+   if(touchKeyboard)closeKeyboard();
+   await _post(body);
+ }
+
+ Future<void> _photo() async {
+   if(_picking)return;
+   var source=ImageSource.gallery;
+   if(_hasCamera){
+     final chosen=await showAppSheet<ImageSource>(context:context,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+       ListTile(leading:const Icon(Icons.photo_camera),title:Text(S.t('messages.takePhoto')),onTap:()=>Navigator.pop(c,ImageSource.camera)),
+       ListTile(leading:const Icon(Icons.photo_library),title:Text(S.t('messages.pickImage')),onTap:()=>Navigator.pop(c,ImageSource.gallery)),
+     ])));
+     if(chosen==null)return;
+     source=chosen;
+   }
+   setState(()=>_picking=true);
+   try{
+     // Resized and recompressed on the device: a few hundred kB, quick to send by radio relay or 4G.
+     final shot=await TvNearbyGate.during(()=>ImagePicker().pickImage(source:source,maxWidth:1920,maxHeight:1920,imageQuality:80));
+     if(shot==null)return;
+     final bytes=await shot.readAsBytes();
+     await _sendPhotoBytes(bytes,photoMimeType(shot.mimeType,shot.name));
+   }catch(e){
+     _snack(S.t('messages.photoFailed',{'error':e}));
+   }finally{
+     if(mounted)setState(()=>_picking=false);
+   }
+ }
+
+ /// An image pasted or inserted by the keyboard (card « Messages : coller
+ /// une image », 9 Nov 2026): reduced like a photo, then the same preview.
+ Future<void> _sendPastedImage(Uint8List raw,{String? mime}) async {
+   if(_picking)return;
+   setState(()=>_picking=true);
+   try{
+     final ready=await compute(_preparePasted,(raw,mime));
+     if(ready==null){_snack(S.t('messages.pasteNone'));return;}
+     await _sendPhotoBytes(ready.bytes,ready.mime);
+   }catch(e){
+     _snack(S.t('messages.photoFailed',{'error':e}));
+   }finally{
+     if(mounted)setState(()=>_picking=false);
+   }
+ }
+
+ /// « Coller une image » (menu of the field) and Ctrl+V: the image of the
+ /// clipboard; [quiet]: nothing said when there is none (text pasted).
+ Future<void> _pasteImage({bool quiet=false}) async {
+   Uint8List? raw;
+   try{raw=await Pasteboard.image;}catch(_){raw=null;}
+   if(raw==null||raw.isEmpty){
+     if(!quiet)_snack(S.t('messages.pasteNone'));
+     return;
+   }
+   await _sendPastedImage(raw);
+ }
+
+ /// Preview with a caption, then the photo is kept locally and queued.
+ Future<void> _sendPhotoBytes(Uint8List bytes,String mime) async {
+     if(bytes.length>maxPhotoBytes){_snack(S.t('messages.photoTooLarge'));return;}
+     if(!mounted)return;
+     final caption=await showDialog<String>(context:context,builder:(_)=>_PhotoPreviewDialog(bytes:bytes,initialCaption:_text.text.trim()));
+     if(caption==null)return;
+     final now=DateTime.now().toUtc();
+     final fileId=_uuid.v4();
+     final name=photoFileName(now,mime);
+     // Kept locally first: the photo survives a network loss and is sent before its message.
+     await widget.store.saveAttachment(fileId,bytes);
+     await widget.store.queueUpload({'file_id':fileId,'event_id':widget.eventId,'sender_id':widget.actorId,'name':name,'mime_type':mime,'created_at':now.toIso8601String()});
+     await _post(caption.isEmpty?S.t('messages.photoDefault'):caption,attachments:[SarcadeAttachment(fileId:fileId,name:name,mimeType:mime,sizeBytes:bytes.length)]);
+ }
+
+ Future<void> _ack(SarcadeMessage m,String status) async {
+   final a=SarcadeAck(id:_uuid.v4(),eventId:widget.eventId,messageId:m.id,actorId:widget.actorId,status:status,time:DateTime.now().toUtc());
+   await widget.store.cacheAck(a.toJson());
+   await widget.sync.queue(objectId:a.id,objectType:'ack',payload:a.toJson());
+   // An answer stops the reminders of an immediate message.
+   await NotificationService().answered(m.id,status,key:messageNotificationKey(m));
+   if(mounted)setState((){});
+ }
+
+ Future<void> _editGroup(CommGroup? initial) async {
+   final edit=await Navigator.push<GroupEdit>(context,MaterialPageRoute(builder:(_)=>GroupEditorPage(eventId:widget.eventId,actorId:widget.actorId,initial:initial)));
+   if(edit==null)return;
+   final g=edit.group;
+   if(edit.deleted){
+     await widget.store.deleteGroup(g.id);
+     await widget.sync.queue(objectId:g.id,objectType:'comm_group',action:'delete',payload:{
+       'id':g.id,'event_id':widget.eventId,'updated_by':widget.actorId,'updated_at':DateTime.now().toUtc().toIso8601String()});
+     if(mounted)setState(()=>_conv=allKey);
+     return;
+   }
+   await widget.store.saveGroup(g.toJson());
+   await widget.sync.queue(objectId:g.id,objectType:'comm_group',action:initial==null?'create':'update',payload:g.toJson());
+   if(mounted)setState(()=>_conv=g.kind=='all'?allKey:(g.archived?allKey:groupKey(g.id)));
+   // Saved: said in so many words (lot 29).
+   if(mounted)_snack(S.t('groups.saved'));
+ }
+
+
+ /// The round button switches between the microphone and « Envoyer ».
+ bool _wasEmpty=true;
+ void _onTextChanged(){_signalTyping();_onMentionQuery();final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
+
+ late final bool Function() _backFn=_backToList;
+ bool _wide=false;
+ /// Conversation open (phone, narrow screen): back to the list, the draft
+ /// stays in this conversation. List shown, or computer (list always
+ /// visible): false, Messages closes.
+ bool _backToList(){
+   if(_selection.clear())return true;
+   if(_wide||!_chatOpen||!mounted)return false;
+   setState(()=>_chatOpen=false);
+   return true;
+ }
+ @override void dispose(){_findCtl.dispose();Mutes.instance.removeListener(_onSelection);Important.instance.removeListener(_onSelection);_typingTimer?.cancel();Typing.instance.removeListener(_onTyping);Reactions.instance.removeListener(_onSelection);_selection.removeListener(_onSelection);_selection.dispose();_selectFocus.dispose();_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_searchCtl.dispose();_scroll.dispose();super.dispose();}
+
+ Future<void> _addTemplate() async {
+   try{
+     final n=await widget.api.addGroupTemplate(widget.eventId,'adrasec');
+     await _refreshGroups();
+     _snack(S.t('groups.addedAdrasec',{'n':n}));
+   }catch(_){
+     _snack(S.t('event.offline'));
+   }
+ }
+
+ /// Phone (29 Oct 2026, like WhatsApp): the list of the conversations first,
+ /// a touch opens one full screen; the arrow comes back to the list. Opened
+ /// for a purpose (a chat with an operator, a text to send): the chat at once.
+ final _drafts=ConversationDrafts();
+ late bool _chatOpen=widget.initialPeer!=null||widget.initialText!=null;
+
+ void _open(String key){
+   if(!_chatOpen)setState(()=>_chatOpen=true);
+   if(key==_conv)return;
+   _closeFind();
+   _selection.clear(notify:false);
+   _drafts.keep(_conv,_text.text); _text.text=_drafts.take(key);
+   setState((){_conv=key;_maxBuilt=-1;_separator=SeparatorWatch();_atBottom=true;});
+   WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
+ }
+
+ String _convName(String key,Map<String,CommGroup> by){
+   if(key==allKey)return by.values.firstWhere((g)=>g.kind=='all',orElse:()=>CommGroup(id:'',eventId:'',name:S.t('messages.everyone'),createdBy:'',updatedBy:'',updatedAt:DateTime(2000))).name;
+   final g=groupOf(key); if(g!=null)return by[g]?.name??g;
+   return peerOf(key)??key;
+ }
+
+ /// Conversations: « Tous », the channels, then the direct chats.
+ List<String> _conversations(Map<String,CommGroup> by){
+   return [allKey,for(final g in sortedGroups(_groups))if(g.kind!='all')groupKey(g.id),
+     for(final p in {...directPeers(_eventMessages,widget.actorId,by),if(peerOf(_conv)!=null)peerOf(_conv)!})directKey(p)];
+ }
+
+ /// Unread messages of a conversation (received, not yet read by me).
+ int _unreadIn(String key,Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks)=>_eventMessages.where((m)=>
+   m.senderId!=widget.actorId&&conversationOf(m,widget.actorId,by)==key
+   &&!(acks[m.id]??const []).any((a)=>a.actorId==widget.actorId&&a.status!='received')).length;
+
+ /// Chat colours (« Messages plus graphiques », 29 Oct 2026): plain light
+ /// beige background, pale green bubbles for mine, white for the others;
+ /// the same roles at night.
+ bool get _night=>Theme.of(context).brightness==Brightness.dark;
+ Color get _chatBg=>_night?const Color(0xFF0B141A):const Color(0xFFEFEAE2);
+ Color get _mineBg=>_night?const Color(0xFF005C4B):const Color(0xFFD9FDD3);
+ Color get _otherBg=>_night?const Color(0xFF202C33):Colors.white;
+
+ /// Conversation list filters and search (computer).
+ String _search=''; String? _hovered;
+ final _searchCtl=TextEditingController();
+ Set<String> get _favConvs=>(widget.store.preference('msg_fav:${widget.eventId}')??'').split('|').where((s)=>s.isNotEmpty).toSet();
+ Future<void> _toggleFavConv(String k) async {
+   final f=_favConvs; if(!f.remove(k))f.add(k);
+   await widget.store.setPreference('msg_fav:${widget.eventId}',f.isEmpty?null:f.join('|'));
+   if(mounted)setState((){});
+ }
+
+ /// Round pastille of a person: the 2–3 letters of its map marker, in its
+ /// operator colour.
+ Widget _personAvatar(String id,{double r=15})=>operatorAvatar(id,radius:r);
+
+ Widget _convIcon(String key,Map<String,CommGroup> by,{double r=18}){
+   final g=groupOf(key);
+   if(key!=allKey&&g==null)return operatorAvatar(peerOf(key)!,radius:r);
+   // « Tous » shows its saved colour like any group: it was forced to
+   // grey-blue, so changing it had no visible effect (lot 29, 5 Nov 2026).
+   final all=key==allKey?by.values.where((x)=>x.kind=='all').firstOrNull:null;
+   final color=Color(key==allKey?(all?.color??0xFF1565C0):(by[g]?.color??0xFF546E7A));
+   return CircleAvatar(radius:r,backgroundColor:color,foregroundColor:Colors.white,
+     child:Icon(key==allKey?Icons.campaign_outlined:Icons.forum_outlined,size:r));
+ }
+
+ /// List of the conversations (lot 29.3): no chips any more; favourites
+ /// first, then unread, then the others, the MeshCore and Meshtastic threads
+ /// among them; lines like WhatsApp. A search also shows « Personnes · pas
+ /// encore de conversation » (the « Nouvelle discussion » screen is gone).
+ Widget _convList(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks,{bool search=true}){
+   final s=Theme.of(context).colorScheme;
+   return ListenableBuilder(listenable:Listenable.merge([MeshCoreChats.instance,MeshtasticChats.instance]),builder:(context,_){
+   final lastBy=<String,SarcadeMessage>{};
+   for(final m in _eventMessages){final k=conversationOf(m,widget.actorId,by);final l=lastBy[k];if(l==null||m.createdAt.isAfter(l.createdAt))lastBy[k]=m;}
+   final fav=_favConvs; final q=_search.trim().toLowerCase();
+   bool match(String title,String preview)=>q.isEmpty||title.toLowerCase().contains(q)||preview.toLowerCase().contains(q);
+   Widget star(String k)=>InkWell(onTap:()=>_toggleFavConv(k),customBorder:const CircleBorder(),child:Tooltip(message:S.t(fav.contains(k)?'messages.unfav':'messages.fav'),
+     child:Padding(padding:const EdgeInsets.only(left:4),child:Icon(fav.contains(k)?Icons.star:Icons.star_border,size:16,color:fav.contains(k)?Colors.amber:s.onSurfaceVariant))));
+   final convs=_conversations(by);
+   final entries=<ConvEntry>[
+     for(final k in convs)_sarcadeEntry(k,lastBy[k],by,acks,fav),
+     for(final t in MeshCoreChats.instance.threads)if(t.messages.isNotEmpty)(favKey:MeshCoreThreadTiles.favouriteKey(t.prefix),title:meshCoreThreadTitle(t),
+       preview:t.last?.text??'',at:t.last?.at,unread:t.unread,fav:fav.contains(MeshCoreThreadTiles.favouriteKey(t.prefix)),
+       avatar:const CircleAvatar(radius:22,backgroundColor:Color(0xFF00838F),foregroundColor:Colors.white,child:Icon(Icons.hub_outlined)),
+       onTap:()=>unawaited(openMeshCoreChat(context,t.prefix,t.name)),key:ValueKey('mesh-thread-${t.prefix}'),selected:false),
+     for(final t in MeshtasticChats.instance.threads)if(t.messages.isNotEmpty)(favKey:MeshtasticThreadTiles.favouriteKey(t.key),title:meshtasticThreadTitle(t),
+       preview:t.last==null?'':t.last!.sender==null?t.last!.text:'${t.last!.sender} : ${t.last!.text}',at:t.last?.at,unread:t.unread,
+       fav:fav.contains(MeshtasticThreadTiles.favouriteKey(t.key)),
+       avatar:CircleAvatar(radius:22,backgroundColor:const Color(0xFF2E7D32),foregroundColor:Colors.white,child:Icon(t.channel?Icons.groups_outlined:Icons.wifi_tethering)),
+       onTap:()=>unawaited(openMeshtasticChat(context,t.key,t.name)),key:ValueKey('meshtastic-thread-${t.key}'),selected:false),
+   ];
+   final shown=sortConversations(entries.where((e)=>match(e.title,e.preview)));
+   // People not written to yet, only while searching.
+   final talked={for(final k in convs)?peerOf(k)};
+   final people=q.isEmpty?const <String>[]:directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId)
+     .where((p)=>!talked.contains(p)&&p.toLowerCase().contains(q)).toList();
+   final now=DateTime.now();
+   return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+     if(search)Padding(padding:const EdgeInsets.fromLTRB(12,10,12,6),child:_searchField()),
+     Expanded(child:ListView(keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,children:[
+       if(q.isNotEmpty&&shown.isNotEmpty)_sectionHead(S.t('messages.sectionConversations')),
+       for(final e in shown)MouseRegion(onEnter:(_)=>setState(()=>_hovered=e.favKey),onExit:(_){if(_hovered==e.favKey)setState(()=>_hovered=null);},
+         child:ConversationRow(entry:e,now:now,muted:Mutes.instance.muted(e.favKey),mention:_unreadMention(e.favKey,by,acks),onLongPress:()=>_toggleFavConv(e.favKey),hoverStar:_hovered==e.favKey?star(e.favKey):null)),
+       if(people.isNotEmpty)...[
+         _sectionHead(S.t('messages.sectionPeople')),
+         for(final p in people)ListTile(key:ValueKey('person-$p'),leading:_personAvatar(p,r:22),title:Text(p,style:const TextStyle(fontWeight:FontWeight.w600)),
+           subtitle:Text(S.t('messages.personNew')),onTap:(){_searchCtl.clear();setState(()=>_search='');_open(directKey(p));}),
+       ],
+       if(q.isNotEmpty&&shown.isEmpty&&people.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('messages.searchNone'))),
+     ])),
+   ]);
+   });
+ }
+
+ ConvEntry _sarcadeEntry(String k,SarcadeMessage? last,Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks,Set<String> fav)=>(favKey:k,title:_convName(k,by),
+   preview:last==null?'':'${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.deleted?S.t(last.deletedByPco?'messages.deletedByPco':'messages.deleted'):last.body}',
+   at:last?.createdAt,unread:_unreadIn(k,by,acks),fav:fav.contains(k),avatar:_convIcon(k,by,r:22),onTap:()=>_open(k),key:ValueKey('conv-$k'),selected:k==_conv);
+
+ Widget _sectionHead(String text)=>Padding(padding:const EdgeInsets.fromLTRB(16,12,16,4),child:Text(text,
+   style:Theme.of(context).textTheme.labelLarge?.copyWith(color:Theme.of(context).colorScheme.primary)));
+
+ Widget _searchField(){
+   // ✓ of the keyboard closes it and keeps the results; ✕ clears and closes
+   // (lot 29: the porter was stuck in this field on 5 Nov 2026, 18 h 54).
+   return TextField(controller:_searchCtl,onChanged:(v)=>setState(()=>_search=v),
+     textInputAction:TextInputAction.search,onSubmitted:(_)=>closeKeyboard(),
+     decoration:InputDecoration(isDense:true,prefixIcon:const Icon(Icons.search),hintText:S.t('messages.search'),
+       suffixIcon:_search.isEmpty?null:IconButton(tooltip:S.t('search.clear'),icon:const Icon(Icons.close),
+         onPressed:(){_searchCtl.clear();setState(()=>_search='');closeKeyboard();}),
+       border:searchInputBorder));
+ }
+
+ /// « en attente » only when something is waiting: an orange pastille
+ /// with the number, never « 0 en attente » (30 Oct 2026, 1 h 31).
+ Widget? _pendingPill(){
+   final n=widget.store.pendingCount(); if(n<=0)return null;
+   return Tooltip(message:S.t('messages.pendingN',{'n':n}),child:Container(margin:const EdgeInsets.symmetric(horizontal:6),
+     padding:const EdgeInsets.symmetric(horizontal:8,vertical:2),decoration:BoxDecoration(color:const Color(0xFFE8710A),borderRadius:BorderRadius.circular(12)),
+     child:Text(S.t('messages.pendingN',{'n':n}),style:const TextStyle(color:Colors.white,fontSize:12,fontWeight:FontWeight.w700))));
+ }
+
+ static String _hm(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.hour)}:${two(l.minute)}';}
+
+ /// Who received or read a message (touch on the summary, or « Infos »).
+ void _showInfo(SarcadeMessage m,List<SarcadeAck> acks){
+   final by=<String,SarcadeAck>{};
+   for(final a in acks){if(a.actorId==m.senderId)continue;final b=by[a.actorId];if(b==null||_rank(a.status)>_rank(b.status))by[a.actorId]=a;}
+   showAppSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.info'),style:Theme.of(c).textTheme.titleMedium)),
+     if(by.isEmpty)ListTile(title:Text(S.t('messages.noAck'))),
+     for(final e in by.entries)ListTile(leading:Icon(e.value.status=='received'?Icons.done_all:Icons.done_all,color:e.value.status=='received'?Colors.grey:Colors.blue),
+       title:Text(e.key),trailing:Text('${S.t('ack.${e.value.status}')} · ${_hm(e.value.time)}')),
+   ])));
+ }
+ static int _rank(String s)=>switch(s){'received'=>0,'read'=>1,_=>2};
+
+ /// Long press (phone) or right click (computer): actions on a message.
+ Future<void> _actions(SarcadeMessage m,List<SarcadeAck> acks,bool mine) async {
+   // Card « menu d'un message trop haut » (lot 29.3): « Répondre en privé »
+   // second, dense rows (about 44 px), the safe area plus 16 px under the
+   // last row so that it never falls in the gesture bar of the iPhone.
+   final choice=await showAppSheet<String>(context:context,showDragHandle:true,builder:(c){
+     Widget item(String id,IconData icon,String label,{Key? key})=>ListTile(key:key,dense:true,visualDensity:const VisualDensity(vertical:-1),
+       minTileHeight:44,leading:Icon(icon,size:22),title:Text(label,style:const TextStyle(fontSize:15)),onTap:()=>Navigator.pop(c,id));
+     return Padding(padding:EdgeInsets.only(bottom:bottomMenuMargin(c)),
+     child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+     // Reactions first, like WhatsApp (lot 29, group 7).
+     if(canReact(m)&&_canWrite)ReactionPicker(mine:Reactions.instance.value[m.id]?[widget.actorId],onPick:(e)=>Navigator.pop(c,'react:$e')),
+     // « Répondre » first (31 Oct 2026): the answer quotes this message.
+     if(!m.deleted&&_canWrite)item('reply',Icons.reply,S.t('messages.replyQuote'),key:const ValueKey('msg-reply')),
+     if(!mine&&peerOf(_conv)==null)item('direct',Icons.chat_outlined,S.t('messages.reply',{'who':m.senderId}),key:const ValueKey('msg-direct')),
+     if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])item(s,s=='rejected'?Icons.close:Icons.check,S.t('ack.$s')),
+     if(!m.deleted)item('copy',Icons.copy,S.t('messages.copy')),
+     if(canForward(m))item('forward',Icons.forward_outlined,S.t('messages.forward'),key:const ValueKey('msg-forward')),
+     if(!m.deleted)item('important',Important.instance.has(widget.eventId,m.id)?Icons.star:Icons.star_border,
+       S.t(Important.instance.has(widget.eventId,m.id)?'messages.importantOff':'messages.importantOn'),key:const ValueKey('msg-important')),
+     if(canEditMessage(m,widget.actorId,now:DateTime.now()))item('edit',Icons.edit_outlined,S.t('messages.edit'),key:const ValueKey('msg-edit')),
+     if(m.edited&&!m.deleted&&isPco(widget.actorId))item('history',Icons.history,S.t('messages.history'),key:const ValueKey('msg-history')),
+     item('info',Icons.info_outline,S.t('messages.info')),
+     // Several messages at once (lot 21): this one already checked.
+     item('select',Icons.check_circle_outline,S.t('messages.select'),key:const ValueKey('msg-select')),
+     item('delete',Icons.delete_outline,S.t('messages.delete')),
+   ])));});
+   if(choice==null||!mounted)return;
+   if(choice=='reply'){_startReply(m);return;}
+   if(choice=='copy'){await Clipboard.setData(ClipboardData(text:m.body));_snack(S.t('messages.copied'));return;}
+   if(choice=='info'){_showInfo(m,acks);return;}
+   if(choice=='direct'){_open(directKey(m.senderId));return;}
+   if(choice=='delete'){await _delete(m);return;}
+   if(choice=='edit'){await _edit(m);return;}
+   if(choice=='forward'){await _forward(m);return;}
+   if(choice=='important'){await Important.instance.toggle(widget.store,widget.api,widget.eventId,m.id);return;}
+   if(choice=='history'){await _history(m);return;}
+   if(choice.startsWith('react:')){await _react(m,choice.substring(6));return;}
+   if(choice=='select'){_selection.start(m.id);_selectFocus.requestFocus();return;}
+   await _ack(m,choice);
+ }
+
+ /// « Supprimer pour moi » always; « Supprimer pour tous » for the author
+ /// during 2 days, for the PCO always. Offline, the deletion waits in the
+ /// Outbox like any change.
+ Future<void> _delete(SarcadeMessage m) async {
+   final pco=isPco(widget.actorId);
+   final everyone=canDeleteForEveryone(m,widget.actorId,pco:pco,now:DateTime.now());
+   final choice=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
+     title:Text(S.t('messages.deleteTitle')),
+     content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+       Text(everyone?S.t(m.senderId==widget.actorId?'messages.deleteHelpMine':'messages.deleteHelpPco'):S.t('messages.deleteHelpMe')),
+       // Distress and orders: never for everyone (lot 21).
+       if(keptForEveryone(m))Padding(padding:const EdgeInsets.only(top:8),child:Text(S.t('messages.selectProtected'))),
+     ]),
+     actions:[
+       TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+       TextButton(onPressed:()=>Navigator.pop(c,'me'),child:Text(S.t('messages.deleteForMe'))),
+       if(everyone)FilledButton(style:FilledButton.styleFrom(backgroundColor:Theme.of(c).colorScheme.error,foregroundColor:Theme.of(c).colorScheme.onError),
+         onPressed:()=>Navigator.pop(c,'all'),child:Text(S.t('messages.deleteForAll'))),
+     ]));
+   if(choice==null)return;
+   if(choice=='me'){await _hideForMe([m.id]);return;}
+   await _deleteForEveryone(m,pco:pco,now:DateTime.now().toUtc());
+   if(mounted)setState((){});
+ }
+
+ /// « Historique » (PCO): every version, kept by the server in the logbook.
+ Future<void> _history(SarcadeMessage m) async {
+   final Map<String,dynamic> j;
+   try{j=await widget.api.messageVersions(widget.eventId,m.id);}catch(_){_snack(S.t('messages.historyOffline'));return;}
+   if(!mounted)return;
+   final list=versionsOf(j);
+   showAppSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.history'),style:Theme.of(c).textTheme.titleMedium)),
+     for(final (i,v) in list.indexed)ListTile(dense:true,title:Text(v.body),
+       subtitle:Text('${i==list.length-1?S.t('messages.historyNow'):S.t('messages.historyBefore')}${v.at==null?'':' · ${_hm(v.at!)}'}')),
+   ])));
+ }
+
+ /// « Modifier »: the new text in place, « modifié » for everyone; offline,
+ /// the change waits in the Outbox like any other.
+ Future<void> _edit(SarcadeMessage m) async {
+   final typed=await showDialog<String>(context:context,builder:(c)=>EditMessageDialog(initial:m.body));
+   if(typed==null||!mounted)return;
+   final body=editedText(m,typed);
+   if(body==null)return;
+   if(!canEditMessage(m,widget.actorId,now:DateTime.now())){_snack(S.t('messages.editTooLate'));return;}
+   await widget.store.cacheMessage(editedLocally(m,body));
+   await widget.sync.queue(objectId:m.id,objectType:'message',action:'update',payload:editPayload(m,body,widget.actorId));
+   if(mounted)setState((){});
+ }
+
+ /// Reactions of the event from the server; offline, the ones kept here.
+ Future<void> _loadReactions() async {
+   try{await Reactions.instance.replace(widget.store,widget.eventId,await widget.api.reactions(widget.eventId));}catch(_){/* offline */}
+ }
+
+ /// One reaction per person: the same emoji again removes it.
+ Future<void> _react(SarcadeMessage m,String picked) async {
+   final next=nextReaction(Reactions.instance.value[m.id]?[widget.actorId],picked);
+   final data={'message_id':m.id,'actor_id':widget.actorId,'emoji':next};
+   await Reactions.instance.apply(widget.store,widget.eventId,data);
+   await widget.sync.queue(objectId:'${m.id}:${widget.actorId}',objectType:'reaction',action:next==null?'delete':'create',
+     payload:{...data,'event_id':widget.eventId});
+ }
+
+ /// Who reacted, under the chips.
+ void _showReactions(SarcadeMessage m){
+   final of=Reactions.instance.value[m.id]??const <String,String>{};
+   showAppSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.reactions'),style:Theme.of(c).textTheme.titleMedium)),
+     for(final e in of.entries)ListTile(leading:Text(e.value,style:const TextStyle(fontSize:22)),title:Text(e.key)),
+   ])));
+ }
+
+ // --- « … écrit » (lot 29, group 7): by the real time only ---
+ final _typingSender=TypingSender(); Timer? _typingTimer;
+ static bool _typingConv(String conv)=>conv==allKey||groupOf(conv)!=null||peerOf(conv)!=null;
+ void _signalTyping(){
+   final rt=RealtimeService.active;
+   // Never in energy saving (card « en train d'écrire »).
+   if(rt==null||!rt.connected||PowerState.instance.saver||_text.text.trim().isEmpty||!_typingConv(_conv))return;
+   if(!_typingSender.shouldSend(_conv,DateTime.now()))return;
+   rt.send({'type':'typing','data':{'actor_id':widget.actorId,'conversation':typingWire(_conv,widget.actorId)}});
+ }
+ /// Shown at once, hidden again once the signal is too old.
+ void _onTyping(){
+   if(!mounted)return;
+   setState((){});
+   _typingTimer?.cancel();
+   _typingTimer=Timer(typingForget+const Duration(milliseconds:200),(){if(mounted)setState((){});});
+ }
+ /// The name of the conversation, « … écrit » under it.
+ Widget _convTitle(Map<String,CommGroup> by,{TextStyle? style}){
+   final name=Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:style);
+   final who=Typing.instance.who(_conv);
+   if(who.isEmpty)return name;
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[name,
+     Text(S.t('messages.typing',{'n':who.length,'who':who.join(', ')}),key:const ValueKey('typing-line'),maxLines:1,overflow:TextOverflow.ellipsis,
+       style:const TextStyle(fontSize:12,fontStyle:FontStyle.italic,fontWeight:FontWeight.normal))]);
+ }
+
+ /// « Messages importants »: a touch opens the message in its conversation.
+ void _showImportant(){
+   final by=_byId;
+   final byId={for(final m in _eventMessages)m.id:m};
+   final prefix='${widget.eventId}/';
+   final list=[for(final id in Important.instance.value)
+     if(id.startsWith(prefix)&&byId[id.substring(prefix.length)]!=null)byId[id.substring(prefix.length)]!];
+   showAppSheet<void>(context:context,showDragHandle:true,isScrollControlled:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     ListTile(title:Text(S.t('messages.importantList'),style:Theme.of(c).textTheme.titleMedium)),
+     if(list.isEmpty)ListTile(title:Text(S.t('messages.importantNone'))),
+     for(final m in list)ListTile(leading:const Icon(Icons.star,color:Color(0xFFF9A825)),
+       title:Text(m.deleted?S.t('messages.deleted'):m.body,maxLines:2,overflow:TextOverflow.ellipsis),
+       subtitle:Text('${_convName(conversationOf(m,widget.actorId,by),by)} · ${m.senderId} · ${_hm(m.createdAt)}'),
+       onTap:(){Navigator.pop(c);_open(conversationOf(m,widget.actorId,by));
+         WidgetsBinding.instance.addPostFrameCallback((_){unawaited(_goToMessage(m.id));});}),
+   ])));
+ }
+
+ /// « Transférer »: one copy per conversation ticked, through the Outbox.
+ Future<void> _forward(SarcadeMessage m) async {
+   final by=_byId;
+   final targets=[for(final k in _conversations(by))
+     if(groupOf(k)==null||(by[groupOf(k)]?.canSend(widget.actorId)??true))(key:k,title:_convName(k,by),icon:_convIcon(k,by,r:16))];
+   final picked=await showDialog<List<String>>(context:context,builder:(c)=>ForwardDialog(targets:targets));
+   if(picked==null||picked.isEmpty)return;
+   final now=DateTime.now().toUtc();
+   for(final k in picked){
+     final copy=forwardedCopy(m,id:_uuid.v4(),me:widget.actorId,recipients:recipientsFor(k,by),now:now);
+     await widget.store.cacheMessage(copy.toJson());
+     await widget.sync.queue(objectId:copy.id,objectType:'message',payload:copy.toJson());
+   }
+   _snack(S.t('messages.forwarded',{'n':picked.length}));
+   if(mounted)setState((){});
+ }
+
+ /// « … » of the open conversation (lot 29, group 7): « Sourdine ».
+ /// On a phone the star goes into this menu too: the header keeps room
+ /// for the name of the conversation.
+ Widget _convMenu({bool narrow=false}){
+   final muted=Mutes.instance.muted(_conv);
+   final fav=_favConvs.contains(_conv);
+   return PopupMenuButton<String>(key:const ValueKey('conv-more'),icon:const Icon(Icons.more_vert),tooltip:S.t('messages.convMore'),
+     onSelected:(v){
+       if(v=='fav'){_toggleFavConv(_conv);return;}
+       if(v=='find'){setState((){_finding=true;_findQ='';_findCtl.clear();});return;}
+       if(v=='pdf'){unawaited(_exportPdf());return;}
+       unawaited(Mutes.instance.set(widget.store,widget.eventId,_conv,v=='unmute'?null:v));
+     },
+     itemBuilder:(_)=>[
+       if(narrow)PopupMenuItem(value:'find',key:const ValueKey('conv-find-menu'),child:menuEntry(context,icon:Icons.search,
+         color:const Color(0xFF1565C0),title:S.t('messages.find'))),
+       if(narrow)PopupMenuItem(value:'fav',key:const ValueKey('conv-fav'),child:menuEntry(context,icon:fav?Icons.star:Icons.star_border,
+         color:const Color(0xFFF9A825),title:S.t(fav?'messages.unfav':'messages.fav'))),
+       // « Exporter en PDF » (lot 29, group 7).
+       if(canExport(group:_group,me:widget.actorId,pco:isPco(widget.actorId)))PopupMenuItem(value:'pdf',key:const ValueKey('conv-pdf'),
+         child:menuEntry(context,icon:Icons.picture_as_pdf_outlined,color:const Color(0xFFC62828),title:S.t('messages.pdf'),detail:S.t('messages.pdfDetail'))),
+       if(muted)PopupMenuItem(value:'unmute',key:const ValueKey('conv-unmute'),child:menuEntry(context,icon:Icons.volume_up_outlined,color:const Color(0xFF2E7D32),
+         title:S.t('messages.unmute')))
+       else for(final c in muteChoices.keys)PopupMenuItem(value:c,key:ValueKey('conv-mute-$c'),child:menuEntry(context,icon:Icons.volume_off_outlined,
+         color:const Color(0xFF546E7A),title:S.t('messages.mute.$c'),detail:c==muteChoices.keys.first?S.t('messages.muteDetail'):null)),
+     ]);
+ }
+
+ // --- Mentions « @nom » (lot 29, group 7) ---
+ String? _mentionQ;
+ void _onMentionQuery(){
+   final sel=_text.selection;
+   final q=sel.isValid&&sel.isCollapsed?mentionQuery(_text.text,sel.start):null;
+   if(q!=_mentionQ&&mounted)setState(()=>_mentionQ=q);
+ }
+ /// The participants of the open conversation.
+ Iterable<String> _participants(){
+   final g=_group;
+   if(g!=null&&g.kind!='all'&&g.members.isNotEmpty)return g.members;
+   final peer=peerOf(_conv);
+   if(peer!=null)return [peer];
+   return directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId);
+ }
+ Widget? _mentionBar(){
+   final q=_mentionQ;
+   if(q==null)return null;
+   final list=mentionSuggestions(q,_participants(),me:widget.actorId);
+   if(list.isEmpty)return null;
+   return Material(key:const ValueKey('mention-bar'),color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),
+     child:SingleChildScrollView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.fromLTRB(8,6,8,0),child:Row(children:[
+       for(final n in list)Padding(padding:const EdgeInsets.only(right:6),child:ActionChip(key:ValueKey('mention-$n'),
+         avatar:n==mentionPco?const Icon(Icons.shield_outlined,size:16):operatorAvatar(n,radius:10),label:Text('@$n'),
+         onPressed:(){
+           final r=insertMention(_text.text,_text.selection.start,n);
+           _text.value=TextEditingValue(text:r.text,selection:TextSelection.collapsed(offset:r.cursor));
+         })),
+     ])));
+ }
+ /// « @ » on the line while a mention of me is unread.
+ bool _unreadMention(String key,Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
+   final pco=isPco(widget.actorId);
+   return _eventMessages.any((m)=>conversationOf(m,widget.actorId,by)==key&&mentionsMe(m,widget.actorId,pco:pco)
+     &&!(acks[m.id]??const []).any((a)=>a.actorId==widget.actorId&&a.status!='received'));
+ }
+
+ // --- « Recherche dans une conversation » (lot 29, group 7) ---
+ bool _finding=false; String _findQ=''; int _findAt=0;
+ final _findCtl=TextEditingController();
+ Widget _findButton()=>IconButton(key:const ValueKey('conv-find'),tooltip:S.t('messages.find'),
+   onPressed:()=>setState((){_finding=true;_findQ='';_findCtl.clear();}),icon:const Icon(Icons.search));
+ void _closeFind(){_finding=false;_findQ='';_findAt=0;_findCtl.clear();}
+ void _findMove(List<String> hits,int step){
+   if(hits.isEmpty)return;
+   setState(()=>_findAt=(_findAt+step)%hits.length);
+   unawaited(_goToMessage(hits[_findAt]));
+ }
+ Widget _findBar(List<SarcadeMessage> messages){
+   final hits=searchHits(messages,_findQ);
+   final at=hits.isEmpty?0:_findAt.clamp(0,hits.length-1);
+   return Material(key:const ValueKey('find-bar'),color:Theme.of(context).colorScheme.surfaceContainerHigh,child:Padding(padding:const EdgeInsets.fromLTRB(12,2,4,2),child:Row(children:[
+     Expanded(child:TextField(key:const ValueKey('find-field'),controller:_findCtl,autofocus:true,textInputAction:TextInputAction.search,
+       // Kept unfilled: the bar is already coloured (card « Saisie… sans
+       // contour », 10 Nov 2026).
+       decoration:InputDecoration(hintText:S.t('messages.findHint'),border:InputBorder.none,filled:false,isDense:true),
+       onChanged:(v){setState((){_findQ=v;_findAt=0;});final h=searchHits(messages,v);if(h.isNotEmpty)unawaited(_goToMessage(h.first));},
+       onSubmitted:(_)=>_findMove(hits,1))),
+     if(_findQ.trim().isNotEmpty)Text(hits.isEmpty?S.t('messages.findNone'):'${at+1} / ${hits.length}',key:const ValueKey('find-count'),
+       style:Theme.of(context).textTheme.bodySmall),
+     IconButton(key:const ValueKey('find-prev'),tooltip:S.t('messages.findPrev'),onPressed:hits.isEmpty?null:()=>_findMove(hits,-1),icon:const Icon(Icons.keyboard_arrow_up)),
+     IconButton(key:const ValueKey('find-next'),tooltip:S.t('messages.findNext'),onPressed:hits.isEmpty?null:()=>_findMove(hits,1),icon:const Icon(Icons.keyboard_arrow_down)),
+     IconButton(key:const ValueKey('find-close'),tooltip:S.t('common.close'),onPressed:()=>setState(_closeFind),icon:const Icon(Icons.close)),
+   ])));
+ }
+
+ /// « Exporter en PDF »: period, then the file opened with the system
+ /// application, which shares it (e-mail, files).
+ Future<void> _exportPdf() async {
+   final now=DateTime.now();
+   final today=DateTime(now.year,now.month,now.day);
+   final choice=await showDialog<String>(context:context,builder:(c)=>SimpleDialog(title:Text(S.t('messages.pdfPeriodTitle')),children:[
+     SimpleDialogOption(key:const ValueKey('pdf-all'),onPressed:()=>Navigator.pop(c,'all'),child:Text(S.t('messages.pdfAll'))),
+     SimpleDialogOption(key:const ValueKey('pdf-today'),onPressed:()=>Navigator.pop(c,'today'),child:Text(S.t('messages.pdfToday'))),
+     SimpleDialogOption(key:const ValueKey('pdf-range'),onPressed:()=>Navigator.pop(c,'range'),child:Text(S.t('messages.pdfRange'))),
+   ]));
+   if(choice==null||!mounted)return;
+   DateTime? from,to; String period=S.t('messages.pdfAll');
+   if(choice=='today'){from=today;to=today.add(const Duration(days:1));period=S.t('messages.pdfToday');}
+   if(choice=='range'){
+     final r=await showDateRangePicker(context:context,firstDate:DateTime(2024),lastDate:today.add(const Duration(days:1)),
+       initialDateRange:DateTimeRange(start:today.subtract(const Duration(days:1)),end:today));
+     if(r==null||!mounted)return;
+     from=r.start;to=r.end.add(const Duration(days:1));
+     period=S.t('messages.pdfFromTo',{'from':pdfDay(r.start),'to':pdfDay(r.end)});
+   }
+   final by=_byId;
+   final list=inPeriod(_messages,from:from,to:to);
+   final acks=<String,List<SarcadeAck>>{};
+   for(final a in widget.store.acks().map(SarcadeAck.fromJson)){(acks[a.messageId]??=[]).add(a);}
+   final photos=<String,Uint8List>{};
+   for(final m in list){for(final a in m.attachments.where((a)=>a.isImage)){final b=await widget.store.attachment(a.fileId);if(b!=null)photos[a.fileId]=b;}}
+   var event=widget.eventId;
+   try{event='${(await widget.api.event(widget.eventId))['name']??event}';}catch(_){/* offline: the identifier */}
+   final title=_convName(_conv,by);
+   final bytes=conversationPdf(title:title,event:event,period:period,messages:list,acks:acks,photo:(id)=>photos[id],now:now);
+   final name='sarcade-${title.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'),'-')}-${now.year}${now.month.toString().padLeft(2,'0')}${now.day.toString().padLeft(2,'0')}.pdf';
+   try{
+     final path=await saveFile(name,bytes,mimeType:'application/pdf');
+     if(canOpenSavedFiles){await openSavedFile(path);}else{_snack(S.t('messages.pdfSaved',{'path':path}));}
+   }catch(_){_snack(S.t('messages.pdfFailed'));}
+ }
+
+ /// « Supprimer pour moi »: hidden on this device only.
+ Future<void> _hideForMe(Iterable<String> ids) async {
+   await widget.store.setPreference(hiddenMessagesKey(widget.eventId),formatHidden({..._hidden,...ids}));
+   if(mounted)setState((){});
+ }
+
+ /// « Supprimer pour tous »: one deletion per message, through the Outbox
+ /// (no grouped route on the server).
+ Future<void> _deleteForEveryone(SarcadeMessage m,{required bool pco,required DateTime now}) async {
+   final byPco=pco&&m.senderId!=widget.actorId;
+   await widget.store.cacheMessage(deletedMessage(m.toJson(),by:widget.actorId,byPco:byPco,at:now));
+   await widget.sync.queue(objectId:m.id,objectType:'message',action:'delete',payload:{'id':m.id,'event_id':widget.eventId,'deleted_by':widget.actorId});
+ }
+
+ // --- Selection of several messages (lot 21, 2 Nov 2026) ---
+ final _selection=MessageSelection();
+ final _selectFocus=FocusNode(debugLabel:'messages-selection');
+ void _onSelection(){if(mounted)setState((){});}
+ void _toggleSelected(String id){_selection.toggle(id);if(_selection.active)_selectFocus.requestFocus();}
+ List<SarcadeMessage> get _selectedMessages=>selectedIn(_messages,_selection);
+
+ Future<void> _copySelection() async {
+   final list=_selectedMessages;
+   await Clipboard.setData(ClipboardData(text:selectionCopyText(list)));
+   _snack(S.t('messages.selectCopied',{'n':list.where((m)=>!m.deleted).length}));
+   _selection.clear();
+ }
+
+ Future<void> _deleteSelection() async {
+   final list=_selectedMessages;
+   if(list.isEmpty){_selection.clear();return;}
+   final pco=isPco(widget.actorId);
+   final now=DateTime.now();
+   final choice=await showSelectionDeleteDialog(context,count:list.length,
+     everyone:canDeleteAllForEveryone(list,widget.actorId,pco:pco,now:now),
+     mine:list.every((m)=>m.senderId==widget.actorId),kept:list.any(keptForEveryone));
+   if(choice==null||!mounted)return;
+   if(choice=='me'){await _hideForMe(list.map((m)=>m.id));}
+   else{for(final m in list){await _deleteForEveryone(m,pco:pco,now:now.toUtc());}}
+   _selection.clear();
+ }
+
+ MessageSelectionBar _selectionBar()=>MessageSelectionBar(count:_selectedMessages.length,onExit:()=>_selection.clear(),onDelete:_deleteSelection,
+   onCopy:_selectedMessages.any((m)=>!m.deleted)?_copySelection:null);
+
+ Widget _bubble(SarcadeMessage m,List<SarcadeAck> ma,{required bool showAuthor,bool named=true}){
+   final t=Theme.of(context); final s=t.colorScheme;
+   final mine=m.senderId==widget.actorId;
+   final photos=m.attachments.where((a)=>a.isImage).toList();
+   final urgent=priorityRaised(m.priority); final immediate=priorityRed(m.priority);
+   final prio=immediate?s.error:const Color(0xFFE8710A);
+   final grey=_night?const Color(0xFF8696A0):const Color(0xFF667781);
+   final myAck=ma.where((a)=>a.actorId==widget.actorId).map((a)=>a.status).toSet();
+   if(m.deleted)return _deletedBubble(m,ma,mine:mine,showAuthor:showAuthor&&named,grey:grey);
+   final needsAnswer=!mine&&m.priority=='immediate'&&!myAck.contains('accepted')&&!myAck.contains('rejected');
+   final meta=Row(mainAxisSize:MainAxisSize.min,children:[
+     if(Important.instance.has(widget.eventId,m.id))Padding(padding:const EdgeInsets.only(right:3),child:Icon(Icons.star,key:const ValueKey('msg-star'),size:12,color:grey)),
+     if(m.edited)Text('${S.t(editedAfterAck(m,ma)?'messages.editedAfterAck':'messages.edited')} ',key:const ValueKey('msg-edited'),style:TextStyle(fontSize:11,fontStyle:FontStyle.italic,color:grey)),
+     Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
+     if(mine)...[const SizedBox(width:4),_ticks(m,ma)],
+   ]);
+   final body=Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+     if(urgent)Padding(padding:const EdgeInsets.only(bottom:3),child:Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),
+       decoration:BoxDecoration(color:prio.withValues(alpha:0.14),borderRadius:BorderRadius.circular(6)),
+       child:Text(S.t(priorityKey(m.priority)).toUpperCase(),style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:prio,letterSpacing:0.4)))),
+     if(showAuthor&&named&&!mine)Padding(padding:const EdgeInsets.only(bottom:2),child:Text(m.senderId,
+       style:TextStyle(fontWeight:FontWeight.w700,fontSize:13,color:Color(authorColor(m.senderId))))),
+     if(m.forwardedSender!=null)Padding(padding:const EdgeInsets.only(bottom:2),child:Row(key:const ValueKey('msg-forwarded'),mainAxisSize:MainAxisSize.min,children:[
+       Icon(Icons.forward,size:13,color:grey),const SizedBox(width:3),
+       Flexible(child:Text(forwardedLabel(m,_hm),style:TextStyle(fontSize:12,fontStyle:FontStyle.italic,color:grey))),
+     ])),
+     if(m.replyTo!=null)_quoteInBubble(m.replyTo!),
+     if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
+       for(final p in photos)_PhotoThumb(key:ValueKey(p.fileId),attachment:p,api:widget.api,store:widget.store,eventId:widget.eventId),
+     ])),
+     _finding&&_findQ.trim().isNotEmpty
+       ?HighlightText(m.body,query:_findQ,background:const Color(0xFFFFE082),style:TextStyle(fontSize:15,height:1.3,color:s.onSurface))
+       :MentionText(m.body,color:s.primary,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
+     const SizedBox(height:2),
+     Align(alignment:Alignment.bottomRight,widthFactor:1,child:meta),
+     ReactionChips(of:Reactions.instance.value[m.id],me:widget.actorId,onTap:()=>_showReactions(m)),
+     // Immediate: the acknowledgement stays one touch away.
+     if(needsAnswer)Padding(padding:const EdgeInsets.only(top:6),child:Wrap(spacing:6,children:[
+       FilledButton(style:FilledButton.styleFrom(backgroundColor:s.error,foregroundColor:s.onError,visualDensity:VisualDensity.compact),
+         onPressed:()=>_ack(m,'accepted'),child:Text(S.t('order.accept'))),
+       OutlinedButton(style:OutlinedButton.styleFrom(visualDensity:VisualDensity.compact),onPressed:()=>_ack(m,'rejected'),child:Text(S.t('order.refuse'))),
+     ])),
+   ]);
+   const r=Radius.circular(10);
+   // A simple touch opens the actions (decision of 30 Oct 2026, 22 h 37);
+   // long press and right click stay; swiping right answers.
+   final bubble=GestureDetector(onTap:()=>_actions(m,ma,mine),onLongPress:()=>_actions(m,ma,mine),onSecondaryTap:()=>_actions(m,ma,mine),
+     child:AnimatedContainer(duration:const Duration(milliseconds:250),margin:EdgeInsets.fromLTRB(mine?56:0,1,mine?0:56,1),padding:const EdgeInsets.fromLTRB(9,6,9,5),
+       decoration:BoxDecoration(color:_flashId==m.id?Color.alphaBlend(s.primary.withValues(alpha:0.25),mine?_mineBg:_otherBg):(mine?_mineBg:_otherBg),
+         // Small tail on the first bubble of a series.
+         borderRadius:BorderRadius.only(topLeft:!mine&&showAuthor?const Radius.circular(2):r,topRight:mine&&showAuthor?const Radius.circular(2):r,bottomLeft:r,bottomRight:r),
+         border:urgent?Border(left:BorderSide(color:prio,width:4)):null,
+         boxShadow:const [BoxShadow(blurRadius:1,offset:Offset(0,1),color:Color(0x22000000))]),
+       child:body));
+   // Others, in a channel and in a direct chat too (decision of the project
+   // owner, 30 Oct 2026, 9 h 56): the pastille before the first message of a
+   // series; the name above it only where several people talk.
+   final avatar=!mine?Padding(padding:const EdgeInsets.only(right:6,top:2),
+     child:showAuthor?_personAvatar(m.senderId):const SizedBox(width:30)):null;
+   return Padding(key:_keyFor(m.id),padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
+     child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:600),child:MergeSemantics(child:Row(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+       ?avatar,
+       // Sliding to the right answers (lot 29, group 7); arrow on hover on a computer.
+       Flexible(child:SwipeReply(onReply:_canWrite&&!_selection.active?()=>_startReply(m):null,hoverArrow:!touchKeyboard,child:bubble)),
+     ])))));
+ }
+
+ /// « Ce message a été supprimé » (« … par le PCO »), in italics, like WhatsApp.
+ Widget _deletedBubble(SarcadeMessage m,List<SarcadeAck> ma,{required bool mine,required bool showAuthor,required Color grey}){
+   const r=Radius.circular(10);
+   return Padding(padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
+     child:GestureDetector(onLongPress:()=>_actions(m,ma,mine),onSecondaryTap:()=>_actions(m,ma,mine),
+       child:Container(margin:EdgeInsets.fromLTRB(mine?56:0,1,mine?0:56,1),padding:const EdgeInsets.fromLTRB(9,6,9,5),
+         decoration:BoxDecoration(color:mine?_mineBg:_otherBg,borderRadius:const BorderRadius.all(r),
+           boxShadow:const [BoxShadow(blurRadius:1,offset:Offset(0,1),color:Color(0x22000000))]),
+         child:Row(mainAxisSize:MainAxisSize.min,children:[
+           Icon(Icons.block,size:16,color:grey),const SizedBox(width:6),
+           Flexible(child:Text('${showAuthor&&!mine?'${m.senderId} · ':''}${S.t(m.deletedByPco?'messages.deletedByPco':'messages.deleted')}',
+             style:TextStyle(fontSize:14,fontStyle:FontStyle.italic,color:grey))),
+           const SizedBox(width:8),Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
+         ])))));
+ }
+
+ static const _emojis=['👍','👌','✅','❌','📍','📡','📻','🚗','🚶','⛰️','🌧️','☀️','⚠️','🆘','🔋','📶','🙏','😀','😅','👏'];
+ Future<void> _pickEmoji() async {
+   final e=await showAppSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(12,0,12,12),
+     child:Wrap(spacing:4,runSpacing:4,children:[for(final x in _emojis)InkWell(borderRadius:BorderRadius.circular(8),onTap:()=>Navigator.pop(c,x),
+       child:Padding(padding:const EdgeInsets.all(8),child:Text(x,style:const TextStyle(fontSize:26))))]))));
+   if(e==null)return;
+   final sel=_text.selection; final v=_text.text;
+   final at=sel.isValid?sel.start:v.length;
+   _text.value=TextEditingValue(text:v.replaceRange(at,sel.isValid?sel.end:v.length,e),selection:TextSelection.collapsed(offset:at+e.length));
+ }
+
+ /// Predefined messages (ATAK 6): the list of the PCO for the event, else
+ /// the usual ones; one touch sends.
+ List<String>? _quick;
+ Future<List<String>> _quickMessages() async {
+   if(_quick!=null)return _quick!;
+   try{
+     final e=await widget.api.event(widget.eventId);
+     final l=((e['settings'] as Map?)?['quick_messages'] as List?)?.whereType<String>().toList()??const [];
+     if(l.isNotEmpty)return _quick=l;
+   }catch(_){/* offline: the usual list */}
+   return _quick=defaultQuickMessages();
+ }
+ Future<void> _sendQuickMessage() async {
+   final list=await _quickMessages();
+   if(!mounted)return;
+   final pick=await showAppSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     for(final q in list)ListTile(leading:const Icon(Icons.bolt),title:Text(q),onTap:()=>Navigator.pop(c,q))])));
+   if(pick!=null)await _post(pick);
+ }
+
+ /// Input bar laid out like WhatsApp on a phone (29 Oct 2026): « + » for
+ /// the predefined messages and the priority, a wide rounded field with the
+ /// emoji at its end, the camera, then one round button that dictates while
+ /// the field is empty and sends once there is text.
+ // --- « Répondre » (card of 30 Oct 2026, 22 h 35, validated at 22 h 38) ---
+ SarcadeMessage? _replyTo; String? _flashId;
+ final _inputFocus=FocusNode();
+ final Map<String,GlobalKey> _keys={};
+ GlobalKey _keyFor(String id)=>_keys.putIfAbsent(id,()=>GlobalKey(debugLabel:'msg-$id'));
+ void _startReply(SarcadeMessage m){setState(()=>_replyTo=m);_inputFocus.requestFocus();}
+ ({String author,String text,bool deleted}) _quote(String id)=>quoteOf(_eventMessages.where((x)=>x.id==id).firstOrNull,
+   deletedText:S.t('messages.deleted'),photoText:S.t('messages.quotePhoto'),missingText:S.t('messages.quoteMissing'));
+
+ Widget _quoteBox(({String author,String text,bool deleted}) q,{VoidCallback? onTap,Widget? trailing}){
+   final s=Theme.of(context).colorScheme;
+   final colour=q.author.isEmpty?s.outline:Color(authorColor(q.author));
+   return InkWell(onTap:onTap,borderRadius:BorderRadius.circular(6),child:Container(
+     margin:const EdgeInsets.only(bottom:4),padding:const EdgeInsets.fromLTRB(8,4,4,4),
+     decoration:BoxDecoration(color:s.onSurface.withValues(alpha:0.06),borderRadius:BorderRadius.circular(6),border:Border(left:BorderSide(color:colour,width:4))),
+     child:Row(children:[
+       Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+         if(q.author.isNotEmpty)Text(q.author,style:TextStyle(fontWeight:FontWeight.w700,fontSize:12,color:colour)),
+         Text(q.text,maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:13,color:s.onSurfaceVariant,fontStyle:q.deleted?FontStyle.italic:null)),
+       ])),
+       ?trailing,
+     ])));
+ }
+
+ /// In a reply bubble: a touch goes back to the quoted message, which flashes.
+ Widget _quoteInBubble(String id)=>_quoteBox(_quote(id),onTap:()=>_goToMessage(id));
+
+ Widget _replyBar(SarcadeMessage r)=>Material(key:const ValueKey('reply-bar'),color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),
+   child:Padding(padding:const EdgeInsets.fromLTRB(10,6,6,0),child:_quoteBox(quoteOf(r,deletedText:S.t('messages.deleted'),photoText:S.t('messages.quotePhoto'),missingText:''),
+     trailing:IconButton(key:const ValueKey('reply-cancel'),tooltip:S.t('common.cancel'),onPressed:()=>setState(()=>_replyTo=null),icon:const Icon(Icons.close,size:18)))));
+
+ Future<void> _goToMessage(String id) async {
+   final list=_messages; final i=list.indexWhere((m)=>m.id==id);
+   if(i<0){_snack(S.t('messages.quoteMissing'));return;}
+   var ctx=_keys[id]?.currentContext;
+   if(ctx==null&&_scroll.hasClients){
+     // Not built yet: about there first, then exactly.
+     final max=_scroll.position.maxScrollExtent;
+     await _scroll.animateTo((max*i/(list.length<2?1:list.length-1)).clamp(0.0,max),duration:const Duration(milliseconds:250),curve:Curves.easeOut);
+     await WidgetsBinding.instance.endOfFrame;
+     ctx=_keys[id]?.currentContext;
+   }
+   if(ctx!=null&&ctx.mounted)await Scrollable.ensureVisible(ctx,alignment:0.3,duration:const Duration(milliseconds:250));
+   if(!mounted)return;
+   setState(()=>_flashId=id);
+   await Future<void>.delayed(const Duration(milliseconds:1200));
+   if(mounted&&_flashId==id)setState(()=>_flashId=null);
+ }
+
+ Widget _composer(){
+   final s=Theme.of(context).colorScheme;
+   final empty=_text.text.trim().isEmpty;
+   final fieldColor=_night?const Color(0xFF2A3942):Colors.white;
+   final iconColor=_night?const Color(0xFF8696A0):const Color(0xFF54656F);
+   final prioColor=_priority=='immediate'?s.error:_priority=='urgent'?const Color(0xFFE8710A):null;
+   final bar=Material(color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),child:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(4,6,6,6),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
+     SizedBox(height:48,child:PopupMenuButton<String>(tooltip:S.t('messages.attach'),icon:Icon(Icons.add,size:28,color:iconColor),
+       onSelected:(v){
+         if(v=='quick'){_sendQuickMessage();}
+         else if(v=='photo'){_photo();}
+         else{setState(()=>_priority=v.substring(9));}
+       },
+       itemBuilder:(_)=>[
+         PopupMenuItem(value:'quick',child:ListTile(leading:const Icon(Icons.bolt),title:Text(S.t('quick.title')))),
+         PopupMenuItem(value:'photo',child:ListTile(leading:const Icon(Icons.photo_library_outlined),title:Text(S.t('messages.photo')))),
+         const PopupMenuDivider(),
+         for(final p in const ['routine','urgent','immediate'])PopupMenuItem(value:'priority.$p',child:ListTile(
+           leading:Icon(_priority==p?Icons.radio_button_checked:Icons.radio_button_unchecked,
+             color:p=='immediate'?s.error:p=='urgent'?const Color(0xFFE8710A):null),
+           title:Text(S.t('priority.$p')))),
+       ])),
+     Expanded(child:Container(constraints:const BoxConstraints(minHeight:48),padding:const EdgeInsets.only(left:14,right:2),
+       decoration:BoxDecoration(color:fieldColor,borderRadius:BorderRadius.circular(24)),
+       child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
+         // Urgent or immediate: a coloured chip in the field, one touch back to routine.
+         if(prioColor!=null)Padding(padding:const EdgeInsets.only(right:6,bottom:12),child:InkWell(borderRadius:BorderRadius.circular(10),
+           onTap:()=>setState(()=>_priority='routine'),
+           child:Container(padding:const EdgeInsets.symmetric(horizontal:8,vertical:3),
+             decoration:BoxDecoration(color:prioColor.withValues(alpha:0.15),borderRadius:BorderRadius.circular(10)),
+             child:Text(S.t('priority.$_priority'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:prioColor))))),
+         Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,focusNode:_inputFocus,maxLength:2048,minLines:1,maxLines:widget.initialText==null?6:8,
+           textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:17),
+           // Android: images, GIF and stickers inserted by the keyboard.
+           contentInsertionConfiguration:ContentInsertionConfiguration(
+             allowedMimeTypes:const ['image/png','image/jpeg','image/gif','image/webp'],
+             onContentInserted:(c){if(c.hasData)unawaited(_sendPastedImage(c.data!,mime:c.mimeType));}),
+           // Long press (phone) or right click: « Coller une image ».
+           contextMenuBuilder:(ctx,state)=>AdaptiveTextSelectionToolbar.buttonItems(anchors:state.contextMenuAnchors,buttonItems:[
+             ...state.contextMenuButtonItems,
+             ContextMenuButtonItem(label:S.t('messages.pasteImage'),onPressed:(){
+               ContextMenuController.removeAny();
+               unawaited(_pasteImage());
+             }),
+           ]),
+           // « Message » shown in the empty field (revue d'ergonomie n° 37).
+           // Kept unfilled: the composer pill around it already has the
+           // background (card « Saisie… sans contour », 10 Nov 2026).
+           decoration:InputDecoration(hintText:S.t('messages.hint'),hintStyle:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant),counterText:'',border:InputBorder.none,filled:false,isDense:true,
+             contentPadding:const EdgeInsets.symmetric(vertical:13))))),
+         // Phone and tablet: the keyboard has its emojis (card « bouton emoji
+         // inutile sur téléphone », lot 29.3); kept on computers and Tesla.
+         if(!touchKeyboard)IconButton(key:const ValueKey('messages-emoji'),tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
+       ]))),
+     if(empty)SizedBox(height:48,child:_picking
+       ?const Padding(padding:EdgeInsets.all(14),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
+       :IconButton(tooltip:S.t('messages.photo'),onPressed:_photo,icon:Icon(Icons.photo_camera_outlined,size:26,color:iconColor))),
+     const SizedBox(width:4),
+     // The microphone stays while dictating, even once words are written
+     // (it turned into « Envoyer » after 2 or 3 seconds and stopped; lot 29).
+     ValueListenableBuilder<bool>(valueListenable:dictationActive,builder:(c,dictating,w)=>SizedBox(width:48,height:48,child:empty||dictating
+       ? DictationButton(controller:_text,filled:true)
+       : IconButton.filled(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)))),
+   ]))));
+   // Answering (31 Oct 2026): the quoted message above the field, ✕ to cancel.
+   final r=_replyTo;
+   final mentions=_mentionBar();
+   // PTT natif (lot 29): « Appuyer pour parler » while the channel is joined.
+   final ptt=PttBar(channel:pttChannelOf(_conv));
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[ptt,?mentions,if(r!=null)_replyBar(r),bar]);
+ }
+
+ Widget _chat(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
+   final messages=_messages;
+   final firstUnread=firstUnreadIndex(messages,_unreadAtOpen);
+   final unreadHere=firstUnread==null?0:messages.where((m)=>_unreadAtOpen.contains(m.id)).length;
+   final below=[for(var i=_maxBuilt+1;i<messages.length;i++)if(messages[i].senderId!=widget.actorId)i].length;
+   final group=_group;
+   final showAuthor=peerOf(_conv)==null;
+   return Column(children:[
+     if(_finding)_findBar(messages),
+     if(group!=null&&(group.description.isNotEmpty||group.managers.isNotEmpty))Padding(padding:const EdgeInsets.fromLTRB(14,4,14,4),child:Align(alignment:Alignment.centerLeft,child:Text(
+       [if(group.description.isNotEmpty)group.description,if(group.radioChannel.isNotEmpty)group.radioChannel,S.t('groups.managers',{'names':group.managers.join(', ')})].join(' · '),
+       style:Theme.of(context).textTheme.bodySmall))),
+     Expanded(child:Container(color:_chatBg,child:Stack(children:[
+       if(messages.isEmpty)Center(child:Text(S.t('messages.empty'),style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))),
+       StickToBottom(controller:_scroll,stick:()=>_atBottom,child:ListView.builder(controller:_scroll,keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,padding:const EdgeInsets.symmetric(vertical:8),itemCount:messages.length,itemBuilder:(c,i){
+         final m=messages[i], ma=acks[m.id]??[];
+         if(i>_maxBuilt)_maxBuilt=i;
+         if(m.senderId!=widget.actorId)_autoRead(m,ma);
+         final newDay=i==0||dayKey(messages[i-1].createdAt)!=dayKey(m.createdAt);
+         final sameAuthor=!newDay&&i>0&&messages[i-1].senderId==m.senderId;
+         final b=SelectableMessage(id:m.id,selecting:_selection.active,selected:_selection.contains(m.id),onToggle:()=>_toggleSelected(m.id),
+           child:_bubble(m,ma,showAuthor:!sameAuthor,named:showAuthor));
+         if(i!=firstUnread&&!newDay)return b;
+         return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+           if(newDay)Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Center(child:Container(
+             padding:const EdgeInsets.symmetric(horizontal:12,vertical:5),
+             decoration:BoxDecoration(color:_night?const Color(0xFF182229):Colors.white,borderRadius:BorderRadius.circular(8),
+               boxShadow:const [BoxShadow(blurRadius:1,offset:Offset(0,1),color:Color(0x1A000000))]),
+             child:Text(dayLabel(m.createdAt,DateTime.now(),today:S.t('messages.today'),yesterday:S.t('messages.yesterday')),
+               style:TextStyle(fontSize:12,color:_night?const Color(0xFF8696A0):const Color(0xFF54656F)))))),
+           if(i==firstUnread)Padding(key:_separatorKey,padding:const EdgeInsets.symmetric(vertical:6),child:Center(child:Chip(
+             label:Text(S.t('messages.unreadSeparator',{'n':unreadHere})),visualDensity:VisualDensity.compact))),
+           b,
+         ]);
+       })),
+       // Unread messages higher up: one touch goes up to them (lot 19).
+       if(unreadHere>0&&!_separator.seen)Positioned(top:10,left:0,right:0,child:Center(
+         child:UnreadUpButton(count:unreadHere,onPressed:()=>unawaited(_toUnread())))),
+       if(!_atBottom)Positioned(right:12,bottom:12,child:Badge(
+         isLabelVisible:below>0,label:Text('$below'),
+         child:FloatingActionButton.small(heroTag:null,tooltip:S.t('messages.toBottom'),onPressed:()=>_toBottom(),child:const Icon(Icons.keyboard_arrow_down)))),
+     ]))),
+     if(group!=null&&!_canWrite)Material(color:Theme.of(context).colorScheme.surfaceContainerHighest,child:Padding(padding:const EdgeInsets.all(12),
+       child:Row(children:[const Icon(Icons.campaign_outlined),const SizedBox(width:8),Expanded(child:Text(group.archived?S.t('groups.archivedNotice'):S.t('groups.cannotSend')))])))
+     else _composer(),
+   ]);
+ }
+
+ @override Widget build(BuildContext context){
+   final by=_byId, acks=_acks;
+   final group=_group;
+   return MessageSelectionScope(selection:_selection,focusNode:_selectFocus,child:LayoutBuilder(builder:(context,c){
+     final wide=c.maxWidth>=900; _wide=wide;
+     // Star in the header of the conversation, left of ⋮, one click (lot 10C).
+     final isFav=_favConvs.contains(_conv);
+     final favButton=IconButton(tooltip:S.t(isFav?'messages.unfav':'messages.fav'),onPressed:()=>_toggleFavConv(_conv),
+       icon:Icon(isFav?Icons.star:Icons.star_border,color:isFav?Colors.amber:null));
+     final close=widget.onClose==null?null:IconButton(tooltip:S.t('common.close'),onPressed:widget.onClose,icon:const Icon(Icons.close));
+     final listOnly=!wide&&!_chatOpen;
+     final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
+     // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
+     // ADRASEC channel models only when the event has the module.
+     final canAdrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')&&RightsState.instance.allows('adrasec');
+     final adrasecDone=canAdrasec&&templateAdded(widget.eventId,'adrasec',by.keys);
+     final adrasec=PopupMenuButton<String>(key:const ValueKey('messages-more'),icon:const Icon(Icons.more_horiz),tooltip:S.t('messages.more'),
+       onSelected:(v){if(v=='adrasec'){_addTemplate();}else{_showImportant();}},itemBuilder:(_)=>[
+       // « Messages importants », all conversations together (lot 29, group 7).
+       PopupMenuItem(value:'important',key:const ValueKey('messages-important'),child:menuEntry(context,icon:Icons.star_outline,color:const Color(0xFFF9A825),
+         title:S.t('messages.importantList'),detail:S.t('messages.importantListDetail'))),
+       // Round coloured icon, short label, detail under it (lot 29.3).
+       // Already added: greyed, « Déjà ajoutés » (card « menu … plus soigné », choice 4).
+       if(canAdrasec)PopupMenuItem(value:'adrasec',key:const ValueKey('messages-adrasec'),enabled:!adrasecDone,
+         child:menuEntry(context,icon:Icons.shield_outlined,color:const Color(0xFF1565C0),done:adrasecDone,
+         title:S.t('groups.addAdrasecShort'),detail:S.t(adrasecDone?'groups.adrasecDone':'groups.addAdrasecDetail')))]);
+     final editGroup=group!=null&&group.canManage(widget.actorId)
+       ?RoundIconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:Icons.edit_outlined):null;
+     final pending=_pendingPill();
+     if(listOnly){
+       return Scaffold(
+         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,adrasec,?close]),
+         body:_convList(by,acks));
+     }
+     // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
+     // line — search, « Nouveau groupe » (+ ADRASEC model) on the left; the
+     // conversation, « Modifier le groupe » and the star on the right. No ⋮
+     // any more: it only held « Ajouter aux favoris », already the star (card
+     // « Messages (web), retirer les trois points », 30 Oct 2026, 16 h 25).
+     if(wide){
+       return Scaffold(body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+         SizedBox(height:60,child:Row(children:[
+           SizedBox(width:360,child:Padding(padding:const EdgeInsets.fromLTRB(12,8,4,8),child:Row(children:[
+             Expanded(child:_searchField()),newGroup,adrasec]))),
+           const VerticalDivider(width:1),
+           const SizedBox(width:12),
+           // Selection (lot 21): « N sélectionnés », Copier, Supprimer in place of the conversation.
+           if(_selection.active)Expanded(child:_selectionBar())
+           else...[
+             _convIcon(_conv,by),const SizedBox(width:12),
+             Flexible(child:_convTitle(by,style:Theme.of(context).textTheme.titleMedium)),
+             ?pending,
+             const Spacer(),
+             ?editGroup,PttHeaderButton(channel:pttChannelOf(_conv),name:widget.actorId),_findButton(),favButton,_convMenu(),?close,
+           ],
+           const LinkStatusPill(),const SizedBox(width:4),
+         ])),
+         const Divider(height:1),
+         Expanded(child:Row(children:[
+           SizedBox(width:360,child:_convList(by,acks,search:false)),
+           const VerticalDivider(width:1),
+           Expanded(child:_chat(by,acks)),
+         ])),
+       ]));
+     }
+     final back=!wide&&widget.initialPeer==null&&widget.initialText==null;
+     final sel=_selection.active?_selectionBar():null;
+     return Scaffold(
+       appBar:sel!=null?LinkedAppBar(automaticallyImplyLeading:false,leading:sel.exitButton,titleSpacing:0,title:sel.title,actions:sel.actions):LinkedAppBar(
+         leading:back?BackButton(onPressed:()=>setState(()=>_chatOpen=false)):null,
+         titleSpacing:back?0:null,
+         title:Row(children:[
+           if(!wide)...[_convIcon(_conv,by,r:18),const SizedBox(width:10)],
+           Flexible(child:_convTitle(by)),
+           ?pending,
+         ]),
+         actions:[?editGroup,PttHeaderButton(channel:pttChannelOf(_conv),name:widget.actorId),_convMenu(narrow:true),?close]),
+       body:_chat(by,acks),
+     );
+   }));
+ }
+}
+
+/// In an isolate: decoding and JPEG encoding take a while on a phone.
+({Uint8List bytes,String mime})? _preparePasted((Uint8List,String?) a)=>preparePastedImage(a.$1,mime:a.$2);
+
+class _PhotoPreviewDialog extends StatefulWidget {
+ final Uint8List bytes; final String initialCaption;
+ const _PhotoPreviewDialog({required this.bytes,required this.initialCaption});
+ @override State<_PhotoPreviewDialog> createState()=>_PhotoPreviewDialogState();
+}
+class _PhotoPreviewDialogState extends State<_PhotoPreviewDialog>{
+ late final _caption=TextEditingController(text:widget.initialCaption);
+ @override void dispose(){_caption.dispose();super.dispose();}
+ @override Widget build(BuildContext context)=>AlertDialog(
+   title:Text(S.t('messages.sendPhoto')),
+   content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+     ClipRRect(borderRadius:BorderRadius.circular(8),child:Image.memory(widget.bytes,height:260,fit:BoxFit.contain)),
+     const SizedBox(height:12),
+     TextField(controller:_caption,maxLength:2048,textCapitalization:TextCapitalization.sentences,decoration:InputDecoration(labelText:S.t('messages.caption'))),
+   ])),
+   actions:[
+     TextButton(onPressed:()=>Navigator.pop(context),child:Text(S.t('common.cancel'))),
+     FilledButton.icon(onPressed:()=>Navigator.pop(context,_caption.text.trim()),icon:const Icon(Icons.send),label:Text(S.t('messages.send'))),
+   ],
+ );
+}
+
+/// Thumbnail of a photo: from the local cache, else downloaded once and cached
+/// so it stays visible offline.
+class _PhotoThumb extends StatefulWidget {
+ final SarcadeAttachment attachment; final SarcadeApi api; final LocalStore store; final String eventId;
+ const _PhotoThumb({super.key,required this.attachment,required this.api,required this.store,required this.eventId});
+ @override State<_PhotoThumb> createState()=>_PhotoThumbState();
+}
+class _PhotoThumbState extends State<_PhotoThumb>{
+ // The photo can reach the server long after its message: sender still
+ // uploading, or photo held on the sender's device by the low-bandwidth mode
+ // until the PCO lifts it (test of 23 Oct 2026). The thumbnail shows
+ // « Photo en attente » and retries by itself, every 5 s then every 20 s,
+ // for an hour; after that, a tap retries.
+ Uint8List? _bytes; bool _waiting=false, _gaveUp=false; Timer? _retry; int _attempt=0;
+ @override void initState(){super.initState();_load();}
+ @override void dispose(){_retry?.cancel();super.dispose();}
+ Future<void> _load() async {
+   final id=widget.attachment.fileId;
+   final local=await widget.store.attachment(id);
+   if(local!=null){if(mounted)setState(()=>_bytes=local);return;}
+   try{
+     final bytes=Uint8List.fromList(await widget.api.downloadFile(widget.eventId,id));
+     await widget.store.saveAttachment(id,bytes);
+     if(mounted)setState((){_bytes=bytes;_waiting=false;_gaveUp=false;});
+   }catch(_){
+     if(!mounted)return;
+     _attempt++;
+     final elapsed=_attempt<=12?_attempt*5:60+(_attempt-12)*20;
+     if(elapsed>=3600){setState((){_waiting=false;_gaveUp=true;});return;}
+     setState(()=>_waiting=true);
+     _retry=Timer(Duration(seconds:_attempt<12?5:20),_load);
+   }
+ }
+ void _retryNow(){_retry?.cancel();setState((){_attempt=0;_gaveUp=false;_waiting=true;});_load();}
+ @override Widget build(BuildContext context){
+   final pending=widget.store.isUploadPending(widget.attachment.fileId);
+   final bytes=_bytes;
+   Widget placeholder(IconData icon,String title,String? hint)=>InkWell(onTap:_retryNow,child:Container(color:Colors.black12,alignment:Alignment.center,padding:const EdgeInsets.all(6),
+     child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(icon),Text(title,textAlign:TextAlign.center,style:const TextStyle(fontSize:12)),if(hint!=null)Text(hint,textAlign:TextAlign.center,style:const TextStyle(fontSize:11))])));
+   return SizedBox(width:160,height:120,child:bytes!=null
+     ?Stack(fit:StackFit.expand,children:[
+       InkWell(onTap:()=>TvNearbyGate.during(()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>_PhotoViewer(attachment:widget.attachment,bytes:bytes)))),
+         child:ClipRRect(borderRadius:BorderRadius.circular(6),child:Image.memory(bytes,fit:BoxFit.cover,cacheWidth:320))),
+       if(pending)Positioned(right:4,top:4,child:Tooltip(message:S.t('messages.pendingUpload'),child:const CircleAvatar(radius:12,child:Icon(Icons.cloud_upload_outlined,size:16)))),
+     ])
+     :_gaveUp?placeholder(Icons.broken_image_outlined,S.t('messages.photoUnavailable'),S.t('messages.tapRetry'))
+     :_waiting?placeholder(Icons.hourglass_top,'Photo en attente','envoi différé par l’expéditeur (liaison faible)')
+     :Container(color:Colors.black12,alignment:Alignment.center,child:const CircularProgressIndicator(strokeWidth:2)));
+ }
+}
+
+/// Full screen photo with zoom, and saving to the device or as a download.
+class _PhotoViewer extends StatelessWidget {
+ final SarcadeAttachment attachment; final Uint8List bytes;
+ const _PhotoViewer({required this.attachment,required this.bytes});
+ @override Widget build(BuildContext context)=>Scaffold(
+   backgroundColor:Colors.black,
+   appBar:LinkedAppBar(title:Text(attachment.name),actions:[
+     IconButton(tooltip:S.t('messages.saveFile'),icon:const Icon(Icons.download),onPressed:() async {
+       final messenger=ScaffoldMessenger.of(context);
+       try{
+         final path=await saveFile(attachment.name,bytes,mimeType:attachment.mimeType);
+         messenger.showSnackBar(SnackBar(content:Text(canOpenSavedFiles?S.t('messages.photoSaved',{'path':path}):S.t('messages.photoDownloaded'))));
+       }catch(e){messenger.showSnackBar(SnackBar(content:Text(S.t('messages.saveFailed',{'error':e}))));}
+     }),
+   ]),
+   body:Center(child:InteractiveViewer(maxScale:6,child:Image.memory(bytes))),
+ );
+}

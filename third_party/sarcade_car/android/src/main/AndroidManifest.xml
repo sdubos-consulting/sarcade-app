@@ -1,0 +1,37 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android Auto, merged into the manifest of the application:
+         - lot 1b (1 Nov 2026): messaging by notifications (read aloud,
+           dictated answer), <uses name="notification"/>;
+         - lot 17 (1 Nov 2026): SARCADE screen with tabs (Messages, Ordres,
+           Points, Équipe, SOS), « points of interest » category of the Car
+           App Library, <uses name="template"/>;
+         - lot 18 (1 Nov 2026): colours of the car (androidx.car.app.theme). -->
+    <!-- Lot 24 (card « Android Auto : télécommandes de relais depuis la
+         voiture », choice 2): speed of the vehicle given by Android Auto,
+         remotes only while stopped when it is known. -->
+    <uses-permission android:name="com.google.android.gms.permission.CAR_SPEED" />
+    <application>
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+        <!-- Colours of SARCADE for the car (lot 18, card « Android Auto :
+             bouton SOS bleu au lieu de rouge », choice 1): see
+             res/values/sarcade_car_theme.xml. -->
+        <meta-data
+            android:name="androidx.car.app.theme"
+            android:resource="@style/SarcadeCarAppTheme" />
+        <!-- Tabs from the car API level 6; level 1 to 5: list with an action
+             strip (see MainScreen.kt). -->
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+        <service
+            android:name="org.sarcade.car.SarcadeCarAppService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.POI" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

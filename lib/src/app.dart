@@ -1,0 +1,215 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'ui/keyboard.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:http/http.dart' as http;
+import 'config/app_config.dart';
+import 'config/saved_servers.dart';
+import 'ui/operator_color.dart' show OperatorColors;
+import 'ui/theme.dart';
+import 'features/map/operational_map_page.dart';
+import 'features/settings/settings_page.dart';
+import 'features/events/event_choice.dart';
+import 'services/sarcade_api.dart';
+import 'offline/local_store.dart';
+import 'offline/outbox_policy.dart' as outbox;
+import 'offline/sync_service.dart';
+import 'l10n/strings.dart';
+import 'operations/event_settings.dart';
+import 'services/notification_service.dart';
+import 'features/settings/notifications_panel.dart' show readSoundPrefs;
+
+class SarcadeApp extends StatefulWidget {
+  final LocalStore store;
+  const SarcadeApp({super.key,required this.store});
+  @override State<SarcadeApp> createState()=>_SarcadeAppState();
+}
+
+class _SarcadeAppState extends State<SarcadeApp> {
+  final _navigator=GlobalKey<NavigatorState>();
+  late AppConfig _config;
+  late bool _needsSetup;
+  SarcadeApi? _api;
+  String? _apiKey;
+
+  // One client per session: the map page closes it on dispose.
+  SarcadeApi _apiFor(AppConfig c){if(_apiKey!=c.sessionKey){_api=SarcadeApi(baseUrl:c.serverUrl);_apiKey=c.sessionKey;}return _api!;}
+
+  // Phones and the web app (Chromebooks, PWA) cannot receive --dart-define
+  // values per operator, so they ask the settings once.
+  static bool get _asksSettings=>kIsWeb||defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS;
+
+  @override void initState(){
+    super.initState();
+    final env=AppConfig.fromEnvironment();
+    final stored=widget.store.storedConfig();
+    _config=stored==null?env:AppConfig.fromStored(stored,env);
+    // Desktop keeps the build-time configuration (run-windows-demo.ps1).
+    // A phone cannot be given --dart-define values per operator, so it asks once.
+    _needsSetup=!_config.isComplete||(_asksSettings&&stored==null);
+    _applyLanguage();
+    themeMode.value=themeModeFrom(widget.store.preference('theme_mode'));
+    // Day / night / automatic is chosen in « Fond et affichage » of the map
+    // (lot 19): applied at once, kept on the device.
+    themeMode.addListener(_keepTheme);
+    redMode.value=widget.store.preference('theme_red')=='1';
+    redMode.addListener(_keepRed);
+    // Lot 19: the followed event checked at every start and on a 404.
+    OfflineSyncService.onEventUnknown=_onEventUnknown;
+    if(!_needsSetup)WidgetsBinding.instance.addPostFrameCallback((_)=>unawaited(_checkEvent()));
+  }
+
+  // --- Event chosen automatically (lot 19, event_choice.dart) ---
+  bool _checkingEvent=false;
+  BuildContext? _dialogContext()=>_navigator.currentState?.overlay?.context;
+
+  Future<void> _checkEvent({bool unknown=false}) async {
+    if(_checkingEvent||_needsSetup)return;
+    _checkingEvent=true;
+    final c=_config, api=SarcadeApi(baseUrl:c.serverUrl);
+    try{
+      await checkFollowedEvent(api:api,current:c.eventId,deviceId:c.deviceId,unknown:unknown,context:_dialogContext,
+        manual:widget.store.preference(manualEventPref)==c.eventId,follow:_followEvent);
+    }finally{api.close();_checkingEvent=false;}
+  }
+
+  void _onEventUnknown(String server,String eventId){
+    if(!mounted||outbox.normalServer(server)!=outbox.normalServer(_config.serverUrl)||eventId!=_config.eventId)return;
+    unawaited(_checkEvent(unknown:true));
+  }
+
+  /// The map restarts on [event]; a choice by hand is remembered as such.
+  Future<void> _followEvent(Map<String,dynamic> event,{required bool manual}) async {
+    final c=_config.copyWith(eventId:'${event['id']}');
+    await widget.store.saveConfig(c.toStored());
+    await widget.store.setPreference(manualEventPref,manual?c.eventId:null);
+    await _rememberServer(c.serverUrl,eventId:c.eventId,deviceId:c.deviceId);
+    if(mounted)setState(()=>_config=c);
+  }
+
+  void _keepTheme()=>unawaited(widget.store.setPreference('theme_mode',themeModeName(themeMode.value)));
+
+  void _keepRed()=>unawaited(widget.store.setPreference('theme_red',redMode.value?'1':'0'));
+
+  @override void dispose(){themeMode.removeListener(_keepTheme);redMode.removeListener(_keepRed);super.dispose();}
+
+  void _applyLanguage(){
+    S.setLanguage(_config.language,systemLanguage:WidgetsBinding.instance.platformDispatcher.locale.languageCode);
+    NotificationService().bypassDnd=_config.immediateBypassDnd;
+    NotificationService().sounds=readSoundPrefs(widget.store);
+  }
+
+  static String get _platform=>platformName(isWeb:kIsWeb,targetPlatform:defaultTargetPlatform.name);
+
+  List<SavedServer> _readServers()=>parseSavedServers(widget.store.preference('servers'));
+  Future<void> _saveServers(List<SavedServer> list)=>widget.store.setPreference('servers',encodeSavedServers(list));
+  Future<void> _rememberServer(String url,{String? eventId,String? deviceId})=>
+    _saveServers(rememberServer(_readServers(),url,eventId:eventId,deviceId:deviceId,now:DateTime.now().toUtc()));
+
+  Future<void> _save(AppConfig c) async {
+    final colourChanged=c.drawColor!=null&&c.drawColor!=_config.drawColor;
+    await widget.store.saveConfig(c.toStored());
+    // Preferred colour kept by the server for the email (every device and
+    // event); refused silently without Cloudflare Access.
+    if(colourChanged)unawaited(_apiFor(c).patchMyPreferences({'color':c.drawColor}).catchError((_)=>false));
+    // The map paints the trace and the dot again in the new colour and
+    // shares it at once (card « la trace d'un opérateur dans la couleur
+    // choisie dans son profil », 10 Nov 2026, choice 7).
+    if(c.drawColor!=_config.drawColor)OperatorColors.instance.profileChanged();
+    // Last event and terminal of this server, taken back when switching to it.
+    await _rememberServer(c.serverUrl,eventId:c.eventId,deviceId:c.deviceId);
+    final wasSetup=_needsSetup;
+    // An event chosen in Paramètres is a choice by hand (lot 19).
+    if(wasSetup||c.eventId!=_config.eventId||outbox.normalServer(c.serverUrl)!=outbox.normalServer(_config.serverUrl)){
+      await widget.store.setPreference(manualEventPref,c.eventId);
+    }
+    // Same session: language or operator settings changed, the map stays.
+    // Paramètres is a tab on phones (8 Nov 2026): close only a page opened above the map.
+    if(c.sessionKey==_config.sessionKey&&!wasSetup){setState((){_config=c;_applyLanguage();});if(_navigator.currentState?.canPop()??false)_navigator.currentState?.maybePop();return;}
+    setState((){_config=c;_needsSetup=false;_applyLanguage();});
+    if(!wasSetup&&(_navigator.currentState?.canPop()??false))_navigator.currentState?.maybePop();
+  }
+
+  final _httpsTried=<String>{};
+
+  /// Switch to the HTTPS address announced by the server, kept when it
+  /// answers (certificate valid, local DNS in place); otherwise the device
+  /// stays on plain HTTP and tries again at the next start.
+  Future<void> _tryHttps(String url) async {
+    if(!_httpsTried.add(url))return;
+    try{
+      final r=await http.get(Uri.parse('$url/health')).timeout(const Duration(seconds:8));
+      if(r.statusCode!=200||!mounted)return;
+      final c=_config.copyWith(serverUrl:url);
+      await widget.store.saveConfig(c.toStored());
+      setState(()=>_config=c);
+    }catch(e){
+      debugPrint('SARCADE HTTPS address not reachable yet ($url): $e');
+    }
+  }
+
+
+  void _openSettings()=>_navigator.currentState?.push(MaterialPageRoute(builder:(_)=>_settingsPage(firstRun:false)));
+
+  SettingsPage _settingsPage({required bool firstRun})=>SettingsPage(
+    initial:_config,onSave:_save,firstRun:firstRun,
+    loadEvents:_loadEvents,cachedEvents:widget.store.cachedEvents,
+    waitingFor:(server,eventId)=>outbox.waitingFor(widget.store.pending(),server,eventId),
+    sendFirst:_sendFirst,
+    readServers:_readServers,saveServers:_saveServers,
+    api:firstRun?null:_apiFor(_config),store:widget.store,
+  );
+
+  Future<List<Map<String,dynamic>>> _loadEvents(String server) async {
+    final api=SarcadeApi(baseUrl:server);
+    try{
+      final list=await api.events();
+      await widget.store.saveEvents(server,list);
+      // First successful connection: the server is remembered.
+      await _rememberServer(server);
+      return list;
+    }finally{api.close();}
+  }
+
+  /// « Envoyer d'abord »: the open map's sender when it is the same server
+  /// and event, otherwise a one-shot one. Returns what is still waiting.
+  Future<int> _sendFirst(String server,String eventId) async {
+    final live=OfflineSyncService.active;
+    if(live!=null&&outbox.normalServer(live.server)==outbox.normalServer(server)&&live.eventId==eventId){
+      await live.syncNow();
+    }else{
+      final api=SarcadeApi(baseUrl:server);
+      final once=OfflineSyncService(api:api,store:widget.store,eventId:eventId);
+      try{await once.syncNow();}finally{api.close();}
+    }
+    return outbox.waitingFor(widget.store.pending(),server,eventId);
+  }
+
+  @override
+  Widget build(BuildContext context)=>ListenableBuilder(listenable:Listenable.merge([themeMode,redMode]),builder:(context,_)=>MaterialApp(
+    navigatorKey:_navigator,
+    title:'SARCADE',
+    debugShowCheckedModeBanner:false,
+    // Labels of the standard widgets read by screen readers in the language
+    // of SARCADE (revue d'ergonomie n° 70: « Show menu », « Dismiss »).
+    locale:Locale(S.lang),supportedLocales:const [Locale('fr'),Locale('en')],
+    localizationsDelegates:GlobalMaterialLocalizations.delegates,
+    // Red mode: the night theme seen through the red filter (9 Nov 2026).
+    theme:dayTheme(),darkTheme:nightTheme(),themeMode:redMode.value?ThemeMode.dark:themeMode.value,
+    // Keyboard closed by a touch outside the field (lot 29, 5 Nov 2026).
+    builder:(context,child)=>redVision(redMode.value,closeKeyboardOnTapOutside(child??const SizedBox.shrink())),
+    home:_needsSetup
+      ? _settingsPage(firstRun:true)
+      : OperationalMapPage(
+          key:ValueKey(_config.sessionKey),
+          api:_apiFor(_config),
+          eventId:_config.eventId,deviceId:_config.deviceId,store:widget.store,
+          tileUrl:_config.tileUrl,tileAttribution:_config.tileAttribution,
+          onSettings:_openSettings,
+          settingsBuilder:()=>_settingsPage(firstRun:false),
+          callsign:_config.callsign,aprsTxConsent:_config.aprsTxConsent,platform:_platform,
+          onHttpsAvailable:_tryHttps,
+        ),
+  ));
+}

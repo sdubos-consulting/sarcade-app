@@ -1,0 +1,151 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import '../ui/menu_entry.dart';
+import '../features/map/drawing/map_feature.dart';
+import '../l10n/strings.dart';
+import '../platform/platform_services.dart';
+import 'outbox_policy.dart';
+import 'sync_service.dart';
+import 'unsent_summary.dart';
+
+/// « Éléments non envoyés » (« Robustesse de la synchronisation »): every
+/// item that cannot leave, with its reason, and what the operator can do.
+/// Shown in the « Liaisons » block of the Diagnostic, the single place where
+/// problems arrive (card « Diagnostic, point d'arrivée unique des
+/// problèmes », 30 Oct 2026, 12 h 47): the separate screen is gone.
+class UnsentList extends StatefulWidget {
+  final OfflineSyncService sync; final String actorId;
+  /// « Envoyer » of the banner failed again: Supprimer and Exporter are
+  /// offered on each item (card « iPhone, 1 élément(s) non envoyé(s) »).
+  final bool failedAgain;
+  /// Called after a retry, an attachment or a deletion.
+  final VoidCallback? onChanged;
+  const UnsentList({super.key,required this.sync,required this.actorId,this.failedAgain=false,this.onChanged});
+  @override State<UnsentList> createState()=>_UnsentListState();
+}
+
+class _UnsentListState extends State<UnsentList> {
+  OfflineSyncService get _sync=>widget.sync;
+  late bool _failedAgain=widget.failedAgain;
+
+  List<Map<String,dynamic>> _items(){
+    final now=DateTime.now().toUtc();
+    final all=_sync.store.pending().where((op)=>isUnsent(op,_sync.server,_sync.eventId,now)).toList();
+    all.sort((a,b)=>'${a['client_time']}'.compareTo('${b['client_time']}'));
+    return all;
+  }
+
+  String _age(Map<String,dynamic> op){
+    final t=DateTime.tryParse('${op['client_time']}');
+    if(t==null)return '';
+    final d=DateTime.now().toUtc().difference(t.toUtc());
+    if(d.inDays>0)return '${d.inDays} j';
+    if(d.inHours>0)return '${d.inHours} h';
+    return '${d.inMinutes} min';
+  }
+
+  bool _here(Map<String,dynamic> op)=>belongsTo(op,_sync.server,_sync.eventId);
+
+  Future<void> _run(Future<void> Function() action) async {
+    await action();
+    if(mounted)setState((){});
+    widget.onChanged?.call();
+  }
+
+  Future<void> _export(Map<String,dynamic> op) async {
+    final messenger=ScaffoldMessenger.of(context);
+    final isFeature=op['object_type']=='map_feature'&&op['payload'] is Map;
+    Object content=wire(op);
+    var ext='json', mime='application/json';
+    if(isFeature){
+      try{
+        content=featureCollection([MapFeature.fromJson(Map<String,dynamic>.from(op['payload'] as Map))]);
+        ext='geojson'; mime='application/geo+json';
+      }catch(_){/* kept as JSON */}
+    }
+    final name='sarcade-non-envoye-${op['object_type']}-${op['object_id']}.$ext'.replaceAll(RegExp(r'[\\/:*?"<>|]'),'_');
+    try{
+      final path=await saveFile(name,utf8.encode(const JsonEncoder.withIndent('  ').convert(content)),mimeType:mime);
+      messenger.showSnackBar(SnackBar(content:Text(S.t('unsent.exported',{'path':path}))));
+    }catch(_){
+      messenger.showSnackBar(SnackBar(content:Text(S.t('unsent.exportFailed'))));
+    }
+  }
+
+  Future<void> _delete(Map<String,dynamic> op) async {
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
+      title:Text(S.t('unsent.delete')),
+      content:Text('${S.t('type.${op['object_type']}')} · ${itemSummary(op)}\n\n${S.t('unsent.deleteConfirm')}'),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('unsent.delete'))),
+      ]));
+    if(ok==true)await _run(()=>_sync.discard(op,widget.actorId));
+  }
+
+  @override
+  Widget build(BuildContext context){
+    final items=_items();
+    final retryable=items.where(_here).toList();
+    if(items.isEmpty)return const SizedBox.shrink();
+    final t=Theme.of(context);
+    return Column(key:const ValueKey('unsent-list'),crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      const Divider(height:1),
+      Padding(padding:const EdgeInsets.fromLTRB(14,8,8,0),child:Row(children:[
+        Expanded(child:Text('${S.t('unsent.title')} (${items.length})',style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600))),
+        if(retryable.isNotEmpty)OutlinedButton.icon(
+          onPressed:()=>_run(() async {final left=await _sync.retryAll();_failedAgain=left.isNotEmpty;}),
+          icon:const Icon(Icons.refresh),label:Text(S.t('unsent.retryAll'))),
+      ])),
+      ListView.separated(
+            shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),
+            itemCount:items.length+(_failedAgain?1:0),
+            separatorBuilder:(_,_)=>const Divider(height:1),
+            itemBuilder:(context,index){
+              if(_failedAgain&&index==0){
+                return Material(key:const ValueKey('unsent-failed-again'),color:Theme.of(context).colorScheme.errorContainer,child:Padding(padding:const EdgeInsets.all(12),
+                  child:Row(children:[const Icon(Icons.error_outline),const SizedBox(width:8),Expanded(child:Text(S.t('unsent.stillFailing')))])));
+              }
+              final op=items[index-(_failedAgain?1:0)];
+              final here=_here(op);
+              final server=itemServer(op);
+              final where=<String>[
+                if(server!=null&&server!=normalServer(_sync.server))S.t('unsent.otherServer',{'server':server}),
+                if(op['event_id']!=_sync.eventId)S.t('unsent.otherEvent',{'event':op['event_id']}),
+              ];
+              final details=<String>[
+                ...where,
+                if(!here)S.t('unsent.waitsReturn'),
+                ?readableReason(op),
+                '${S.t('unsent.attempts',{'n':attempts(op)})} · ${S.t('unsent.since',{'age':_age(op)})}',
+              ];
+              return ListTile(
+                leading:Icon(here?Icons.error_outline:Icons.schedule,color:here?Colors.deepOrange:Colors.blueGrey),
+                title:Text('${S.t('type.${op['object_type']}')}${itemSummary(op).isEmpty?'':' · ${itemSummary(op)}'}',maxLines:2,overflow:TextOverflow.ellipsis),
+                subtitle:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+                  Text(details.join('\n')),
+                  if(_failedAgain)Wrap(spacing:8,children:[
+                    TextButton.icon(onPressed:()=>_delete(op),icon:const Icon(Icons.delete_outline),label:Text(S.t('unsent.delete'))),
+                    TextButton.icon(onPressed:()=>_export(op),icon:const Icon(Icons.download),label:Text(S.t('unsent.export'))),
+                  ]),
+                ]),
+                isThreeLine:details.length>1||_failedAgain,
+                trailing:PopupMenuButton<String>(
+                  onSelected:(v){switch(v){
+                    case 'retry':_run(()=>_sync.retry(op));
+                    case 'attach':_run(()=>_sync.attachHere(op));
+                    case 'export':_export(op);
+                    case 'delete':_delete(op);
+                  }},
+                  itemBuilder:(_)=>[
+                    if(here)PopupMenuItem(value:'retry',child:menuEntry(context,icon:Icons.refresh,title:S.t('unsent.retry'))),
+                    if(!here&&canAttach(op))PopupMenuItem(value:'attach',child:menuEntry(context,icon:Icons.move_down,title:S.t('unsent.attach'))),
+                    PopupMenuItem(value:'export',child:menuEntry(context,icon:Icons.download,title:S.t('unsent.export'))),
+                    PopupMenuItem(value:'delete',child:menuEntry(context,icon:Icons.delete_outline,color:Theme.of(context).colorScheme.error,title:S.t('unsent.delete'))),
+                  ],
+                ),
+              );
+            }),
+    ]);
+  }
+}

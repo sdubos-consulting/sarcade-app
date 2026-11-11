@@ -1,0 +1,191 @@
+/// Weather forecasts (note « Prévisions météo »): Météo-France first, through
+/// the server which keeps the last forecast for offline use; vigilance of
+/// the department; sunrise and sunset also computed on the device. Pure code.
+library;
+
+import 'dart:math' as math;
+
+import '../../l10n/strings.dart';
+
+class WeatherHour {
+  final DateTime time; final double? temperatureC, apparentC, precipitationMm, windKmh, gustKmh;
+  final int? precipitationProbability, weatherCode, windDirectionDeg, cloudCoverPct;
+  final double? visibilityM;
+  const WeatherHour({required this.time,this.temperatureC,this.apparentC,this.precipitationMm,this.windKmh,this.gustKmh,
+    this.precipitationProbability,this.weatherCode,this.windDirectionDeg,this.cloudCoverPct,this.visibilityM});
+
+  static double? _d(Object? v)=>v is num?v.toDouble():null;
+  static int? _i(Object? v)=>v is num?v.round():null;
+
+  factory WeatherHour.fromJson(Map<String,dynamic> j)=>WeatherHour(
+    time:DateTime.parse(j['time'] as String),temperatureC:_d(j['temperature_c']),apparentC:_d(j['apparent_c']),
+    precipitationMm:_d(j['precipitation_mm']),windKmh:_d(j['wind_kmh']),gustKmh:_d(j['gust_kmh']),
+    precipitationProbability:_i(j['precipitation_probability']),weatherCode:_i(j['weather_code']),
+    windDirectionDeg:_i(j['wind_direction_deg']),cloudCoverPct:_i(j['cloud_cover_pct']),visibilityM:_d(j['visibility_m']));
+}
+
+class Vigilance {
+  final String department; final int colorId; final List<String> phenomena;
+  const Vigilance({required this.department,required this.colorId,this.phenomena=const []});
+  factory Vigilance.fromJson(Map<String,dynamic> j)=>Vigilance(department:'${j['department']??''}',
+    colorId:(j['color_id'] as num?)?.toInt()??1,phenomena:[for(final p in (j['phenomena'] as List?)??const [])'$p']);
+  bool get isAlert=>colorId>=3;
+}
+
+class WeatherReport {
+  final String? provider; final DateTime? fetchedAt; final bool stale;
+  final List<WeatherHour> hours; final List<({String date,DateTime? sunrise,DateTime? sunset})> days;
+  final Vigilance? vigilance; final double? lat, lon;
+  const WeatherReport({this.provider,this.fetchedAt,this.stale=true,this.hours=const [],this.days=const [],this.vigilance,this.lat,this.lon});
+
+  /// Answer of `GET /events/{id}/weather` or `GET /weather`.
+  factory WeatherReport.fromJson(Map<String,dynamic> j){
+    final f=j['forecast'] is Map?Map<String,dynamic>.from(j['forecast'] as Map):(j['hourly'] is List?j:null);
+    final v=j['vigilance'];
+    return WeatherReport(
+      provider:(f?['provider_label'] as String?)??(f?['provider'] as String?),
+      fetchedAt:f?['fetched_at']==null?null:DateTime.tryParse('${f!['fetched_at']}'),
+      stale:j['stale']==true,
+      hours:[for(final h in (f?['hourly'] as List?)??const []) if(h is Map) WeatherHour.fromJson(Map<String,dynamic>.from(h))],
+      days:[for(final d in (f?['daily'] as List?)??const []) if(d is Map)(date:'${d['date']}',
+        sunrise:DateTime.tryParse('${d['sunrise']}'),sunset:DateTime.tryParse('${d['sunset']}'))],
+      vigilance:v is Map?Vigilance.fromJson(Map<String,dynamic>.from(v)):null,
+      lat:(f?['lat'] as num?)?.toDouble(),lon:(f?['lon'] as num?)?.toDouble(),
+    );
+  }
+
+  bool get isEmpty=>hours.isEmpty;
+
+  /// Next [n] hours from [now].
+  List<WeatherHour> upcoming(DateTime now,{int n=48}){
+    final start=DateTime.utc(now.toUtc().year,now.toUtc().month,now.toUtc().day,now.toUtc().hour);
+    return hours.where((h)=>!h.time.toUtc().isBefore(start)).take(n).toList();
+  }
+}
+
+/// WMO weather codes → icon family and translation key.
+String weatherKey(int? code){
+  if(code==null)return 'unknown';
+  if(code==0)return 'clear';
+  if(code<=2)return 'partly';
+  if(code==3)return 'overcast';
+  if(code==45||code==48)return 'fog';
+  if(code>=51&&code<=57)return 'drizzle';
+  if(code>=61&&code<=67)return 'rain';
+  if(code>=71&&code<=77)return 'snow';
+  if(code>=80&&code<=82)return 'showers';
+  if(code==85||code==86)return 'snow';
+  if(code>=95)return 'storm';
+  return 'unknown';
+}
+
+/// Cardinal direction of the wind (where it comes from).
+String windDirection(int? deg){
+  if(deg==null)return '';
+  const names=['N','NE','E','SE','S','SO','O','NO'];
+  return names[((deg%360)/45).round()%8];
+}
+
+/// Sunrise and sunset (UTC) for a day and place, NOAA algorithm, so that
+/// they are known offline. Null near the poles when the sun does not rise
+/// or set.
+({DateTime? sunrise,DateTime? sunset}) sunTimes(DateTime day,double lat,double lon){
+  double rad(double d)=>d*math.pi/180;
+  double deg(double r)=>r*180/math.pi;
+  final n=DateTime.utc(day.year,day.month,day.day).difference(DateTime.utc(day.year,1,1)).inDays+1;
+  final gamma=2*math.pi/365*(n-1);
+  final eqtime=229.18*(0.000075+0.001868*math.cos(gamma)-0.032077*math.sin(gamma)-0.014615*math.cos(2*gamma)-0.040849*math.sin(2*gamma));
+  final decl=0.006918-0.399912*math.cos(gamma)+0.070257*math.sin(gamma)-0.006758*math.cos(2*gamma)+0.000907*math.sin(2*gamma)
+    -0.002697*math.cos(3*gamma)+0.00148*math.sin(3*gamma);
+  final cosHa=math.cos(rad(90.833))/(math.cos(rad(lat))*math.cos(decl))-math.tan(rad(lat))*math.tan(decl);
+  if(cosHa<-1||cosHa>1)return (sunrise:null,sunset:null);
+  final ha=deg(math.acos(cosHa));
+  DateTime at(double minutes)=>DateTime.utc(day.year,day.month,day.day).add(Duration(seconds:(minutes*60).round()));
+  return (sunrise:at(720-4*(lon+ha)-eqtime),sunset:at(720-4*(lon-ha)-eqtime));
+}
+
+/// Night at [t] (between sunset and sunrise at that place): night icons.
+bool isNightAt(DateTime t,double lat,double lon){
+  final u=t.toUtc();
+  final s=sunTimes(u,lat,lon);
+  if(s.sunrise==null||s.sunset==null)return false;
+  return u.isBefore(s.sunrise!)||!u.isBefore(s.sunset!);
+}
+
+/// Sunrise or sunset falling within the hour starting at [t].
+({String kind,DateTime at})? sunEventIn(DateTime t,double lat,double lon){
+  final u=t.toUtc(); final end=u.add(const Duration(hours:1));
+  final s=sunTimes(u,lat,lon);
+  for(final e in [('rise',s.sunrise),('set',s.sunset)]){
+    final at=e.$2;
+    if(at!=null&&!at.isBefore(u)&&at.isBefore(end))return (kind:e.$1,at:at);
+  }
+  return null;
+}
+
+/// « 0,4 mm » (strip of the weather screen, only when above 0).
+String rainLabel(double mm)=>'${mm<10?mm.toStringAsFixed(1).replaceAll('.',','):mm.round()} mm';
+
+/// Lines of the bubble of an hour: sky, wind, gusts, rain, feels like.
+List<String> hourDetailLines(WeatherHour h){
+  String n(double? v,String u)=>v==null?'-':'${v.round()} $u';
+  return [
+    S.t('weather.code.${weatherKey(h.weatherCode)}'),
+    S.t('weather.windLine',{'dir':windDirection(h.windDirectionDeg),'speed':n(h.windKmh,'km/h')}),
+    if(h.gustKmh!=null)S.t('weather.gusts',{'v':n(h.gustKmh,'km/h')}),
+    S.t('weather.rainLine',{'mm':rainLabel(h.precipitationMm??0),'p':h.precipitationProbability==null?'':' · ${h.precipitationProbability} %'}),
+    if(h.apparentC!=null)S.t('weather.feels',{'t':'${h.apparentC!.round()}°'}),
+  ];
+}
+
+/// « Prévision du …, peut-être dépassée » only when a forecast exists
+/// (revue d'ergonomie n° 50: « Prévision du - » was shown without any).
+bool weatherShowsStale(WeatherReport? r,{required bool offline})=>
+  r!=null&&r.fetchedAt!=null&&(r.hours.isNotEmpty||r.days.isNotEmpty)&&(r.stale||offline);
+
+/// « 21 h » (card « Météo : écran plus lisible », lot 29.5).
+String hourShort(DateTime t)=>'${t.toLocal().hour} h';
+
+/// One day of the next days: minimum, maximum, the most frequent sky by day.
+typedef DaySummary=({DateTime day,double min,double max,int? code});
+
+/// A later day is shown only when the forecast covers at least this much
+/// of it (card « Météo, Prochains jours… », 9 Nov 2026): the last day of a
+/// 48 h forecast often has only its first hour, minimum = maximum.
+const dayMinCoverage=Duration(hours:12);
+
+/// Days from today, from the hourly forecast (local days); today always,
+/// a later day only when covered for [dayMinCoverage].
+List<DaySummary> dailySummaries(List<WeatherHour> hours,DateTime now){
+  final by=<DateTime,List<WeatherHour>>{};
+  final today=DateTime(now.year,now.month,now.day);
+  for(final h in hours){
+    final l=h.time.toLocal(); final d=DateTime(l.year,l.month,l.day);
+    if(d.isBefore(today)||h.temperatureC==null)continue;
+    (by[d]??=[]).add(h);
+  }
+  final out=<DaySummary>[];
+  for(final d in by.keys.toList()..sort()){
+    final list=by[d]!;
+    if(d!=today){
+      final times=[for(final h in list)h.time]..sort();
+      if(times.last.difference(times.first)<dayMinCoverage)continue;
+    }
+    final temps=[for(final h in list)h.temperatureC!];
+    final day=list.where((h){final x=h.time.toLocal().hour;return x>=8&&x<=20;}).toList();
+    final counts=<int,int>{};
+    for(final h in day.isEmpty?list:day){final c=h.weatherCode;if(c!=null)counts[c]=(counts[c]??0)+1;}
+    final code=counts.isEmpty?null:(counts.entries.toList()..sort((a,b)=>b.value.compareTo(a.value))).first.key;
+    out.add((day:d,min:temps.reduce((a,b)=>a<b?a:b),max:temps.reduce((a,b)=>a>b?a:b),code:code));
+  }
+  return out;
+}
+
+/// « Aujourd'hui », « Demain », then « jeu. 7 ».
+String dayShort(DateTime day,DateTime now){
+  final today=DateTime(now.year,now.month,now.day);
+  final diff=DateTime(day.year,day.month,day.day).difference(today).inDays;
+  if(diff==0)return S.t('weather.today');
+  if(diff==1)return S.t('weather.tomorrow');
+  return '${S.t('weekday.short.${day.weekday}')} ${day.day}';
+}

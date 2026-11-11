@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only text shown before the application ever ran: every other text of
+     the car comes from the application (lib/src/l10n/strings.dart, car.*). -->
+<resources>
+    <string name="sarcade_car_open_phone">Open SARCADE on the phone once</string>
+</resources>

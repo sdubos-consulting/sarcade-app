@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Colours of SARCADE for the car (lot 18, card « Android Auto : bouton SOS
+     bleu au lieu de rouge », choice 1, 1 Nov 2026), read by Android Auto
+     through the androidx.car.app.theme meta-data of AndroidManifest.xml.
+
+     Car App Library (CarColor): both variants must be declared, otherwise
+     the host keeps its defaults; « the dark variant may be used as the
+     background of a view with brighter text on it, and the light variant
+     for text on a dark background »; a colour that fails the contrast
+     checks of the host is replaced by its default.
+     - primary: blue of SARCADE (dark variant #0B57D0, white text 6.9:1;
+       light variant #8AB4F8 on the dark screen of the car);
+     - secondary: red of the SOS and of the urgent messages (dark variant
+       #C5221F, white text 6:1; light variant #F28B82). -->
+<resources>
+    <color name="sarcade_car_primary">#FF8AB4F8</color>
+    <color name="sarcade_car_primary_dark">#FF0B57D0</color>
+    <color name="sarcade_car_secondary">#FFF28B82</color>
+    <color name="sarcade_car_secondary_dark">#FFC5221F</color>
+
+    <style name="SarcadeCarAppTheme">
+        <item name="carColorPrimary">@color/sarcade_car_primary</item>
+        <item name="carColorPrimaryDark">@color/sarcade_car_primary_dark</item>
+        <item name="carColorSecondary">@color/sarcade_car_secondary</item>
+        <item name="carColorSecondaryDark">@color/sarcade_car_secondary_dark</item>
+    </style>
+</resources>

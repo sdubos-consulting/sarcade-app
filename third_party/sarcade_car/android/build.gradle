@@ -1,0 +1,73 @@
+group 'org.sarcade.car'
+version '1.0'
+
+// Android Auto (card « Voiture : vraie interface SARCADE avec onglets »,
+// lot 17, 1 Nov 2026): Kotlin with the built-in Kotlin of the Android Gradle
+// plugin, as the other Kotlin plugins of the application (universal_ble 3).
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.3.2'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'org.sarcade.car'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 21
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+        test.java.srcDirs += 'src/test/kotlin'
+    }
+
+    // Tests of the car screens (lot 20): Robolectric needs the resources
+    // (icons) of the plugin.
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+    }
+}
+
+dependencies {
+    // Car App Library, last stable version (16 Jul 2025): TabTemplate from
+    // the car API level 6, older hosts get a list with an action strip.
+    implementation 'androidx.car.app:app:1.7.0'
+    implementation 'androidx.car.app:app-projected:1.7.0'
+
+    // Tests of the car screens without a car (lot 20, card « Android Auto :
+    // ordres de déplacement peu utilisables… », choice 4): test library of
+    // the Car App Library and what it runs on (JUnit, Robolectric). Test
+    // dependencies only: nothing of it is in the application.
+    testImplementation 'androidx.car.app:app-testing:1.7.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'androidx.test:core:1.6.1'
+}

@@ -1,0 +1,3 @@
+# Projet iOS edite sous Windows (i9) et compile sur macOS (Xcode Cloud) : fins de ligne LF.
+* text=auto eol=lf
+*.png binary

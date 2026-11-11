@@ -1,0 +1,145 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../../../l10n/strings.dart';
+import '../../../features/map/drawing/geometry.dart' as geo;
+import 'bearing_models.dart';
+
+/// Bearing taken with the mouse on a computer (decision of the project
+/// owner, 29 Oct 2026, 19 h): an arrow leaves the chosen point and its tip
+/// follows the mouse, the azimuth updating live; a click fixes the tip, a
+/// click on the tip moves it again; Shift snaps to 5°. Only « Enregistrer »
+/// brings the line back to the usual length of the bearings.
+class BearingAim {
+  final LatLng origin;
+  LatLng? tip;
+  double? azimuthDeg;
+  /// Tip fixed by a click: the mouse no longer moves it.
+  bool fixed=false;
+  /// Time of the bearing, corrected in the panel.
+  DateTime takenAt=DateTime.now().toUtc();
+  /// Saved bearing being changed with the mouse (card « Relevé web,
+  /// modifier un relevé enregistré à la souris », 30 Oct 2026); null when
+  /// a new bearing is taken.
+  final Bearing? editing;
+  BearingAim(this.origin):editing=null;
+  /// « Modifier » on a computer: same origin, tip on the saved azimuth and
+  /// following the mouse at once, a click fixes it (card « Relevé web,
+  /// Modifier : bout de la flèche directement à la souris », 30 Oct 2026,
+  /// 10 h 38); the time of the bearing kept. Échap leaves it as it was.
+  BearingAim.edit(Bearing b):origin=b.origin,editing=b{
+    azimuthDeg=normDeg(b.azimuthDeg); tip=geo.destination(origin,aimDefaultM,azimuthDeg!); takenAt=b.takenAt;
+  }
+
+  /// The edited bearing with the new aim: same identifier, author and rights,
+  /// length brought back to the usual one ([lengthM]).
+  Bearing? edited({required int strength,required String search,required bool exercise,double? frequencyMhz,required double lengthM,required String by,required DateTime at}){
+    final b=editing, az=azimuthDeg; if(b==null||az==null)return null;
+    return b.copyWith(azimuthDeg:az,lengthM:lengthM,strength:strength,search:search,exercise:exercise,frequencyMhz:frequencyMhz,
+      takenAt:takenAt,method:'map',updatedBy:by,updatedAt:at);
+  }
+
+  /// Free length during the aim, in metres (0 before the first move).
+  double get lengthM=>tip==null?0:geo.distanceM(origin,tip!);
+
+  /// Mouse moved: the tip follows unless fixed.
+  bool follow(LatLng p,{bool snap=false}){if(fixed)return false;_set(p,snap);return true;}
+  /// Click: the tip stays there.
+  void fix(LatLng p,{bool snap=false}){_set(p,snap);fixed=true;}
+  /// Click on the tip: it follows the mouse again.
+  void release(){fixed=false;}
+  /// Azimuth corrected with the keyboard: same length, tip fixed.
+  void type(double deg){
+    final az=normDeg(deg), d=lengthM>1?lengthM:aimDefaultM;
+    azimuthDeg=az; tip=geo.destination(origin,d,az); fixed=true;
+  }
+  void _set(LatLng p,bool snap){
+    final az=aimAzimuth(origin,p,snap:snap);
+    azimuthDeg=az; tip=snap?geo.destination(origin,geo.distanceM(origin,p),az):p;
+  }
+}
+
+/// Length given to the tip when the azimuth is typed before any move.
+const aimDefaultM=2000.0;
+
+/// Degrees in [0, 360).
+double normDeg(double d)=>(d%360+360)%360;
+/// Nearest multiple of [step] degrees, in [0, 360).
+double snapDeg(double d,{double step=5})=>normDeg((normDeg(d)/step).round()*step);
+/// True azimuth from the origin to the mouse, snapped to 5° with Shift.
+double aimAzimuth(LatLng origin,LatLng mouse,{bool snap=false}){final a=geo.bearingDeg(origin,mouse);return snap?snapDeg(a):a;}
+/// Length of the saved line: the one of the preferences, else the usual
+/// length of the bearings (10 km), whatever the length drawn.
+double savedLengthM([double? preference])=>preference==null||preference.isNaN||preference<=0?defaultBearingLengthM:preference;
+const defaultBearingLengthM=10000.0;
+/// Click close enough to the tip (screen pixels) to take it again.
+bool nearTip(Offset click,Offset tip,{double px=18})=>(click-tip).distance<=px;
+/// Typed azimuth « 123 », « 123,5 »: null when not between 0 and 360.
+double? parseAzimuth(String text){final d=double.tryParse(text.replaceAll(',','.').replaceAll('°','').trim());return d==null||d<0||d>360?null:normDeg(d);}
+
+/// Arrow head and handle at the tip (map north up, rotation off).
+List<Widget> buildAimLayers(BearingAim aim,Color colour){
+  final tip=aim.tip, az=aim.azimuthDeg; if(tip==null||az==null)return const [];
+  // Same handles as the drawings (card « Dessin, poignées d'édition »,
+  // 30 Oct 2026, 10 h 40): a small arrow head and a dot of 8 px at the tip,
+  // inside a touch area of 44 px.
+  return [MarkerLayer(markers:[Marker(point:tip,width:44,height:44,child:AimTip(azimuthDeg:az,colour:colour))])];
+}
+
+/// Cursor over the tip of the arrow (card « Relevé en modification :
+/// curseur en croix », validated 1 Nov 2026, 8 h 27): always the precision
+/// cross, never the hand (a hand made one think the tip was not caught);
+/// the dot grows a little while the mouse is over it.
+const aimTipCursor=SystemMouseCursors.precise;
+
+class AimTip extends StatefulWidget {
+  final double azimuthDeg; final Color colour;
+  const AimTip({super.key,required this.azimuthDeg,required this.colour});
+  @override State<AimTip> createState()=>_AimTipState();
+}
+
+class _AimTipState extends State<AimTip> {
+  bool _over=false;
+  @override Widget build(BuildContext context){
+    final dot=_over?12.0:8.0;
+    return MouseRegion(key:const ValueKey('aim-tip'),cursor:aimTipCursor,
+      onEnter:(_)=>setState(()=>_over=true),onExit:(_)=>setState(()=>_over=false),
+      child:Stack(alignment:Alignment.center,children:[
+        Transform.rotate(angle:widget.azimuthDeg*math.pi/180,child:Icon(Icons.navigation,size:_over?22:18,color:widget.colour,shadows:const [Shadow(blurRadius:3,color:Colors.black54)])),
+        Container(width:dot,height:dot,decoration:BoxDecoration(color:Colors.white,shape:BoxShape.circle,border:Border.all(color:widget.colour,width:_over?2:1.5))),
+      ]));
+  }
+}
+
+/// Azimuth and time of the mouse bearing, corrected with the keyboard.
+class AimFields extends StatefulWidget {
+  final double? azimuthDeg; final DateTime takenAt;
+  final void Function(double) onAzimuth; final void Function(DateTime) onTime;
+  const AimFields({super.key,required this.azimuthDeg,required this.takenAt,required this.onAzimuth,required this.onTime});
+  @override State<AimFields> createState()=>_AimFieldsState();
+}
+
+class _AimFieldsState extends State<AimFields> {
+  final _az=TextEditingController(), _time=TextEditingController();
+  final _azFocus=FocusNode(), _timeFocus=FocusNode();
+  @override void initState(){super.initState();_sync();}
+  @override void didUpdateWidget(AimFields old){super.didUpdateWidget(old);_sync();}
+  // Live azimuth in the field, unless being typed.
+  void _sync(){
+    if(!_azFocus.hasFocus)_az.text=widget.azimuthDeg==null?'':widget.azimuthDeg!.toStringAsFixed(0).padLeft(3,'0');
+    if(!_timeFocus.hasFocus)_time.text=hhmm(widget.takenAt);
+  }
+  void _submitAz(String v){final d=parseAzimuth(v);if(d!=null)widget.onAzimuth(d);_azFocus.unfocus();}
+  void _submitTime(String v){widget.onTime(withHhmm(widget.takenAt,v));_timeFocus.unfocus();}
+  @override void dispose(){_az.dispose();_time.dispose();_azFocus.dispose();_timeFocus.dispose();super.dispose();}
+  @override Widget build(BuildContext context)=>Row(children:[
+    Expanded(child:TextField(key:const ValueKey('aim-azimuth'),controller:_az,focusNode:_azFocus,keyboardType:const TextInputType.numberWithOptions(decimal:true),
+      decoration:InputDecoration(isDense:true,labelText:S.t('bearings.azimuth'),suffixText:'°'),onSubmitted:_submitAz,onTapOutside:(_){if(_azFocus.hasFocus)_submitAz(_az.text);})),
+    const SizedBox(width:10),
+    SizedBox(width:110,child:TextField(controller:_time,focusNode:_timeFocus,keyboardType:TextInputType.datetime,
+      decoration:InputDecoration(isDense:true,labelText:S.t('bearings.time'),hintText:'14:05'),onSubmitted:_submitTime,onTapOutside:(_){if(_timeFocus.hasFocus)_submitTime(_time.text);})),
+  ]);
+}

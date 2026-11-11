@@ -1,0 +1,295 @@
+// Revue de cinématique (vault, 31 Oct 2026), point E: on every pull request,
+// the ways out of the main screens at the three sizes (phone, tablet,
+// computer). Each scenario opens a screen, leaves it, and checks the map
+// answers a drag. Buttons are found by their stable identifier (point B,
+// flt-semantics-identifier), whatever the language.
+const { test, expect, request: apiRequest } = require('@playwright/test');
+const { createEvent, Terminal, joinEvent } = require('./helpers');
+
+const RUN = `${Date.now()}`.slice(-6);
+const SIZES = [
+  { n: 'tel', width: 390, height: 844 },
+  { n: 'tab', width: 820, height: 1180 },
+  { n: 'pc', width: 1440, height: 900 },
+];
+
+/** Centre of the node of [id], or null when it is not on screen. */
+async function centreOf(page, id) {
+  return page.evaluate((id) => {
+    const e = [...document.querySelectorAll(`[flt-semantics-identifier="${id}"]`)].find((x) => x.getBoundingClientRect().width > 2);
+    if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  }, id);
+}
+/** Box of the node of [id], or null when it is not on screen. */
+async function rectOf(page, id) {
+  return page.evaluate((id) => {
+    const e = [...document.querySelectorAll(`[flt-semantics-identifier="${id}"]`)].find((x) => x.getBoundingClientRect().width > 2);
+    if (!e) return null; const r = e.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, cy: r.top + r.height / 2 };
+  }, id);
+}
+async function tapId(page, id) {
+  let at = null;
+  await expect(async () => { at = await centreOf(page, id); expect(at, `${id} on screen`).not.toBeNull(); }).toPass({ timeout: 15_000 });
+  await page.mouse.click(at.x, at.y); await page.waitForTimeout(800);
+}
+/** True when some node shows [text] (in its label or its text). */
+async function textShown(page, text) {
+  return page.evaluate((text) => [...document.querySelectorAll('flt-semantics')]
+    .some((x) => ((x.getAttribute('aria-label') || '') + ' ' + (x.textContent || '')).includes(text) && x.getBoundingClientRect().width > 2), text);
+}
+/** Any node whose label is exactly [label] (button, chip, list item). */
+async function tapLabel(page, label) {
+  let at = null;
+  await expect(async () => {
+    at = await page.evaluate((label) => {
+      const e = [...document.querySelectorAll('flt-semantics')].find((x) => ((x.getAttribute('aria-label') || x.textContent || '').trim().replace(/\s+/g, ' ')) === label
+        && x.getBoundingClientRect().width > 2);
+      if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }, label);
+    expect(at, `« ${label} » on screen`).not.toBeNull();
+  }).toPass({ timeout: 15_000 });
+  await page.mouse.click(at.x, at.y); await page.waitForTimeout(800);
+}
+async function tapName(page, name) {
+  await page.getByRole('button', { name, exact: true }).first().click(); await page.waitForTimeout(800);
+}
+/** Position of the TEL-01 marker label on the map. */
+async function marker(page) {
+  return page.evaluate(() => {
+    const e = [...document.querySelectorAll('flt-semantics')].find((x) => x.childElementCount === 0 && /TEL-01/.test(x.textContent || '')
+      && x.getBoundingClientRect().width < 300 && x.getBoundingClientRect().height < 120);
+    if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y };
+  });
+}
+/** The map shows and a drag moves it (20 steps: a faster drag of the robot
+ *  is not taken as a drag by Flutter). The map is put back afterwards. */
+async function expectMapFree(page, size, what) {
+  await expect(page.locator('[flt-semantics-identifier="map.map-layers"]'), `${what}: map shown`).toHaveCount(1, { timeout: 10_000 });
+  const x = size.width * 0.3, y = size.height * 0.45;
+  const before = await marker(page);
+  expect(before, `${what}: TEL-01 on the map`).not.toBeNull();
+  await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 70, y + 50, { steps: 20 }); await page.mouse.up();
+  await page.waitForTimeout(700);
+  const after = await marker(page);
+  await page.mouse.move(x + 70, y + 50); await page.mouse.down(); await page.mouse.move(x, y, { steps: 20 }); await page.mouse.up();
+  await page.waitForTimeout(400);
+  expect(after && Math.abs(after.x - before.x) + Math.abs(after.y - before.y), `${what}: the map moves under a drag`).toBeGreaterThan(20);
+}
+/** Point menu: long press on a phone or a tablet, right click on a computer. */
+async function pointMenu(page, size) {
+  const x = size.width * 0.3, y = size.height * 0.35;
+  if (size.n === 'pc') { await page.mouse.click(x, y, { button: 'right' }); }
+  else { await page.mouse.move(x, y); await page.mouse.down(); await page.waitForTimeout(900); await page.mouse.up(); }
+  await page.waitForTimeout(800);
+}
+
+for (const size of SIZES) {
+  test.describe.serial(`cinématique ${size.n}`, () => {
+    let page, api;
+    const compact = size.n === 'tel';
+
+    test.beforeAll(async ({ browser, baseURL }) => {
+      api = await apiRequest.newContext({ baseURL });
+      const name = `E2E cinematique ${size.n} ${RUN}`;
+      const eventId = await createEvent(api, name);
+      const t1 = new Terminal(api, eventId, 'TEL-01'); await t1.heartbeat(); await t1.position(48.8049, 2.1204);
+      page = await browser.newPage({ baseURL, locale: 'en-US', viewport: { width: size.width, height: size.height } });
+      await joinEvent(page, { eventName: name, deviceId: `CIN-${size.n}` });
+      await page.waitForTimeout(2500);
+      await expectMapFree(page, size, 'start');
+    });
+    test.afterAll(async () => { await page?.close(); await api?.dispose(); });
+
+    test('bottom of the map: nothing under the tab bar, scale beside « Suivi de position » (lot 19), right column aligned (lot 25)', async () => {
+      // Card « Téléphone : boutons du bas de la carte cachés par la barre de
+      // navigation »: ⓘ above the bar, scale on the line of « Suivi de
+      // position », bottom of the SOS disc (46 in a 56 box) on that line.
+      let info = null;
+      await expect(async () => { info = await rectOf(page, 'map.attribution'); expect(info, 'ⓘ on screen').not.toBeNull(); }).toPass({ timeout: 15_000 });
+      const layers = await rectOf(page, 'map.map-layers');
+      expect(layers, '« Fond et affichage » on screen').not.toBeNull();
+      expect(info.bottom, 'ⓘ inside the window').toBeLessThanOrEqual(size.height);
+      expect(info.right, 'ⓘ clear of the right column').toBeLessThan(layers.left);
+      // Lot 25: the buttons of the right column share one vertical axis.
+      const sosBox = await rectOf(page, 'map.sos');
+      const meBox = await rectOf(page, 'map.map-me');
+      if (sosBox) {
+        const axis = (sosBox.left + sosBox.right) / 2;
+        for (const [n, b] of [['« Fond et affichage »', layers], ['position', meBox]]) {
+          if (b) expect(Math.abs((b.left + b.right) / 2 - axis), `${n} centred on SOS`).toBeLessThanOrEqual(1);
+        }
+      }
+      if (!compact) {
+        const scale = await rectOf(page, 'map.scale');
+        expect(scale, 'no scale beside « Suivi de position » on a large screen').toBeNull();
+        // Lot 25, point 7: the SOS disc ends on the same bottom line as on a phone (12 px).
+        if (sosBox) expect(Math.abs(sosBox.bottom - 5 - (size.height - 12)), 'bottom of SOS on the bottom line').toBeLessThanOrEqual(2);
+        return;
+      }
+      const tab = await rectOf(page, 'nav.map');
+      expect(tab, 'tab bar on screen').not.toBeNull();
+      const barTop = tab.top - 6; // tabs of 60 in a bar of 72
+      const track = await rectOf(page, 'map.tracking');
+      const scale = await rectOf(page, 'map.scale');
+      expect(track, '« Suivi de position » on screen').not.toBeNull();
+      expect(scale, 'scale on screen').not.toBeNull();
+      expect(info.bottom, 'ⓘ above the tab bar').toBeLessThanOrEqual(barTop + 1);
+      expect(info.bottom, 'ⓘ above « Suivi de position »').toBeLessThanOrEqual(track.top + 1);
+      expect(track.bottom, '« Suivi de position » above the tab bar').toBeLessThanOrEqual(barTop + 1);
+      expect(scale.left, 'scale on the right of « Suivi de position »').toBeGreaterThanOrEqual(track.right - 1);
+      // Lot 29.2: the scale sits on the bottom of the line, like the SOS disc.
+      expect(Math.abs(scale.bottom - track.bottom), 'scale on the bottom of the line of « Suivi de position »').toBeLessThanOrEqual(2);
+      const sos = await rectOf(page, 'map.sos');
+      const last = sos || (await rectOf(page, 'map.map-me'));
+      expect(scale.right, 'scale clear of the right column').toBeLessThanOrEqual(last.left);
+      if (sos) expect(Math.abs(sos.bottom - 5 - track.bottom), 'bottom of SOS level with « Suivi de position »').toBeLessThanOrEqual(2);
+    });
+
+    test('every section, then « Carte »', async () => {
+      const ids = compact ? ['nav.messages', 'nav.teams', 'nav.tools'] : ['nav.messages', 'nav.teams', 'nav.files', 'nav.tools', 'nav.settings'];
+      for (const id of ids) {
+        await tapId(page, id);
+        await tapId(page, 'nav.map');
+        await expectMapFree(page, size, `${id} › Carte`);
+      }
+    });
+
+    test('computer and tablet: Opérateurs and Messages stay open when the map is clicked (lot 25)', async () => {
+      if (compact) test.skip(true, 'phone unchanged: a touch on the map closes the panel');
+      // Card « PC : le panneau Opérateurs se ferme au clic sur la carte ».
+      const away = { x: size.width - 140, y: size.height * 0.2 };
+      await tapId(page, 'nav.teams');
+      await expect.poll(() => centreOf(page, 'team.panel.close'), { timeout: 10_000 }).not.toBeNull();
+      await page.mouse.click(away.x, away.y); await page.waitForTimeout(800);
+      expect(await centreOf(page, 'team.panel.close'), 'Opérateurs open after a click on the map').not.toBeNull();
+      await tapId(page, 'team.panel.close');
+      await expect.poll(() => centreOf(page, 'team.panel.close'), { timeout: 5_000 }).toBeNull();
+      await tapId(page, 'nav.messages');
+      await expect.poll(() => centreOf(page, 'messages.panel'), { timeout: 10_000 }).not.toBeNull();
+      expect(await centreOf(page, 'map.map-layers'), 'the map beside Messages').not.toBeNull();
+      await page.mouse.click(away.x, away.y); await page.waitForTimeout(800);
+      expect(await centreOf(page, 'messages.panel'), 'Messages open after a click on the map').not.toBeNull();
+      await tapId(page, 'nav.messages');
+      await expect.poll(() => centreOf(page, 'messages.panel'), { timeout: 5_000 }).toBeNull();
+      await expectMapFree(page, size, 'Opérateurs and Messages closed');
+    });
+
+    test('Itinéraires and Résection: ✕ and « Carte » give the map back', async () => {
+      for (const tool of ['tool.routes', 'tool.resection']) {
+        await tapId(page, 'nav.tools'); await tapId(page, tool);
+        await tapName(page, 'Close');
+        await expectMapFree(page, size, `${tool} › ✕`);
+        await tapId(page, 'nav.tools'); await tapId(page, tool);
+        await tapId(page, 'nav.map');
+        await expectMapFree(page, size, `${tool} › Carte`);
+      }
+    });
+
+    test('« Sélectionner une zone »: the map moves, « Carte » leaves it (C1)', async () => {
+      await pointMenu(page, size);
+      await tapId(page, 'point.select');
+      await expectMapFree(page, size, 'selection mode, drag');
+      await tapId(page, 'nav.map');
+      await expect(page.getByText('Tap objects, or long press then drag for a rectangle')).toHaveCount(0);
+      await expectMapFree(page, size, 'selection › Carte');
+    });
+
+    test('converter « Touch the map »: « Carte » and Escape end it (N1, N2)', async () => {
+      const exits = compact ? ['Carte'] : ['Carte', 'Escape'];
+      for (const exit of exits) {
+        await tapId(page, 'nav.tools'); await tapId(page, 'tool.converter');
+        await tapLabel(page, 'Touch the map');
+        await expect.poll(() => textShown(page, 'point to convert'), { timeout: 10_000 }).toBe(true);
+        if (exit === 'Carte') await tapId(page, 'nav.map'); else { await page.keyboard.press('Escape'); await page.waitForTimeout(700); }
+        await expect.poll(() => textShown(page, 'point to convert'), { timeout: 5_000 }).toBe(false);
+        await expectMapFree(page, size, `converter pick › ${exit}`);
+      }
+    });
+
+    test('Escape closes an empty drawing bar (N1)', async () => {
+      if (compact) test.skip(true, 'no keyboard on a phone');
+      await tapId(page, 'map.drawing-tools');
+      await expect(page.getByRole('button', { name: 'Close the tools' }).first()).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expect(page.getByRole('button', { name: 'Close the tools' })).toHaveCount(0);
+      await expectMapFree(page, size, 'drawing bar › Échap');
+    });
+
+    test('drawing: a touch on TEL-01 places a point, « Close the tools » closes its sheet (L1)', async () => {
+      // Lot 17, card L1: while drawing, the markers ignore touches.
+      const sheetShown = () => textShown(page, 'to favourites');
+      const centre = () => page.evaluate(() => {
+        const e = [...document.querySelectorAll('flt-semantics')].find((x) => x.childElementCount === 0 && /TEL-01/.test(x.textContent || '')
+          && x.getBoundingClientRect().width < 300 && x.getBoundingClientRect().height < 120);
+        if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+      // TEL-01 brought to the middle of the map, clear of the drawing bar.
+      let at = await centre();
+      expect(at, 'TEL-01 on the map').not.toBeNull();
+      const mid = { x: size.width * 0.5, y: size.height * 0.55 };
+      await page.mouse.move(at.x, at.y); await page.mouse.down(); await page.mouse.move(mid.x, mid.y, { steps: 20 }); await page.mouse.up();
+      await page.waitForTimeout(800);
+      at = await centre();
+      expect(at, 'TEL-01 moved to the middle').not.toBeNull();
+      await tapId(page, 'map.drawing-tools'); await tapId(page, 'map.draw-line');
+      await page.mouse.click(at.x - 15, at.y); await page.waitForTimeout(800);
+      await page.mouse.click(at.x + 15, at.y); await page.waitForTimeout(800);
+      await expect.poll(() => textShown(page, '2 points'), { timeout: 5_000 }).toBe(true);
+      expect(await sheetShown(), 'drawing: the sheet of TEL-01 stays closed').toBe(false);
+      await tapName(page, 'Close the tools');
+      await expect(page.getByRole('button', { name: 'Close the tools' })).toHaveCount(0);
+      // Sheet open (a first touch may only unpin the trace), then the tools
+      // opened and closed: the sheet goes with them.
+      for (let i = 0; i < 2 && !(await sheetShown()); i++) { await page.mouse.click(at.x, at.y); await page.waitForTimeout(1000); }
+      expect(await sheetShown(), 'out of a drawing, a touch opens the sheet').toBe(true);
+      await tapId(page, 'map.drawing-tools');
+      await tapName(page, 'Close the tools');
+      await expect.poll(sheetShown, { timeout: 5_000 }).toBe(false);
+      await expectMapFree(page, size, 'drawing › Close the tools');
+    });
+
+    test('point menu and base map sheet close with Escape', async () => {
+      if (compact) test.skip(true, 'no keyboard on a phone');
+      await pointMenu(page, size);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expectMapFree(page, size, 'point menu › Échap');
+      await tapId(page, 'map.map-layers');
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expectMapFree(page, size, 'base map › Échap');
+    });
+
+    test('Escape closes the sheet of TEL-01, then a shape being drawn and the bar (L2, L3)', async () => {
+      if (compact) test.skip(true, 'no keyboard on a phone');
+      // Lot 17, card « Échap : fiche d'opérateur et forme en cours ».
+      const sheetShown = () => textShown(page, 'to favourites');
+      const tel01 = () => page.evaluate(() => {
+        const e = [...document.querySelectorAll('flt-semantics')].find((x) => x.childElementCount === 0 && /TEL-01/.test(x.textContent || '')
+          && x.getBoundingClientRect().width < 300 && x.getBoundingClientRect().height < 120);
+        if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+      // L2: a touch on TEL-01 opens its sheet (a first touch may only unpin
+      // its trace), Escape closes it.
+      for (let i = 0; i < 2 && !(await sheetShown()); i++) {
+        const at = await tel01(); expect(at, 'TEL-01 on the map').not.toBeNull();
+        await page.mouse.click(at.x, at.y); await page.waitForTimeout(1000);
+      }
+      expect(await sheetShown(), 'sheet of TEL-01 open').toBe(true);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expect.poll(sheetShown, { timeout: 5_000 }).toBe(false);
+      await expectMapFree(page, size, 'sheet of TEL-01 › Échap');
+      // L3: a line with two points; 1st Escape drops it, 2nd closes the bar.
+      await tapId(page, 'map.drawing-tools'); await tapId(page, 'map.draw-line');
+      const y = size.height * 0.4;
+      await page.mouse.click(size.width * 0.35, y); await page.waitForTimeout(800);
+      await page.mouse.click(size.width * 0.45, y); await page.waitForTimeout(800);
+      await expect.poll(() => textShown(page, '2 points'), { timeout: 5_000 }).toBe(true);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expect.poll(() => textShown(page, '2 points'), { timeout: 5_000 }).toBe(false);
+      await expect(page.getByRole('button', { name: 'Close the tools' }).first(), '1st Escape: the bar stays').toBeVisible();
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expect(page.getByRole('button', { name: 'Close the tools' })).toHaveCount(0);
+      await expectMapFree(page, size, 'drawing › Échap › Échap');
+    });
+  });
+}

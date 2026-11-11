@@ -1,0 +1,409 @@
+import 'dart:async';
+import 'dart:ffi';
+import 'dart:io';
+import 'dart:ui' show DartPluginRegistrant;
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding;
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
+import '../features/car/car_android.dart';
+import '../features/car/car_background_io.dart' show appendPendingReply, sendAnswerNow, sendReplyNow;
+import '../features/car/car_messaging.dart';
+import '../l10n/strings.dart';
+import '../platform/startup_report.dart';
+import 'notification_actions.dart';
+
+export 'notification_actions.dart' show isUrgentPriority, NotificationPayload, PendingAnswer;
+
+/// Urgent messages, weather warnings.
+const _urgentChannel=AndroidNotificationChannel('sarcade_urgent','Messages urgents',
+  description:'Messages urgents, vigilance météo',importance:Importance.max);
+/// Routine messages.
+const _routineChannel=AndroidNotificationChannel('sarcade_routine','Messages',
+  description:'Messages de routine',importance:Importance.defaultImportance);
+/// Immediate messages: alarm sound and long vibration, distinct from the others.
+final _immediateChannel=AndroidNotificationChannel('sarcade_immediate','Messages immédiats',
+  description:'Messages immédiats, rappelés toutes les 2 minutes jusqu’à la réponse',importance:Importance.max,
+  sound:const UriAndroidNotificationSound('content://settings/system/alarm_alert'),
+  vibrationPattern:Int64List.fromList([0,700,300,700,300,700]));
+/// Same, ringing in Do Not Disturb mode: only with the consent of the
+/// operator and the access to the Do Not Disturb policy granted by Android.
+final _immediateDndChannel=AndroidNotificationChannel('sarcade_immediate_dnd','Messages immédiats (Ne pas déranger)',
+  description:'Messages immédiats, même en mode Ne pas déranger',importance:Importance.max,bypassDnd:true,
+  sound:const UriAndroidNotificationSound('content://settings/system/alarm_alert'),
+  vibrationPattern:Int64List.fromList([0,700,300,700,300,700]));
+
+/// Routine without sound, with or without vibration, and urgent or
+/// immediate with the other sound (an Android channel keeps its sound).
+const _routineSilentChannel=AndroidNotificationChannel('sarcade_routine_silent','Messages (silencieux)',
+  description:'Messages de routine sans son ni vibration',importance:Importance.low,playSound:false,enableVibration:false);
+const _routineDiscreetChannel=AndroidNotificationChannel('sarcade_routine_discreet','Messages (discret)',
+  description:'Messages de routine en vibration seule',importance:Importance.defaultImportance,playSound:false);
+const _urgentAlarmChannel=AndroidNotificationChannel('sarcade_urgent_alarm','Messages urgents (alarme)',
+  description:'Messages urgents avec le son d’alarme',importance:Importance.max,
+  sound:UriAndroidNotificationSound('content://settings/system/alarm_alert'));
+const _immediateNormalChannel=AndroidNotificationChannel('sarcade_immediate_normal','Messages immédiats (son normal)',
+  description:'Messages immédiats avec le son de notification',importance:Importance.max);
+
+const _answersFileName='sarcade_notification_answers.jsonl';
+const _launchFileName='sarcade_notification_launch.txt';
+bool _launchChecked=false;
+
+/// True the first time a given notification launch is seen; remembers it
+/// so that the same launch reported again by Android is ignored.
+Future<bool> _firstLaunchHandling(NotificationResponse r) async {
+  try{
+    final f=File('${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}$_launchFileName');
+    final key=launchKey(r.id,r.actionId,r.payload);
+    if(await f.exists()&&(await f.readAsString())==key)return false;
+    await f.parent.create(recursive:true);
+    await f.writeAsString(key,flush:true);
+  }catch(e){
+    debugPrint('SARCADE notification launch marker unavailable: $e');
+  }
+  return true;
+}
+
+Future<File> _answersFile() async =>
+  File('${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}$_answersFileName');
+
+/// Appends an answer given from a notification (main or background isolate).
+Future<void> appendPendingAnswer(PendingAnswer a) async {
+  final f=await _answersFile();
+  await f.parent.create(recursive:true);
+  await f.writeAsString('${a.toLine()}\n',mode:FileMode.append,flush:true);
+}
+
+/// Takes the answers waiting since the last call (renamed before reading,
+/// so that an answer written meanwhile by a background isolate is kept).
+Future<List<PendingAnswer>> takePendingAnswers() async {
+  final f=await _answersFile();
+  final draining=File('${f.path}.draining');
+  final out=<PendingAnswer>[];
+  if(await draining.exists()){out.addAll(PendingAnswer.parseLines(await draining.readAsString()));await draining.delete();}
+  if(await f.exists()){
+    await f.rename(draining.path);
+    out.addAll(PendingAnswer.parseLines(await draining.readAsString()));
+    await draining.delete();
+  }
+  return out;
+}
+
+/// Action tapped while the application is closed or in the background
+/// (Android, iOS): the answer waits in a file until the application queues
+/// it in the Outbox; the reminders stop at once.
+@pragma('vm:entry-point')
+Future<void> notificationBackgroundHandler(NotificationResponse response) async {
+  DartPluginRegistrant.ensureInitialized();
+  final payload=NotificationPayload.decode(response.payload);
+  final action=resolveAction(response.actionId,response.payload);
+  // Android Auto « Répondre » (lot 1b): the dictated answer leaves at once,
+  // and the message counts as read.
+  final reply=payload==null?null:replyOf(payload,action,response.input);
+  if(reply!=null&&!await sendReplyNow(reply))await appendPendingReply(reply);
+  final status=reply!=null?'read':ackStatusForAction(action);
+  if(payload==null||status==null)return;
+  final answer=PendingAnswer(id:const Uuid().v4(),eventId:payload.eventId,messageId:payload.messageId,
+    deviceId:payload.deviceId,status:status,time:DateTime.now().toUtc());
+  await appendPendingAnswer(answer);
+  // In the car the answer cannot wait for the application (lot 1a):
+  // sent at once, kept in the file as well (the server keeps one).
+  await sendAnswerNow(answer);
+  final plugin=FlutterLocalNotificationsPlugin();
+  for(var k=1;k<=reminderCount;k++){
+    try{await plugin.cancel(notificationIdFor(payload.key,k));}catch(_){/* already shown or gone */}
+  }
+}
+
+/// System notifications: messages addressed to the terminal with their
+/// actions (Accept, Refuse, Read, Open), reminders of the immediate
+/// messages, weather warnings. One instance for the application.
+class NotificationService {
+  static final NotificationService _instance=NotificationService._();
+  factory NotificationService()=>_instance;
+  NotificationService._();
+
+  final _plugin=FlutterLocalNotificationsPlugin();
+  Future<void>? _init;
+  bool _ready=false; int _id=0;
+  /// Consent of the operator to ring immediate messages in Do Not Disturb.
+  bool bypassDnd=false;
+  /// Sound by priority (see [soundFor]), set from the device preferences.
+  Map<String,String> sounds={};
+  final _opens=StreamController<String>.broadcast();
+  final _answers=StreamController<void>.broadcast();
+  final Map<String,List<Timer>> _timers={};
+
+  /// Message to open (Open, or a tap on the notification).
+  Stream<String> get opens=>_opens.stream;
+  /// New answers waiting to be queued (see [takePendingAnswers]).
+  Stream<void> get answers=>_answers.stream;
+
+  static bool get supportsDndBypass=>defaultTargetPlatform==TargetPlatform.android;
+  static bool get _schedules=>const {TargetPlatform.android,TargetPlatform.iOS,TargetPlatform.macOS,TargetPlatform.windows}
+    .contains(defaultTargetPlatform);
+
+  /// Installed apps ask the system at start (Android 13+): no banner.
+  bool get needsUserAction=>false;
+  Future<bool> requestFromUser() async=>true;
+
+  Future<void> initialize()=>_init??=_initialize();
+
+  /// Why the Windows notifications are off (card « Client Windows : écran
+  /// gris », 31 Oct 2026): 'admin' when SARCADE runs with administrator
+  /// rights, where the Windows notification plugin stops the whole app
+  /// (crash seen on the owner's Surface); null otherwise.
+  static String? windowsUnavailable;
+
+  Future<void> _initialize() async {
+    if(Platform.isWindows){
+      if(windowsElevated()){
+        windowsUnavailable='admin';
+        StartupReport.note('notifications Windows désactivées : SARCADE lancé en administrateur');
+        return;
+      }
+      // After the first screen: whatever the plugin does, the map shows.
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    try{
+      // Shown in CarPlay, read aloud by Siri (CarPlay Communication, 9 Nov 2026).
+      const carPlay={DarwinNotificationCategoryOption.allowInCarPlay};
+      final urgentCategory=DarwinNotificationCategory('sarcade_urgent',options:carPlay,actions:[
+        DarwinNotificationAction.plain(actionAccept,S.t('notif.action.accept')),
+        DarwinNotificationAction.plain(actionRefuse,S.t('notif.action.refuse'),options:{DarwinNotificationActionOption.destructive}),
+        DarwinNotificationAction.plain(actionOpen,S.t('notif.action.open'),options:{DarwinNotificationActionOption.foreground}),
+      ]);
+      final routineCategory=DarwinNotificationCategory('sarcade_routine',options:carPlay,actions:[
+        DarwinNotificationAction.plain(actionRead,S.t('notif.action.read')),
+        DarwinNotificationAction.plain(actionOpen,S.t('notif.action.open'),options:{DarwinNotificationActionOption.foreground}),
+      ]);
+      final darwin=DarwinInitializationSettings(notificationCategories:[urgentCategory,routineCategory]);
+      await _plugin.initialize(InitializationSettings(
+        android:const AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS:darwin,
+        macOS:darwin,
+        linux:LinuxInitializationSettings(defaultActionName:S.t('notif.action.open')),
+        windows:const WindowsInitializationSettings(appName:'SARCADE',appUserModelId:'org.sarcade.app',
+          guid:'5f0e7c2a-1b8d-4c3e-9a6f-2d4b8e1c7a90'),
+      ),onDidReceiveNotificationResponse:_onResponse,onDidReceiveBackgroundNotificationResponse:notificationBackgroundHandler);
+      final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      await android?.createNotificationChannel(_urgentChannel);
+      await android?.createNotificationChannel(_routineChannel);
+      await android?.createNotificationChannel(_immediateChannel);
+      // Android 13 and later ask the operator once.
+      await android?.requestNotificationsPermission();
+      _ready=true;
+      // Application started by a notification (action or tap, application
+      // closed). Android keeps reporting that launch on later starts by the
+      // icon (same activity intent): handled once per process and once per
+      // notification, so the app opens on the map, not on Messages.
+      if(!_launchChecked){
+        _launchChecked=true;
+        final launch=await _plugin.getNotificationAppLaunchDetails();
+        final response=launch?.notificationResponse;
+        if(launch?.didNotificationLaunchApp==true&&response!=null&&await _firstLaunchHandling(response))await _onResponse(response);
+      }
+    }catch(e){
+      debugPrint('SARCADE notifications unavailable: $e');
+    }
+  }
+
+  Future<void> _onResponse(NotificationResponse response) async {
+    final payload=NotificationPayload.decode(response.payload);
+    if(payload==null)return;
+    final action=resolveAction(response.actionId,response.payload);
+    final reply=replyOf(payload,action,response.input);
+    if(reply!=null)await appendPendingReply(reply); // queued by the application
+    final status=reply!=null?'read':ackStatusForAction(action);
+    if(status==null){_opens.add(payload.messageId);return;}
+    await appendPendingAnswer(PendingAnswer(id:const Uuid().v4(),eventId:payload.eventId,messageId:payload.messageId,
+      deviceId:payload.deviceId,status:status,time:DateTime.now().toUtc()));
+    await answered(payload.messageId,status);
+    _answers.add(null);
+  }
+
+  /// Consent to ring the immediate messages in Do Not Disturb (Android):
+  /// asks Android for the access to the Do Not Disturb policy.
+  Future<bool> enableDndBypass() async {
+    final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if(android==null)return false;
+    try{
+      if(await android.hasNotificationPolicyAccess()!=true)await android.requestNotificationPolicyAccess();
+      final granted=await android.hasNotificationPolicyAccess()==true;
+      if(granted)await android.createNotificationChannel(_immediateDndChannel);
+      return granted;
+    }catch(_){
+      return false;
+    }
+  }
+
+  /// Notifications allowed: true or false; null when the system does not say
+  /// (Windows, Linux).
+  Future<bool?> permissionGranted() async {
+    if(windowsUnavailable!=null)return false;
+    try{
+      final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if(android!=null)return await android.areNotificationsEnabled();
+      final ios=_plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      if(ios!=null)return (await ios.checkPermissions())?.isEnabled;
+    }catch(_){/* unknown */}
+    return null;
+  }
+
+  bool get permissionBlocked=>false;
+  /// Asks again (Android 13+), else opens the settings of SARCADE (iPhone).
+  Future<void> openPermissionSettings() async {
+    try{
+      final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if(android!=null){await android.requestNotificationsPermission();return;}
+      if(defaultTargetPlatform==TargetPlatform.iOS)await launchUrl(Uri.parse('app-settings:'));
+    }catch(_){/* nothing to open */}
+  }
+
+  Future<AndroidNotificationChannel> _channelFor(String priority,String sound) async {
+    final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    Future<AndroidNotificationChannel> created(AndroidNotificationChannel c) async {
+      try{await android?.createNotificationChannel(c);}catch(_){/* channel kept */}
+      return c;
+    }
+    if(!isUrgentPriority(priority)){
+      if(sound==soundSilent)return created(_routineSilentChannel);
+      if(sound==soundDiscreet)return created(_routineDiscreetChannel);
+      return _routineChannel;
+    }
+    if(priority=='urgent')return sound==soundAlarm?created(_urgentAlarmChannel):_urgentChannel;
+    if(sound==soundNormal)return created(_immediateNormalChannel);
+    if(priority=='immediate'){
+      if(bypassDnd){
+        try{
+          if(await android?.hasNotificationPolicyAccess()==true){
+            await android?.createNotificationChannel(_immediateDndChannel);
+            return _immediateDndChannel;
+          }
+        }catch(_){/* falls back on the ordinary immediate channel */}
+      }
+      return _immediateChannel;
+    }
+    return _urgentChannel;
+  }
+
+  Future<NotificationDetails> _details(String priority,NotificationPayload? payload,{bool sos=false,int? timeoutAfter,CarConversation? car,bool mention=false}) async {
+    final urgent=isUrgentPriority(priority), immediate=priority=='immediate';
+    final sound=soundFor(priority,sounds,sos:sos,mention:mention);
+    final quiet=sound==soundSilent||sound==soundDiscreet;
+    final channel=await _channelFor(sos?'immediate':priority,sound);
+    final actions=payload==null?const <String>[]:actionsFor(priority);
+    return NotificationDetails(
+      android:AndroidNotificationDetails(channel.id,channel.name,channelDescription:channel.description,
+        importance:channel.importance,priority:urgent?Priority.max:Priority.defaultPriority,
+        category:urgent?AndroidNotificationCategory.message:null,
+        sound:channel.sound,vibrationPattern:channel.vibrationPattern,playSound:channel.playSound,enableVibration:channel.enableVibration,
+        audioAttributesUsage:channel.audioAttributesUsage,
+        // Immediate message: each reminder takes the place of the previous
+        // one (one notification per message, 30 Oct 2026, 12 h 45).
+        timeoutAfter:timeoutAfter,
+        // Conversation format, Répondre and Lu: read aloud by Android Auto
+        // (lot 1b, 1 Nov 2026).
+        styleInformation:car==null||payload==null?null:carStyle(car),
+        actions:car!=null&&payload!=null?carActions(priority)
+          :[for(final a in actions)AndroidNotificationAction(a,S.t('notif.action.$a'),showsUserInterface:a==actionOpen)]),
+      iOS:DarwinNotificationDetails(interruptionLevel:urgent?InterruptionLevel.timeSensitive:(quiet?InterruptionLevel.passive:InterruptionLevel.active),
+        presentSound:!quiet,
+        categoryIdentifier:payload==null?null:(urgent?'sarcade_urgent':'sarcade_routine')),
+      macOS:DarwinNotificationDetails(categoryIdentifier:payload==null?null:(urgent?'sarcade_urgent':'sarcade_routine')),
+      linux:LinuxNotificationDetails(urgency:urgent?LinuxNotificationUrgency.critical:LinuxNotificationUrgency.normal,
+        actions:[for(final a in actions)LinuxNotificationAction(key:a,label:S.t('notif.action.$a'))]),
+      windows:WindowsNotificationDetails(
+        actions:[for(final a in actions)WindowsAction(content:S.t('notif.action.$a'),arguments:payload!.encode(a))],
+        scenario:immediate&&payload!=null?WindowsNotificationScenario.reminder:null,
+        audio:immediate?WindowsNotificationAudio.preset(sound:WindowsNotificationSound.reminder):null),
+    );
+  }
+
+  /// Shows a notification; with [payload] (a message addressed to this
+  /// terminal) it carries the actions, and an immediate message is reminded
+  /// every 2 minutes, at most 3 times, until the operator answers.
+  Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload,CarConversation? car,bool mention=false}) async {
+    if(!_ready){debugPrint('SARCADE notification [$priority] $title: $body');return;}
+    try{
+      final id=payload==null?(_id++ & 0x0fffffff)|0x40000000:notificationIdFor(payload.key);
+      final reminded=priority=='immediate'&&payload!=null;
+      // Same key (a new distress, its « Fin de détresse »): the reminders
+      // of the previous notification stop, the new one takes its place.
+      if(payload!=null)await _stop(payload.key);
+      // Lot 20: the earlier messages of the same sender are in this
+      // notification of conversation; theirs go away (one per sender).
+      for(final key in car?.replaces??const <String>[]){
+        if(payload!=null&&key==payload.key)continue;
+        await _stop(key);
+        try{await _plugin.cancel(notificationIdFor(key));}catch(_){/* already gone */}
+      }
+      await _plugin.show(id,title,body,await _details(priority,payload,sos:isSosBody(body),timeoutAfter:reminded&&_schedules?_replacedAfter:null,car:car,mention:mention),payload:payload?.encode());
+      if(reminded)await _scheduleReminders(title,body,payload,car:car);
+    }catch(e){
+      debugPrint('SARCADE notification failed: $e');
+    }
+  }
+
+  /// A reminder shown by the system goes away when the next one comes: a
+  /// little more than the interval, so that one is always on screen.
+  static final _replacedAfter=(reminderInterval+const Duration(seconds:5)).inMilliseconds;
+
+  Future<void> _stop(String key) async {
+    for(final t in _timers.remove(key)??const <Timer>[]){t.cancel();}
+    if(!_ready)return;
+    for(var k=1;k<=reminderCount;k++){
+      try{await _plugin.cancel(notificationIdFor(key,k));}catch(_){/* nothing to cancel */}
+    }
+  }
+
+  Future<void> _scheduleReminders(String title,String body,NotificationPayload payload,{CarConversation? car}) async {
+    final times=reminderTimes(DateTime.now().toUtc());
+    for(var k=1;k<=times.length;k++){
+      final reminderTitle=S.t('notif.reminder',{'n':k,'total':times.length,'title':title});
+      final details=await _details(payload.priority,payload,sos:isSosBody(body),timeoutAfter:k<times.length?_replacedAfter:null,car:car);
+      final id=notificationIdFor(payload.key,k);
+      if(_schedules){
+        try{
+          await _plugin.zonedSchedule(id,reminderTitle,body,tz.TZDateTime.from(times[k-1],tz.UTC),details,
+            androidScheduleMode:AndroidScheduleMode.inexactAllowWhileIdle,payload:payload.encode());
+          continue;
+        }catch(e){
+          debugPrint('SARCADE reminder not scheduled ($e): kept in the application');
+        }
+      }
+      // Linux and fallback: reminders while the application runs, shown in
+      // place of the notification itself (same identifier, new sound).
+      _timers.putIfAbsent(payload.key,()=>[]).add(Timer(times[k-1].difference(DateTime.now().toUtc()),(){
+        _plugin.show(notificationIdFor(payload.key),reminderTitle,body,details,payload:payload.encode());
+      }));
+    }
+  }
+
+  /// The operator answered (notification action or messages screen): the
+  /// reminders stop and the notification goes away.
+  Future<void> answered(String messageId,String status,{String? key}) async {
+    if(!stopsReminders(status))return;
+    for(final id in {messageId,?key}){
+      for(final t in _timers.remove(id)??const <Timer>[]){t.cancel();}
+      if(!_ready)continue;
+      for(var k=0;k<=reminderCount;k++){
+        try{await _plugin.cancel(notificationIdFor(id,k));}catch(_){/* nothing to cancel */}
+      }
+    }
+  }
+}
+
+
+/// True when this Windows process runs with administrator rights
+/// (IsUserAnAdmin of shell32); false elsewhere or when unknown.
+bool windowsElevated(){
+  if(!Platform.isWindows)return false;
+  try{
+    final f=DynamicLibrary.open('shell32.dll').lookupFunction<Int32 Function(),int Function()>('IsUserAnAdmin');
+    return f()!=0;
+  }catch(_){return false;}
+}

@@ -1,0 +1,87 @@
+name: sarcade_app
+description: SARCADE operational coordination client
+publish_to: none
+version: 0.1.0-dev+1
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  # Material texts in French (« Afficher le menu », « Fermer »…; revue n° 70).
+  flutter_localizations:
+    sdk: flutter
+  flutter_map: ^8.0.0
+  speech_to_text: ^7.0.0
+  latlong2: ^0.9.1
+  http: ^1.5.0
+  path_provider: ^2.1.5
+  file_picker: ^10.3.3
+  image_picker: ^1.1.2
+  open_filex: ^4.7.0
+  web_socket_channel: ^3.0.3
+  geolocator: ^14.0.2
+  uuid: ^4.5.1
+  hive_ce: ^2.20.1
+  hive_ce_flutter: ^2.4.0
+  connectivity_plus: ^7.3.1
+  xml: '>=6.3.0 <8.0.0'
+  archive: ^4.0.0
+  web: ^1.1.0
+  # System notifications (Android, iOS, Windows, Linux, macOS).
+  flutter_local_notifications: ^19.4.0
+  # Reminders of the immediate messages scheduled in UTC (same version as
+  # flutter_local_notifications).
+  timezone: ^0.10.0
+  # Heading given by the system (Android rotation vector, iPhone Core
+  # Location), with its accuracy: card « Boussole instable », 30 Oct 2026.
+  sarcade_compass:
+    path: third_party/sarcade_compass
+  # Android Auto declaration (card « CarPlay et Android Auto », lot 1b).
+  sarcade_car:
+    path: third_party/sarcade_car
+  # « Open in… » another map application (navigation level 1).
+  url_launcher: ^6.3.1
+  flutter_secure_storage: ^9.2.4
+  webview_flutter: ^4.13.0
+  # Wake-up of Android when SARCADE is closed (note « Réveil des appareils »).
+  firebase_core: ^4.0.0
+  firebase_messaging: ^16.0.0
+  # QR code of a Smart TV read by the camera (Android, iPhone).
+  mobile_scanner: ^7.4.2
+  # Bluetooth LE, MeshCore trial (BSD-3; flutter_blue_plus now needs a paid licence).
+  # 3.1.1+ needs dbus 0.8, flutter_local_notifications 19 (Linux) dbus 0.7.
+  universal_ble: '>=3.0.0 <3.1.1'
+  # PTT natif (lot 29): WebRTC with the LiveKit server of the NAS (Apache 2.0).
+  livekit_client: ^2.6.3
+  # Messages read aloud (9 Nov 2026, MIT).
+  flutter_tts: ^4.2.5
+  # Pasted images (9 Nov 2026): clipboard (Apache-2.0), JPEG reduction (MIT).
+  pasteboard: ^0.6.0
+  image: ^4.12.0
+dependency_overrides:
+  # Windows storage of the Access session without the native ATL part
+  # (third_party/flutter_secure_storage_windows/README.md).
+  flutter_secure_storage_windows:
+    path: third_party/flutter_secure_storage_windows
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true
+  # iOS: plugins through CocoaPods, not Swift Package Manager (Xcode Cloud would
+  # ask for access to their GitHub repositories, 8 Nov 2026).
+  config:
+    enable-swift-package-manager: false
+  # SARCADE logo of « À propos », light and dark themes (30 Oct 2026, 13 h 27).
+  assets:
+    # Licence of the application, shown in À propos (no GitHub link).
+    - LICENSE
+    - assets/logo/sarcade-logo-light.png
+    - assets/logo/sarcade-logo-dark.png
+    # Paramètres › Aide, read offline (card « Paramètres : menu « Aide » »,
+    # 10 Nov 2026): one Markdown file per topic, Core then each module.
+    - assets/help/core/
+    - assets/help/adrasec/

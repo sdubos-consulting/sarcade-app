@@ -1,0 +1,113 @@
+# Codemagic: iPhone build signed and sent to TestFlight (internal testers),
+# from GitLab (https://gitlab.sdubos.com/sarcade/sarcade-app), 7 Nov 2026.
+#
+# Same preparation as Xcode Cloud: ios/ci_scripts/ci_post_clone.sh (Flutter
+# pinned, CocoaPods, Dart packages, ios/Flutter/Generated.xcconfig with the
+# build number, SARCADE_BUILD and the Firebase wake-up, pod install). Codemagic
+# then signs (App Store profile fetched or created through the Developer Portal
+# integration) and archives ios/Runner.xcworkspace.
+#
+# Set in Codemagic, never here (see docs/platform-setup.md, iOS):
+#   - integration Developer Portal named « SARCADE » (App Store Connect API key,
+#     App Manager), the name used by integrations.app_store_connect below;
+#   - group « code_signing »: CERTIFICATE_PRIVATE_KEY (secret, RSA key of the
+#     Apple Distribution certificate);
+#   - group « firebase »: GOOGLE_SERVICE_INFO_PLIST_B64 (secret, base64 of
+#     GoogleService-Info.plist), optional: without it the iPhone is not woken.
+# Repository access: deploy token of GitLab (read_repository), Cloudflare Access
+# lets the Codemagic machines through (policy « GitLab - Codemagic »).
+
+workflows:
+  ios-testflight:
+    name: iPhone TestFlight (interne)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: SARCADE   # name of the Developer Portal integration in Codemagic
+    environment:
+      flutter: 3.47.9   # same as ci_post_clone.sh and the i9, raise together
+      xcode: latest
+      cocoapods: default
+      groups:
+        - code_signing
+        - firebase
+      vars:
+        BUNDLE_ID: org.sarcade.sarcadeApp
+        BUILD_NUMBER_FLOOR: "2100"   # first Codemagic/Xcode Cloud number (TestFlight had 200X)
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+    when:
+      changeset:
+        includes:
+          - lib/
+          - ios/
+          - assets/
+          - pubspec.yaml
+          - pubspec.lock
+          # codemagic.yaml is always part of the changeset (Codemagic)
+    scripts:
+      - name: Build number (above TestFlight and 2100)
+        script: |
+          set -euo pipefail
+          app_id=$(app-store-connect apps list --bundle-id-identifier "$BUNDLE_ID" \
+            --strict-match-identifier --json | jq -r '.[0].id')
+          if [ -z "$app_id" ] || [ "$app_id" = null ]; then
+            echo "app $BUNDLE_ID not found in App Store Connect"; exit 1
+          fi
+          latest=$(app-store-connect get-latest-testflight-build-number "$app_id" --platform IOS 2>/dev/null \
+            | grep -Eo '^[0-9]+' | tail -n 1 || true)
+          latest=${latest:-0}
+          floor=$((BUILD_NUMBER_FLOOR - 1))
+          [ "$latest" -gt "$floor" ] || latest=$floor
+          n=$((latest + 1))
+          echo "SARCADE_IOS_BUILD_NUMBER=$n" >> "$CM_ENV"
+          echo "iPhone build number $n (latest in TestFlight: ${latest})"
+      - name: Prepare the iOS project (ci_post_clone.sh, as on Xcode Cloud)
+        script: |
+          CI_PRIMARY_REPOSITORY_PATH="$CM_BUILD_DIR" \
+          CI_BUILD_NUMBER="$SARCADE_IOS_BUILD_NUMBER" \
+          CI_BRANCH="${CM_BRANCH:-}" \
+          CI_TAG="${CM_TAG:-}" \
+          CI_COMMIT="$CM_COMMIT" \
+            ios/ci_scripts/ci_post_clone.sh
+      - name: Signing files (Developer Portal integration)
+        script: |
+          set -euo pipefail
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles --custom-export-options='{"testFlightInternalTestingOnly": true}'
+      - name: Archive and export the IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace ios/Runner.xcworkspace \
+            --scheme Runner \
+            --config Release
+      - name: Push entitlement present (wake-up)
+        script: |
+          set -euo pipefail
+          ipa=$(ls build/ios/ipa/*.ipa)
+          tmp=$(mktemp -d)
+          unzip -q "$ipa" -d "$tmp"
+          if codesign -d --entitlements :- "$tmp"/Payload/Runner.app 2>/dev/null | grep -q aps-environment; then
+            echo "aps-environment present"
+          else
+            echo "aps-environment missing: enable Push Notifications on $BUNDLE_ID (Apple Developer, Identifiers)"
+            exit 1
+          fi
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false   # internal testers: no beta review
+        # No beta_groups: the internal group « SARCADE interne » receives every
+        # new build automatically, and App Store Connect refuses to assign a
+        # build to such a group ("Cannot add internal group to a build").

@@ -1,0 +1,755 @@
+/// Paramètres › Diagnostic étoffé (lot 5, validated on 30 Oct 2026,
+/// 2 h 58): three blocks. « Cet appareil » (everyone): version / build,
+/// local and public address, network, GPS, permissions, waiting items,
+/// last synchronisation. « Liaisons » (everyone): server response time,
+/// real time, Cloudflare Access (signed in, checked email), APRS-IS and the
+/// radio Gateway. « Serveur » (PCO and administrators): general state,
+/// version, uptime, components in green / orange / red, processor, memory,
+/// disk seen from the container (alert above 80 %), last automatic update
+/// and backup. « Copier le rapport ».
+/// Single place where problems arrive (card « Diagnostic, point d'arrivée
+/// unique des problèmes », 30 Oct 2026, 12 h 47): summary « Tout
+/// fonctionne » or the problems with their action at the top; the items not
+/// sent are listed in « Liaisons »; opened from the map in a sheet
+/// ([showDiagnosticsSheet]); red dot on Paramètres ([diagnosticsAlert]).
+/// Lot 28: three levels computed by the server (user, PCO, administrator;
+/// devices without account keep the view of before during the transition),
+/// test of Brevo, « Échéances » and versions for the administrator, each
+/// line stacked on a narrow screen ([DiagLineRow]).
+library;
+
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+
+import '../../access/access_login_page.dart' show signInToServer;
+import '../../access/access_manager.dart';
+import '../../access/access_session.dart' show AccessSession;
+import '../../account/rights.dart' show RightsState;
+import '../../admin/admin_api.dart';
+import '../../admin/admin_errors.dart' show adminErrorText;
+import '../../admin/deadlines_page.dart';
+import '../../config/version.dart';
+import '../../l10n/strings.dart';
+import '../../operations/event_settings.dart' show eventModules;
+import '../lora/lora_battery.dart' show LoraBatteryLevel, LoraBatteryMonitor;
+import '../lora/lora_link.dart';
+import '../lora/lora_watch.dart' show LoraModuleLink;
+import '../meshcore/meshcore_link.dart';
+import '../meshcore/meshcore_page.dart';
+import '../meshtastic/meshtastic_link.dart';
+import '../meshtastic/meshtastic_page.dart';
+import '../logbook/logbook_page.dart';
+import '../../ui/overlay_page.dart';
+import '../../models/comm_group.dart' show myRoles;
+import '../../offline/event_access.dart';
+import '../../offline/sync_service.dart';
+import '../../offline/unsent_page.dart';
+import '../../platform/platform_services.dart';
+import '../../services/notification_service.dart';
+import '../../services/realtime_service.dart';
+import '../../services/sarcade_api.dart';
+import '../../modules/adrasec/aprs/aprs_models.dart' show linkState;
+import '../../services/event_names.dart';
+import '../map/map_load_status.dart';
+import '../navigation/road_graph_service.dart';
+import '../../services/server_reach.dart';
+import 'diagnostics_levels.dart';
+import 'diagnostics_reach.dart';
+import 'link_diagnostics.dart';
+import '../../ui/app_sheet.dart';
+
+/// green / orange / red / off → colour of the dot.
+Color stateColor(String? s)=>switch(s){'green'||'ok'||'connected'=>Colors.green,'orange'||'degraded'||'waiting'=>Colors.orange,
+  'red'||'down'=>Colors.red,'expired'=>expiredRed,_=>Colors.grey};
+
+/// « 3 j 4 h », « 2 h 05 », « 12 min ».
+String uptimeLabel(int s){
+  final d=s~/86400, h=(s%86400)~/3600, m=(s%3600)~/60;
+  if(d>0)return '$d j $h h';
+  if(h>0)return '$h h ${m.toString().padLeft(2,'0')}';
+  return '$m min';
+}
+
+/// Resources line with the alert above 80 %.
+String percentLabel(num? pct)=>pct==null?'—':'${pct.toStringAsFixed(0)} %${pct>80?' ⚠':''}';
+
+typedef DiagLine=({String block,String label,String value,String? state});
+
+/// Lines in red or orange: the problems of the summary at the top.
+List<DiagLine> diagnosticProblems(Iterable<DiagLine> lines)=>[for(final l in lines)if(l.state=='red'||l.state=='orange')l];
+
+/// Colour of a section (card « Diagnostic : page plus courte, sections
+/// repliables », lot 29.4): red, then orange, then green; null without state.
+String? sectionState(Iterable<DiagLine> lines){
+  final st={for(final l in lines)l.state};
+  if(st.contains('red'))return 'red';
+  if(st.contains('orange'))return 'orange';
+  if(st.contains('green'))return 'green';
+  return null;
+}
+
+/// Open by default only when something is to check; the choice of the
+/// person wins ([stored] '1' or '0').
+bool sectionOpen({required String? stored,required bool problem})=>stored=='1'?true:stored=='0'?false:problem;
+
+/// Items not sent: Paramètres opens on the Diagnostic.
+bool unsentAlert()=>(OfflineSyncService.active?.unsent??0)>0;
+
+/// Administrator: a deadline at 30 days or less (lot 28, `/me`).
+bool deadlinesAlert()=>(RightsState.instance.current?.deadlineAlerts??0)>0;
+
+/// Red dot on Paramètres and on the Diagnostic tab: items not sent, or a
+/// deadline to watch (administrator, lot 28).
+bool diagnosticsAlert()=>unsentAlert()||deadlinesAlert();
+
+/// Diagnostic over the map, one tap from the link dot or the red banner.
+Future<void> showDiagnosticsSheet(BuildContext context,{required SarcadeApi api,required String server,required String eventId,
+    String? actorId,bool failedAgain=false,VoidCallback? onSignIn,VoidCallback? onChooseEvent})=>showAppSheet<void>(context:context,
+  isScrollControlled:true,showDragHandle:true,useSafeArea:true,constraints:const BoxConstraints(maxWidth:720),
+  builder:(c)=>FractionallySizedBox(heightFactor:0.9,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    Padding(padding:const EdgeInsets.fromLTRB(20,0,8,0),child:Row(children:[
+      Expanded(child:Text(S.t('settings.tab.diagnostics'),style:Theme.of(c).textTheme.titleLarge)),
+      IconButton(tooltip:S.t('common.close'),icon:const Icon(Icons.close),onPressed:()=>Navigator.pop(c)),
+    ])),
+    Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,0,16,24),children:[
+      DiagnosticsPanel(api:api,server:server,eventId:eventId,actorId:actorId,failedAgain:failedAgain,
+        onSignIn:onSignIn==null?null:(){Navigator.pop(c);onSignIn();},
+        onChooseEvent:onChooseEvent==null?null:(){Navigator.pop(c);onChooseEvent();}),
+    ])),
+  ])));
+
+/// Text of « Copier le rapport »: pure, tested.
+String diagnosticsReport(List<DiagLine> lines,{DateTime? at}){
+  final b=StringBuffer('SARCADE · ${S.t('settings.tab.diagnostics')} · ${(at??DateTime.now()).toLocal().toString().substring(0,19)}');
+  String? block;
+  for(final l in lines){
+    if(l.block!=block){block=l.block;b..write('\n\n')..write(block.toUpperCase());}
+    b..write('\n')..write(l.label)..write(' : ')..write(l.value)..write(l.state==null?'':' [${l.state}]');
+  }
+  return b.toString();
+}
+
+/// Lines of « Copier le rapport »: Serveur and Terminal, no longer shown at
+/// the top of Paramètres › Diagnostic (lot 19, 22 h 18, point 8), are added
+/// at the end of the « Cet appareil » block.
+List<DiagLine> reportLines(List<DiagLine> all,{required String server,String? device}){
+  final dev=S.t('diag.device');
+  final extra=<DiagLine>[
+    (block:dev,label:S.t('diagnostics.server'),value:server,state:null),
+    if(device!=null&&device.isNotEmpty)(block:dev,label:S.t('diagnostics.device'),value:device,state:null),
+  ];
+  final at=all.lastIndexWhere((l)=>l.block==dev);
+  return at<0?[...extra,...all]:[...all.take(at+1),...extra,...all.skip(at+1)];
+}
+
+/// Lines of the server block from `/diagnostics/server`.
+List<DiagLine> serverLines(Map<String,dynamic> d){
+  final block=S.t('diag.server');
+  final comps=Map<String,dynamic>.from(d['components'] as Map? ?? {});
+  final res=Map<String,dynamic>.from(d['resources'] as Map? ?? {});
+  final mem=res['memory'] is Map?Map<String,dynamic>.from(res['memory'] as Map):null;
+  final disk=res['disk'] is Map?Map<String,dynamic>.from(res['disk'] as Map):null;
+  String pctState(num? p)=>p==null?'off':p>80?'red':p>60?'orange':'green';
+  final upd=d['last_update'] is Map?Map<String,dynamic>.from(d['last_update'] as Map):null;
+  final bak=d['last_backup'] is Map?Map<String,dynamic>.from(d['last_backup'] as Map):null;
+  return [
+    (block:block,label:S.t('diag.state'),value:S.t('diag.status.${d['status']??'down'}'),state:'${d['status']}'),
+    (block:block,label:S.t('diag.version'),value:'${d['version']??'—'}',state:null),
+    (block:block,label:S.t('diag.uptime'),value:d['uptime_s'] is num?uptimeLabel((d['uptime_s'] as num).toInt()):'—',state:null),
+    for(final c in const ['database','realtime','tunnel','wakeup','aprs','weather'])
+      (block:block,label:S.t('diag.comp.$c'),value:S.t('diag.c.${comps[c]??'off'}'),state:'${comps[c]??'off'}'),
+    (block:block,label:S.t('diag.cpu'),value:percentLabel(res['cpu_pct'] as num?),state:pctState(res['cpu_pct'] as num?)),
+    (block:block,label:S.t('diag.memory'),value:mem==null?'—':'${percentLabel(mem['pct'] as num?)} · ${mem['used_mb']} / ${mem['total_mb']} Mo',state:pctState(mem?['pct'] as num?)),
+    (block:block,label:S.t('diag.disk'),value:disk==null?'—':'${percentLabel(disk['pct'] as num?)} · ${disk['used_gb']} / ${disk['total_gb']} Go',state:pctState(disk?['pct'] as num?)),
+    (block:block,label:S.t('diag.lastUpdate'),value:upd==null?S.t('diag.unknown'):'${upd['version']} · ${_date(upd['at'])} · ${upd['status']}',state:null),
+    (block:block,label:S.t('diag.lastBackup'),value:bak==null?S.t('diag.unknown'):_date(bak['at']),state:null),
+  ];
+}
+
+String _date(Object? iso){
+  final t=DateTime.tryParse('${iso??''}')?.toLocal(); if(t==null)return '—';
+  String two(int v)=>v.toString().padLeft(2,'0');
+  return '${two(t.day)}/${two(t.month)} ${two(t.hour)}:${two(t.minute)}';
+}
+
+class DiagnosticsPanel extends StatefulWidget {
+  final SarcadeApi api; final String server, eventId;
+  /// Author of the deletions of items not sent (journal of the device).
+  final String? actorId;
+  /// « Envoyer » of the red banner failed again: Supprimer and Exporter shown.
+  final bool failedAgain;
+  /// « Se reconnecter » when Cloudflare Access asks for a sign-in; without
+  /// it (Paramètres › Diagnostic) the panel signs in itself.
+  final VoidCallback? onSignIn;
+  /// « Choisir un événement » when the server refuses the event: opens
+  /// Paramètres › Général (lot 19).
+  final VoidCallback? onChooseEvent;
+  const DiagnosticsPanel({super.key,required this.api,required this.server,required this.eventId,this.actorId,this.failedAgain=false,this.onSignIn,this.onChooseEvent});
+  @override State<DiagnosticsPanel> createState()=>_DiagnosticsPanelState();
+}
+
+class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
+  List<DiagLine> _device=[], _links=[], _server=[], _mail=[], _deadlines=[], _siem=[], _logbook=[]; bool _loading=true; String? _serverError;
+  /// Level computed by the server (lot 28), see [diagLevel].
+  String _level='legacy';
+  Map<String,dynamic>? _deadlineData;
+  bool _mailSending=false, _siemSending=false;
+  /// What the server sees of this device and its response time (null: not
+  /// measured); read live with [ServerReach] (card « Diagnostic : messages
+  /// contradictoires… », 10 Nov 2026).
+  Map<String,dynamic>? _client; int? _responseMs;
+  /// The server answered at the last load; its return seen by another call
+  /// (synchronisation) loads the panel again.
+  bool _reachedAtLoad=true;
+  ServerReachState get _reach=>ServerReach.instance.of(widget.server);
+
+  bool get _pco=>myRoles.contains('pco')||myRoles.contains('admin');
+  /// Block « Serveur »: administrator, or the view of before for the PCO.
+  bool get _showsServer=>_level=='admin'||_level=='organizer'||(_pco&&(_level=='transition'||_level=='legacy'));
+
+  /// Event, map and real time are read live (lot 19): what « Réessayer »
+  /// changes shows at once.
+  Timer? _live, _retry; String _liveSeen=''; MapLoadStatus? _map;
+  @override void initState(){
+    super.initState();unawaited(_load());
+    _map=MapLoadStatus.active; _map?.addListener(_liveChanged);
+    _live=Timer.periodic(const Duration(seconds:2),(_)=>_liveChanged());
+    // New try every 30 s while the server is not reached (choice 9).
+    _retry=Timer.periodic(ServerReach.retryEvery,(_){if(_reach.failing&&!_loading)unawaited(_load());});
+  }
+  @override void dispose(){_live?.cancel();_retry?.cancel();_map?.removeListener(_liveChanged);super.dispose();}
+  void _liveChanged(){
+    if(!mounted)return;
+    if(!_reachedAtLoad&&!_loading&&!_reach.failing){unawaited(_load());return;}
+    final seen=_liveLines().map((l)=>'${l.value}|${l.state}').join(';');
+    if(seen!=_liveSeen)setState(()=>_liveSeen=seen);
+  }
+  List<DiagLine> _liveLines(){
+    final sync=OfflineSyncService.active, lk=S.t('diag.links'), reach=_reach;
+    final measured=_device.isNotEmpty||reach.failing;
+    return [
+      ...liveLinkLines(lk,access:sync?.eventAccess??EventAccess.ok,refusedStatus:sync?.eventRefusedStatus,
+        map:MapLoadStatus.active,realtime:RealtimeService.active?.connected),
+      // Read live, the same state as the link dot (choices 3, 4 and 9).
+      if(sync!=null)syncDiagLine(lk,okAt:sync.lastSyncAt,failedAt:sync.lastSyncFailedAt,failure:sync.lastSyncFailure),
+      if(measured)responseDiagLine(lk,reach:reach,ms:_responseMs),
+      if(measured)accessDiagLine(lk,web:isWebPlatform,session:AccessManager.instance.sessionFor(widget.server),client:_client,
+        refused:AccessManager.instance.requiredFor(widget.server),online:!isWebPlatform||browserOnline,failure:reach.failure),
+      // LoRa modules (card « Diagnostic : modules LoRa (MeshCore, Meshtastic)
+      // injoignables… », 10 Nov 2026, choice 1): one line per module
+      // remembered, read live on the device, even without the server.
+      for(final m in _lora)if(m.link.remembered)loraDiagLine(lk,m.label,m.link),
+    ];
+  }
+
+  /// MeshCore and Meshtastic: label of the line, link, page of Outils.
+  List<({String id,String label,LoraModuleLink link,String open,Widget Function() page})> get _lora=>[
+    if(MeshCoreLink.instance.supported)(id:'meshcore',label:S.t('mesh.tool'),link:MeshCoreLink.instance,open:S.t('mesh.openTool'),page:()=>const MeshCorePage()),
+    (id:'meshtastic',label:S.t('meshtastic.tool'),link:MeshtasticLink.instance,open:S.t('meshtastic.openTool'),page:()=>const MeshtasticPage()),
+  ];
+
+  /// Buttons of a LoRa line (choices 1 and 6): « Déconnecter » while the
+  /// module is not joined (same effect as in Outils, written in its
+  /// journal), « Se connecter » once disconnected, and « Ouvrir … ».
+  Widget _loraActions(({String id,String label,LoraModuleLink link,String open,Widget Function() page}) m){
+    final st=m.link.state, off=st==LoraLinkState.disconnected;
+    final cut=!off&&st!=LoraLinkState.connected&&st!=LoraLinkState.none;
+    return Wrap(spacing:4,alignment:WrapAlignment.end,children:[
+      if(cut)TextButton(key:ValueKey('diag-lora-disconnect-${m.id}'),onPressed:() async {await m.link.disconnect(from:'Diagnostic');_liveChanged();},
+        child:Text(S.t('mesh.disconnect'))),
+      if(off)TextButton(key:ValueKey('diag-lora-connect-${m.id}'),onPressed:() async {await m.link.connect();_liveChanged();},child:Text(S.t('mesh.connect'))),
+      TextButton(key:ValueKey('diag-open-${m.id}'),onPressed:()=>showOverlayPage<void>(context,(_)=>m.page()),child:Text(m.open)),
+    ]);
+  }
+  /// « Réessayer » of the map and real-time lines.
+  void _retryLinks(){
+    final map=MapLoadStatus.active;
+    if(map!=null){map.retry();}else{RealtimeService.active?.reconnectNow();}
+    _liveChanged();
+  }
+  Widget? _linkAction(DiagLine l){
+    for(final m in _lora){if(m.label==l.label&&m.link.remembered)return _loraActions(m);}
+    return _linkActionOf(l);
+  }
+  Widget? _linkActionOf(DiagLine l)=>switch(linkDiagAction(l)){
+    'retry'=>TextButton(key:ValueKey('diag-retry-${l.label}'),onPressed:_retryLinks,child:Text(S.t('common.retry'))),
+    'chooseEvent' when widget.onChooseEvent!=null=>TextButton(key:const ValueKey('diag-choose-event'),onPressed:widget.onChooseEvent,child:Text(S.t('diag.chooseEvent'))),
+    _=>null,
+  };
+
+  Future<void> _load() async {
+    setState(()=>_loading=true);
+    final dev=S.t('diag.device'), lk=S.t('diag.links');
+    // Level and server block first (lot 28): the server says what to show.
+    String net='—'; var online=true;
+    try{
+      final t=await Connectivity().checkConnectivity();net=t.map((e)=>e.name).join(', ');
+      online=!t.every((e)=>e==ConnectivityResult.none);
+    }catch(_){/* unknown */}
+    // The server block and the response time asked together: a server not
+    // reached costs 12 s at most, no longer 18 (choice 1).
+    // Its error is caught at once: it may come before the response time.
+    final srvCall=widget.api.serverDiagnostics().timeout(const Duration(seconds:12)).then<Object>((v)=>v,onError:(Object e)=>e);
+    final sw=Stopwatch()..start();
+    // Server response time (and what it sees of this device): the exact
+    // reason when it fails (delay, Cloudflare, refused, no network).
+    Map<String,dynamic>? client; ServerFailure? failure;
+    try{client=await widget.api.clientDiagnostics().timeout(const Duration(seconds:6));}
+    catch(e){failure=classifyServerError(e,online:online);}
+    sw.stop();
+    final reached=failure==null;
+    if(failure==null){ServerReach.instance.ok(widget.server);}else{ServerReach.instance.fail(widget.server,failure);}
+    _reachedAtLoad=reached;
+    Map<String,dynamic>? srv; String? err;
+    final answer=await srvCall;
+    if(answer is Map<String,dynamic>){srv=answer;}
+    else if(answer is SarcadeHttpException){err=answer.statusCode==403?S.t('diag.serverForbidden'):answer.statusCode==404?S.t('diag.serverOld'):'HTTP ${answer.statusCode}';}
+    else{err=serverFailureText(classifyServerError(answer,online:online,timeoutS:12));}
+    final level=diagLevel(srv), full=diagFullView(level), pco=diagShowsServices(level), services=pco&&reached;
+    final local=await localAddresses(via:widget.server);
+    String gps='—', gpsState='off';
+    try{
+      final perm=await Geolocator.checkPermission();
+      final on=await Geolocator.isLocationServiceEnabled();
+      gpsState=!on||perm==LocationPermission.denied||perm==LocationPermission.deniedForever?'red':'green';
+      final last=on?await Geolocator.getLastKnownPosition():null;
+      gps=[S.t(on?'diag.gpsOn':'diag.gpsOff'),S.t('diag.perm.${perm.name}'),if(last!=null)'± ${last.accuracy.round()} m'].join(' · ');
+    }catch(_){gps=S.t('diag.gpsNone');}
+    bool? notif;
+    try{notif=await NotificationService().permissionGranted();}catch(_){notif=null;}
+    Map<String,dynamic>? aprs;
+    if(services){try{aprs=await widget.api.aprsStatus().timeout(const Duration(seconds:5));}catch(_){aprs=null;}}
+    // ADS-B (OpenSky): only for an event with the ADRASEC module (8 h 15).
+    Map<String,dynamic>? adsb;
+    if(services){
+      try{
+        final ev=await widget.api.event(widget.eventId).timeout(const Duration(seconds:5));
+        final settings=ev['settings'] is Map?Map<String,dynamic>.from(ev['settings'] as Map):null;
+        if(eventModules(settings).contains('adrasec'))adsb=await widget.api.adsbStatus().timeout(const Duration(seconds:5));
+      }catch(_){adsb=null;}
+    }
+    bool engine=false;
+    if(services){try{engine=(await widget.api.routingStatus().timeout(const Duration(seconds:5)))['available']==true;}catch(_){engine=false;}}
+    Map<String,dynamic>? link(String k)=>aprs?[k] is Map?Map<String,dynamic>.from(aprs![k] as Map):null;
+    final device=<DiagLine>[
+      (block:dev,label:S.t('diag.version'),value:'SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}',state:null),
+      // Version of the server and reference version (lot 28).
+      ...versionLines(dev,srv),
+      // Name and identifier of the event: the identifier only here (revue n° 60).
+      if(pco)(block:dev,label:S.t('diagnostics.event'),value:eventReportValue(await loadEventName(widget.api,widget.eventId),widget.eventId),state:null),
+      if(full)...[
+        // Read on the device (Wi-Fi); the public one comes from the server (choice 7).
+        (block:dev,label:S.t('diag.localIp'),value:local.isEmpty?S.t('diag.localIpUnknown'):local.join(', '),state:null),
+        (block:dev,label:S.t('diag.publicIp'),value:publicIpValue(client,reached:reached),state:null),
+        (block:dev,label:S.t('diag.network'),value:net,state:null),
+      ],
+      (block:dev,label:S.t('diag.gps'),value:gps,state:gpsState),
+      (block:dev,label:S.t('diag.notifications'),value:S.t(NotificationService.windowsUnavailable=='admin'?'diag.notifAdmin':notif==null?'diag.unknown':notif?'diag.allowed':'diag.refused'),state:notif==null?null:notif?'green':'orange'),
+      // « Dernière synchronisation » only once, in Liaisons (choice 4).
+    ];
+    final links=<DiagLine>[
+      // Response time and Cloudflare Access: read live (_liveLines).
+      // A user sees the server only when it is down (lot 28).
+      if(!full)?serverDownLine(lk,srv),
+      // Services of the event: PCO and administrators (lot 28).
+      // Itinerary computation: server, device, or straight line (31 Oct
+      // 2026); grey while the server is not reached (choice 5).
+      if(pco&&!reached)routingDiagLine(lk,reached:false,engine:false,device:RoadGraphService.active?.graph!=null),
+      if(services)...[
+        routingDiagLine(lk,reached:true,engine:engine,device:RoadGraphService.active?.graph!=null),
+        (block:lk,label:S.t('aprs.is'),value:S.t('aprs.link.${linkState(link('aprs_is'))}'),state:linkState(link('aprs_is'))),
+        (block:lk,label:S.t('aprs.radio'),value:S.t('aprs.link.${linkState(link('radio'))}'),state:linkState(link('radio'))),
+        ?adsbDiagLine(lk,adsb,DateTime.now()),
+      ],
+      // MeshCore and Meshtastic: read live (_liveLines), one line per module
+      // remembered (card « Diagnostic : modules LoRa… », 10 Nov 2026).
+    ];
+    final server=<DiagLine>[
+      // « Non joint depuis 09:23 » instead of an empty block (choice 6).
+      if(!reached)serverWaitingLine(S.t('diag.server'),ServerReach.instance.of(widget.server))
+      else if(level=='organizer'&&srv!=null)...eventServiceLines(srv)
+      else if(srv!=null&&level!='user')...[...serverLines(srv),if(level=='admin')...[...adminBuildLines(srv),...weatherSourceLines(srv)]],
+    ];
+    final mail=level=='admin'&&srv?['mail'] is Map?mailLines(Map<String,dynamic>.from(srv!['mail'] as Map)):<DiagLine>[];
+    final deadlineData=level=='admin'&&srv?['deadlines'] is Map?Map<String,dynamic>.from(srv!['deadlines'] as Map):null;
+    // SIEM and Main courante of the event (lot 29, group 8).
+    final siem=level=='admin'&&srv?['siem'] is Map?siemLines(Map<String,dynamic>.from(srv!['siem'] as Map)):<DiagLine>[];
+    var logbook=<DiagLine>[];
+    if(reached&&(level=='admin'||level=='organizer')){
+      try{logbook=[logbookLine(await widget.api.logbookVerify(widget.eventId))];}catch(_){/* older server or offline */}
+    }
+    if(!mounted)return;
+    setState((){_device=device;_links=links;_server=server;_serverError=srv==null&&reached?err:null;_level=level;
+      _client=client;_responseMs=reached?sw.elapsedMilliseconds:null;
+      _mail=mail;_deadlineData=deadlineData;_deadlines=deadlineLines(deadlineData);_siem=siem;_logbook=logbook;_loading=false;});
+  }
+
+  /// « Envoyer un événement d'essai » to the SIEM (lot 29, group 8).
+  Future<void> _siemTest() async {
+    final m=ScaffoldMessenger.of(context);
+    setState(()=>_siemSending=true);
+    final api=AdminApi(widget.server);
+    try{
+      await api.siemTest();
+      m.showSnackBar(SnackBar(content:Text(S.t('diag.siemTestSent'))));
+    }catch(e){
+      m.showSnackBar(SnackBar(content:Text(S.t('diag.siemTestFailed',{'e':adminErrorText(e)}))));
+    }finally{
+      api.close();
+      if(mounted)setState(()=>_siemSending=false);
+    }
+    await _load();
+  }
+
+  /// « Envoyer un e-mail d'essai » to the address of the administrator.
+  Future<void> _mailTest() async {
+    final m=ScaffoldMessenger.of(context);
+    setState(()=>_mailSending=true);
+    final api=AdminApi(widget.server);
+    try{
+      final r=await api.mailTest();
+      m.showSnackBar(SnackBar(content:Text(r['status']=='simulated'?S.t('diag.mailTestSimulated'):S.t('diag.mailTestSent',{'to':r['to']??''}))));
+    }catch(e){
+      m.showSnackBar(SnackBar(content:Text(S.t('diag.mailTestFailed',{'e':adminErrorText(e)}))));
+    }finally{
+      api.close();
+      if(mounted)setState(()=>_mailSending=false);
+    }
+    if(mounted)unawaited(_load());
+  }
+
+  /// « Modifier les échéances »: the list typed by the administrator.
+  Future<void> _editDeadlines() async {
+    final api=AdminApi(widget.server);
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>DeadlinesPage(api:api)));
+    api.close();
+    if(mounted)unawaited(_load());
+  }
+
+  /// Banner of the deadlines to watch (30 days or less), at the top.
+  Widget? _deadlineBanner(){
+    final alerts=deadlineAlerts(_deadlineData);
+    if(alerts.isEmpty)return null;
+    final t=Theme.of(context);
+    final worst=alerts.first;
+    final color=stateColor(deadlineState(worst));
+    return Card(key:const ValueKey('deadline-banner'),elevation:0,margin:const EdgeInsets.only(top:12),color:color.withValues(alpha:0.14),
+      child:Padding(padding:const EdgeInsets.all(14),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Icon(Icons.event_busy_outlined,color:color),const SizedBox(width:12),
+        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(S.t('deadline.banner',{'n':alerts.length}),style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700)),
+          for(final a in alerts.take(3))Text('${a['name']} : ${deadlineValue(a)}'),
+        ])),
+      ])));
+  }
+
+  /// Items not sent, read live (the list below changes it).
+  DiagLine _pendingLine(){
+    final n=OfflineSyncService.active?.unsent??0;
+    return (block:S.t('diag.links'),label:S.t('diag.pending'),value:'$n',state:n>0?'red':'green');
+  }
+
+  /// « Se reconnecter » (card « Diagnostic : bouton « Se reconnecter » à
+  /// Cloudflare dans Paramètres », 1 Nov 2026): the same from the map and
+  /// from Paramètres. Web: the page is loaded again, Cloudflare shows its
+  /// sign-in if the session of the browser ended.
+  Future<void> _reconnect() async {
+    if(isWebPlatform){reloadApp();return;}
+    final fromMap=widget.onSignIn;
+    if(fromMap!=null){fromMap();return;}
+    if(await signInToServer(context,widget.server)&&mounted)unawaited(_load());
+  }
+
+  // « Renouveler l'accès » (lot 28, card « Paramètres : deux connexions »).
+  Widget _reconnectButton()=>TextButton(key:const ValueKey('diag-access-reconnect'),onPressed:_reconnect,child:Text(S.t('profile.renewAccess')));
+
+  Future<void> _retryAll() async {
+    final sync=OfflineSyncService.active; if(sync==null)return;
+    await sync.retryAll();
+    if(mounted)setState((){});
+  }
+
+  /// « Tout fonctionne » in green, or the problems with their action;
+  /// « Copier » and « Actualiser » as icons on its right (lot 29.4).
+  /// Server not reached (card « Diagnostic : messages contradictoires… »,
+  /// 10 Nov 2026, choices 1 and 8): one cause at the top with its exact
+  /// reason, the consequences under it in grey, not counted.
+  Widget _summary(List<DiagLine> all){
+    final t=Theme.of(context);
+    final reach=_reach, accessCause=reach.failure?.kind==ServerFailureKind.access;
+    final cause=serverCauseLine(S.t('diag.links'),reach);
+    final split=summaryProblems(all,cause:cause,accessCause:accessCause);
+    final problems=split.problems;
+    final tools=Row(mainAxisSize:MainAxisSize.min,children:[
+      if(_loading)const Padding(padding:EdgeInsets.all(8),child:SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2))),
+      IconButton(key:const ValueKey('diag-copy'),tooltip:S.t('diag.copyReport'),onPressed:all.isEmpty?null:() async {
+        final messenger=ScaffoldMessenger.of(context);
+        await Clipboard.setData(ClipboardData(text:diagnosticsReport(reportLines([...all,..._deadlines],server:widget.server,device:widget.actorId))));
+        messenger.showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
+      },icon:const Icon(Icons.copy_all)),
+      IconButton(key:const ValueKey('diag-refresh'),tooltip:S.t('diag.refresh'),onPressed:_loading?null:_load,icon:const Icon(Icons.refresh)),
+    ]);
+    if(problems.isEmpty){
+      return Card(key:const ValueKey('diag-all-good'),elevation:0,margin:const EdgeInsets.only(top:12),color:Colors.green.withValues(alpha:0.14),
+        child:Padding(padding:const EdgeInsets.fromLTRB(14,4,4,4),child:Row(children:[
+          const Icon(Icons.check_circle,color:Colors.green),const SizedBox(width:12),
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(S.t(_loading&&all.isEmpty?'diag.checking':'diag.allGood'),style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700)),
+            // « Serveur rétabli à 09:27 », without any action (choice 9).
+            if(showsRecovered(reach))Text(S.t('diag.serverRecovered',{'t':diagClock(reach.recoveredAt!)}),key:const ValueKey('diag-recovered'),
+              style:t.textTheme.bodySmall),
+          ])),
+          tools,
+        ])));
+    }
+    final pending=S.t('diag.pending'), access=S.t('diag.access');
+    Widget? action(DiagLine l)=>cause!=null&&l==cause
+      ?(accessCause?_reconnectButton():TextButton(key:const ValueKey('diag-cause-retry'),onPressed:_loading?null:_load,child:Text(S.t('common.retry'))))
+      :l.label==pending&&OfflineSyncService.active!=null
+      ?TextButton(onPressed:_retryAll,child:Text(S.t('unsent.retryAll')))
+      :l.label==access?_reconnectButton():_linkAction(l);
+    return Card(key:const ValueKey('diag-problems'),elevation:0,margin:const EdgeInsets.only(top:12),color:t.colorScheme.errorContainer.withValues(alpha:0.5),
+      child:Padding(padding:const EdgeInsets.symmetric(vertical:2),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Padding(padding:const EdgeInsets.fromLTRB(14,0,4,0),child:Row(children:[
+          Expanded(child:Text(S.t('diag.problems',{'n':problems.length}),style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
+          tools,
+        ])),
+        for(final l in problems)DiagLineRow(line:l,action:action(l),dense:true),
+        for(final l in split.waiting)DiagLineRow(key:ValueKey('diag-waiting-${l.label}'),line:l,dense:true),
+      ])));
+  }
+
+  /// Open or folded sections, kept on the device (lot 29.4).
+  static final Map<String,bool> _openMem={};
+  String _openKey(String id)=>'diag_open:$id';
+  bool _isOpen(String id,bool problem){
+    final mem=_openMem[id];
+    final stored=mem==null?OfflineSyncService.active?.store.preference(_openKey(id)):(mem?'1':'0');
+    return sectionOpen(stored:stored,problem:problem);
+  }
+  void _toggle(String id,bool open){
+    setState(()=>_openMem[id]=!open);
+    unawaited(OfflineSyncService.active?.store.setPreference(_openKey(id),open?'0':'1'));
+  }
+
+  /// A section that folds (lot 29.4): coloured dot, title, one line of
+  /// summary when folded; label on the left, value on the right when open.
+  Widget _openLogbookButton()=>Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),child:Align(alignment:Alignment.centerLeft,
+    child:TextButton.icon(key:const ValueKey('diag-logbook-open'),icon:const Icon(Icons.menu_book_outlined),label:Text(S.t('diag.logbookOpen')),
+      onPressed:()=>Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId))))));
+
+  Widget _block(String id,String title,List<DiagLine> lines,{Widget? footer,Widget? Function(DiagLine)? action}){
+    final t=Theme.of(context);
+    final state=sectionState(lines); final problems=diagnosticProblems(lines);
+    final open=_isOpen(id,problems.isNotEmpty);
+    // A block of one line says it when folded (« État général : Non joint
+    // depuis 09:23 », card « Diagnostic : messages contradictoires… », choice 6).
+    final first=problems.isNotEmpty?problems.first:lines.length==1?lines.first:null;
+    final summary=first==null?S.t('diag.sectionGood',{'n':lines.length}):'${first.label} : ${first.value}';
+    return Card(key:ValueKey('diag-section-$id'),elevation:0,margin:const EdgeInsets.only(top:10),color:t.colorScheme.surfaceContainerLow,
+      clipBehavior:Clip.antiAlias,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        InkWell(key:ValueKey('diag-toggle-$id'),onTap:()=>_toggle(id,open),child:Padding(padding:const EdgeInsets.fromLTRB(14,10,8,10),child:Row(children:[
+          Icon(Icons.circle,size:12,color:stateColor(state)),const SizedBox(width:10),
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(title,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700)),
+            if(!open)Text(summary,maxLines:1,overflow:TextOverflow.ellipsis,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
+          ])),
+          Icon(open?Icons.expand_less:Icons.expand_more,color:t.colorScheme.onSurfaceVariant),
+        ]))),
+        if(open)...[
+          for(final l in lines)DiagLineRow(line:l,action:action?.call(l),dense:true),
+          ?footer,
+          const SizedBox(height:6),
+        ],
+      ]));
+  }
+
+  @override Widget build(BuildContext context){
+    final sync=OfflineSyncService.active;
+    final links=_device.isEmpty?_links:[_pendingLine(),..._liveLines(),..._links];
+    final all=[..._device,...links,..._server,..._mail];
+    final sections=<({bool problem,Widget w})>[
+      if(_device.isNotEmpty)(problem:diagnosticProblems(_device).isNotEmpty,w:_block('device',S.t('diag.device'),_device)),
+      if(links.isNotEmpty)(problem:diagnosticProblems(links).isNotEmpty,w:_block('links',S.t('diag.links'),links,
+        action:(l)=>l.label==S.t('diag.access')&&showsAccessReconnect(l,web:isWebPlatform)?_reconnectButton():_linkAction(l),
+        footer:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          // A module remembered has its « Ouvrir » on its line (choice 1).
+          for(final m in _lora)if(!m.link.remembered)Align(alignment:Alignment.centerLeft,child:Padding(padding:const EdgeInsets.symmetric(horizontal:8),
+            child:TextButton.icon(key:ValueKey('diag-open-${m.id}'),onPressed:()=>showOverlayPage<void>(context,(_)=>m.page()),
+              icon:const Icon(Icons.hub_outlined),label:Text(m.open)))),
+          if(sync!=null)UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});}),
+        ]))),
+      if(_showsServer&&(_server.isNotEmpty||_serverError!=null))(problem:_serverError!=null||diagnosticProblems(_server).isNotEmpty,
+        w:_block('server',S.t(_level=='organizer'?'diag.eventServices':'diag.server'),_server,
+          footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!)))),
+      // Administrator (lot 28): Brevo, then the deadlines.
+      if(_mail.isNotEmpty)(problem:diagnosticProblems(_mail).isNotEmpty,w:_block('mail',S.t('diag.mail'),_mail,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),child:Align(alignment:Alignment.centerLeft,
+        child:TextButton.icon(key:const ValueKey('diag-mail-test'),onPressed:_mailSending?null:_mailTest,
+          icon:const Icon(Icons.outgoing_mail),label:Text(S.t('diag.mailTest'))))))),
+      if(_siem.isNotEmpty)(problem:diagnosticProblems(_siem).isNotEmpty,w:_block('siem',S.t('diag.siem'),_siem,
+        footer:_siem.first.state=='off'?null:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),child:Align(alignment:Alignment.centerLeft,
+          child:TextButton.icon(key:const ValueKey('diag-siem-test'),onPressed:_siemSending?null:_siemTest,
+            icon:const Icon(Icons.send_outlined),label:Text(S.t('diag.siemTest'))))))),
+      // Main courante: only here, no longer in Outils (porteur, 9 Nov 2026):
+      // its integrity, and the button that opens it.
+      if(_logbook.isNotEmpty)(problem:diagnosticProblems(_logbook).isNotEmpty,w:_block('logbook',S.t('diag.logbook'),_logbook,footer:_openLogbookButton()))
+      else (problem:false,w:Card(key:const ValueKey('diag-section-logbook'),elevation:0,margin:const EdgeInsets.only(top:10),
+        color:Theme.of(context).colorScheme.surfaceContainerLow,child:_openLogbookButton())),
+      if(_level=='admin'&&_deadlineData!=null)(problem:diagnosticProblems(_deadlines).isNotEmpty,w:_block('deadlines',S.t('deadline.title'),_deadlines,footer:Padding(padding:const EdgeInsets.fromLTRB(8,4,8,4),
+        child:Align(alignment:Alignment.centerLeft,child:TextButton.icon(key:const ValueKey('deadline-edit'),onPressed:_editDeadlines,
+          icon:const Icon(Icons.edit_calendar_outlined),label:Text(S.t('deadline.edit'))))))),
+    ];
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      _summary(all),
+      ?_deadlineBanner(),
+      // A section with something to check comes first (lot 29.4).
+      for(final x in sections)if(x.problem)x.w,
+      for(final x in sections)if(!x.problem)x.w,
+      // Every « Connexion requise » of Cloudflare on this device (1 Nov 2026).
+      if(AccessManager.instance.challenges.isNotEmpty)Card(key:const ValueKey('diag-access'),margin:const EdgeInsets.only(top:12),child:Padding(padding:const EdgeInsets.all(14),
+        child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          Text(S.t('diag.accessTitle'),style:Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height:6),
+          for(final c in AccessManager.instance.challenges.reversed)Padding(padding:const EdgeInsets.symmetric(vertical:2),
+            child:Text(accessChallengeLine(c),style:Theme.of(context).textTheme.bodySmall)),
+        ]))),
+    ]);
+  }
+}
+
+/// One line of the Diagnostic. Wide: dot, label, value on the right, button.
+/// Narrow (under [narrowWidth], card « Téléphone : Diagnostic, ligne
+/// Cloudflare Access écrite une lettre par ligne », 4 Nov 2026): the label,
+/// the value under it on the whole width, the button under it.
+class DiagLineRow extends StatelessWidget {
+  final DiagLine line; final Widget? action;
+  /// Lines of the summary at the top: less space between them.
+  final bool dense;
+  const DiagLineRow({super.key,required this.line,this.action,this.dense=false});
+  static const narrowWidth=480.0;
+
+  @override
+  Widget build(BuildContext context)=>LayoutBuilder(builder:(context,c){
+    final pad=EdgeInsets.symmetric(horizontal:16,vertical:dense?4:8);
+    final dot=SizedBox(width:24,child:line.state==null?null:Padding(padding:const EdgeInsets.only(top:4),
+      child:Icon(Icons.circle,size:12,color:stateColor(line.state))));
+    if(c.maxWidth<narrowWidth){
+      // Lot 29.4: label on the left, value on the right on a phone too; the
+      // two share the width (never a letter per line), the button under.
+      return Padding(key:const ValueKey('diag-line-narrow'),padding:pad,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          dot,
+          Expanded(flex:2,child:Text(line.label)),
+          const SizedBox(width:8),
+          Expanded(flex:3,child:SelectableText(line.value,textAlign:TextAlign.end)),
+        ]),
+        if(action!=null)Align(alignment:Alignment.centerRight,child:action),
+      ]));
+    }
+    return Padding(padding:pad,child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      dot,
+      ConstrainedBox(constraints:BoxConstraints(maxWidth:c.maxWidth*0.4),child:Text(line.label)),
+      const SizedBox(width:12),
+      Expanded(child:SelectableText(line.value,textAlign:TextAlign.end)),
+      ?action,
+    ]));
+  });
+}
+
+/// Line « ADS-B (OpenSky) » of Liaisons (card validated 1 Nov 2026, 8 h 15),
+/// from /adsb/status; null without the ADRASEC module.
+DiagLine? adsbDiagLine(String block,Map<String,dynamic>? st,DateTime now){
+  if(st==null)return null;
+  final label=S.t('adsb.diag');
+  if(st['enabled']!=true)return (block:block,label:label,value:S.t('adsb.diag.off'),state:null);
+  if(st['paused']==true)return (block:block,label:label,value:S.t('adsb.diag.quota'),state:'orange');
+  final n=(st['requests_today'] as num?)?.toInt()??0, credits=(st['credits_per_day'] as num?)?.toInt()??4000;
+  final day=S.t('adsb.diag.day',{'n':'$n','left':'${(credits-n).clamp(0,credits)}'});
+  final last=DateTime.tryParse('${st['last_ok_at']??''}');
+  if(st['connected']==true&&last!=null){
+    return (block:block,label:label,value:'${S.t('adsb.diag.ok',{'s':'${now.toUtc().difference(last.toUtc()).inSeconds.clamp(0,86400)}'})} · $day',state:'green');
+  }
+  final detail='${st['detail']??''}';
+  if(detail.isNotEmpty)return (block:block,label:label,value:'${S.t('adsb.diag.error')} ($detail) · $day',state:'red');
+  return (block:block,label:label,value:'${S.t('adsb.diag.idle')} · $day',state:null);
+}
+
+/// Line « Module MeshCore » of Liaisons (1 Nov 2026, 8 h 17): connected,
+/// out of reach, or no module chosen.
+/// Lot 25: the level of the battery when known, orange while it is low.
+DiagLine meshCoreDiagLine(String block,MeshCoreLink link,{DateTime? now})=>loraDiagLine(block,S.t('mesh.tool'),link,now:now);
+
+/// Line « Meshtastic » of Liaisons (card « Diagnostic : modules LoRa… »,
+/// 10 Nov 2026, choice 1).
+DiagLine meshtasticDiagLine(String block,MeshtasticLink link,{DateTime? now})=>loraDiagLine(block,S.t('meshtastic.tool'),link,now:now);
+
+/// Line of a LoRa module (card « Diagnostic : modules LoRa (MeshCore,
+/// Meshtastic) injoignables, lien vers Outils et reconnexion économe »,
+/// validated on 10 Nov 2026): « T1000 · connecté · batterie 76 % » in green
+/// (the percentage unless hidden, choices 8 and 10; orange while the
+/// battery is low); orange while it tries again; grey « hors de portée
+/// depuis 09:20 · nouvel essai toutes les 5 min » and « Bluetooth du
+/// téléphone coupé », not counted in « À vérifier » (choices 2 and 4); red
+/// only for a real fault (choice 5).
+DiagLine loraDiagLine(String block,String label,LoraModuleLink link,{DateTime? now,LoraBatteryMonitor? battery}){
+  if(!link.remembered)return (block:block,label:label,value:S.t('mesh.state.none'),state:null);
+  final m=battery??LoraBatteryMonitor.instance, st=link.state, ok=st==LoraLinkState.connected;
+  final since=link.failingSince;
+  final what=switch(st){
+    LoraLinkState.outOfReach=>[since==null?S.t('mesh.state.outOfReach'):S.t('mesh.outOfReachSince',{'t':diagClock(since,now:now)}),
+      S.t('mesh.retryEveryShort',{'n':loraOutOfReachEvery.inMinutes})].join(' · '),
+    LoraLinkState.connected when link.noAnswer=>S.t('mesh.noAnswerShort'),
+    _=>loraStateText(st)};
+  final level=ok?m.stateOf(link.deviceId!)?.level:null;
+  final tone=ok&&link.noAnswer?'bad':level!=null&&level!=LoraBatteryLevel.ok?'battery':loraPillTone(st);
+  return (block:block,label:label,value:[link.displayName,what,if(ok)?m.label(link.deviceId)].join(' · '),
+    state:switch(tone){'ok'=>'green','wait'||'battery'=>'orange','off'=>'off',_=>'red'});
+}
+
+/// Where itineraries are computed: 'server', 'device' or 'none'.
+String routingWhere({required bool server,required bool device})=>server?'server':device?'device':'none';
+
+/// « 31/10 22:14 · /api/v0.1/sync · 403 · jeton valable jusqu'au 30/11 ·
+/// rattrapé par un second essai ».
+String accessChallengeLine(AccessChallenge c){
+  String two(int v)=>v.toString().padLeft(2,'0');
+  String d(DateTime t){final l=t.toLocal();return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}';}
+  return [d(c.at),c.path,'${c.status}',
+    c.tokenUntil==null?S.t('diag.accessNoToken'):S.t('diag.accessTokenUntil',{'d':d(c.tokenUntil!)}),
+    if(c.recovered)S.t('diag.accessRecovered') else if(c.retried)S.t('diag.accessRetried')].join(' · ');
+}
+
+/// Line « Cloudflare Access » of Liaisons (card « Diagnostic : bouton « Se
+/// reconnecter » à Cloudflare dans Paramètres », 1 Nov 2026). Installed
+/// apps: the token of the app, as before. Web: the page itself goes through
+/// Cloudflare (session of the browser) and the app keeps no token: green
+/// « par le navigateur » when the server answers through Cloudflare, orange
+/// only when it does not answer while the browser is online.
+/// Installed apps (card « Diagnostic : messages contradictoires… », 10 Nov
+/// 2026, choice 3): orange as soon as a call to the server fails ([failure]),
+/// « Accès Cloudflare à renouveler » when the sign-in answered instead.
+DiagLine accessDiagLine(String block,{required bool web,required AccessSession? session,required Map<String,dynamic>? client,
+    bool refused=false,bool online=true,ServerFailure? failure}){
+  final label=S.t('diag.access');
+  final viaCloudflare=client?['via_cloudflare']==true;
+  if(web){
+    if((client==null||refused)&&online)return (block:block,label:label,value:S.t('diag.accessBrowserRefused'),state:'orange');
+    if(client==null)return (block:block,label:label,value:S.t('diag.unknown'),state:null);
+    return viaCloudflare?(block:block,label:label,value:S.t('diag.accessBrowser'),state:'green')
+      :(block:block,label:label,value:S.t('diag.accessLocal'),state:null);
+  }
+  if(refused||failure?.kind==ServerFailureKind.access)return (block:block,label:label,value:S.t('diag.fail.access'),state:'orange');
+  if(session==null)return (block:block,label:label,value:S.t(viaCloudflare?'diag.accessNone':'diag.accessLocal'),state:viaCloudflare?'orange':null);
+  return (block:block,label:label,value:[S.t('diag.connected'),if(session.email!=null)session.email!,if(client?['email']!=null)S.t('diag.emailChecked'),
+      if(failure!=null)S.t('diag.callsFailing')].join(' · '),
+    state:failure==null?'green':'orange');
+}
+
+/// « Se reconnecter » next to the Cloudflare Access line: always on the
+/// installed apps when Access is used (to renew the token), on the web only
+/// when the server does not answer.
+bool showsAccessReconnect(DiagLine l,{required bool web})=>web?l.state=='orange':l.state=='orange'||l.state=='green';
