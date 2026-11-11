@@ -1,6 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../ui/menu_entry.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData, LengthLimitingTextInputFormatter;
+import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
 import '../../l10n/strings.dart';
 import 'tv_screens_button.dart' show tvScreensChanged;
 import '../../models/comm_group.dart';
@@ -43,10 +45,44 @@ class TvScreensPanel extends StatefulWidget {
 class _TvScreensPanelState extends State<TvScreensPanel> {
   List<Map<String,dynamic>>? _list; bool _busy=false; bool _offline=false;
 
+  /// TVs waiting for a code on the same network (card « Écrans TV : page
+  /// plus directe », 11 Nov 2026, choice 2), while the discovery is on.
+  List<({String code,String name})> _nearby=const [];
+  Timer? _nearbyTimer;
+
   @override void initState(){
     super.initState();_load();
+    unawaited(_loadNearby());
+    _nearbyTimer=Timer.periodic(const Duration(seconds:10),(_)=>unawaited(_loadNearby()));
+    tvDiscovery.addListener(_discoveryChanged);
     if(widget.scanOnOpen&&canScanTvQr)WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_scan();});
   }
+
+  @override void dispose(){
+    _nearbyTimer?.cancel();
+    tvDiscovery.removeListener(_discoveryChanged);
+    super.dispose();
+  }
+
+  void _discoveryChanged(){
+    if(!mounted)return;
+    setState(()=>_nearby=const []);
+    unawaited(_loadNearby());
+  }
+
+  Future<void> _loadNearby() async {
+    if(!tvDiscovery.value||_busy)return;
+    try{
+      final l=await widget.api.tvNearbyScreens();
+      if(mounted)setState(()=>_nearby=l);
+    }catch(_){/* offline: nothing offered */}
+  }
+
+  /// « Connecter » of a TV nearby: its name proposed, then paired.
+  Future<void> _connectNearby(({String code,String name}) n)=>TvNearbyGate.during(() async {
+    final name=await _askName(S.t('tv.nameTitle'),n.name);
+    if(name!=null&&mounted){await _approve(n.code,name:name);setState(()=>_nearby=[for(final x in _nearby)if(x.code!=n.code)x]);}
+  });
 
   Future<void> _load() async {
     try{
@@ -181,9 +217,6 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
     }
   }
 
-  /// Expired or revoked screens, hidden unless « Afficher les anciens ».
-  bool _showOld=false;
-
   /// « Envoyer ma vue »: summary of what leaves (zoom, base map, layers)
   /// with the « Colonne des messages » box; null when cancelled.
   Future<bool?> _confirmView(TvView v,TvOptions? o,bool messages) async {
@@ -280,21 +313,28 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
   @override
   Widget build(BuildContext context){
     final t=Theme.of(context); final all=_list; final wide=tvButtonsWide(context);
-    final list=all==null?null:tvVisibleScreens(all,showOld:_showOld);
-    final old=all==null?0:all.length-tvVisibleScreens(all,showOld:false).length;
+    // Only the active screens (choices 7 and 9): a revoked or expired one
+    // can never connect again; the server erases it after 14 days.
+    final list=all==null?null:tvVisibleScreens(all,showOld:false);
+    final paired={for(final d in list??const <Map<String,dynamic>>[])'${d['code']}'};
+    final nearby=[for(final n in _nearby)if(!paired.contains(n.code))n];
     Widget section(String text)=>Padding(padding:const EdgeInsets.only(top:12,bottom:4),child:Text(text,
       style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600,color:t.colorScheme.primary)));
-    Widget step(int n,String text,{Widget? trailing})=>Padding(padding:const EdgeInsets.symmetric(vertical:4),child:Row(children:[
-      CircleAvatar(radius:12,backgroundColor:t.colorScheme.primaryContainer,child:Text('$n',style:TextStyle(fontSize:12,color:t.colorScheme.onPrimaryContainer))),
-      const SizedBox(width:10),Expanded(child:Text(text)),?trailing]));
     return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,mainAxisSize:MainAxisSize.min,children:[
         if(_busy)const Padding(padding:EdgeInsets.only(bottom:8),child:LinearProgressIndicator()),
-        // « Mes écrans » first (lot 29.5).
-        section(S.t('tv.mine')),
+        // Choice 2: the TVs found nearby first, each with « Connecter ».
+        if(nearby.isNotEmpty)...[
+          section(S.t('tv.nearbySection')),
+          for(final n in nearby)ListTile(key:ValueKey('tv-nearby-${n.code}'),contentPadding:EdgeInsets.zero,leading:const Icon(Icons.connected_tv),
+            title:Text(n.name.trim().isEmpty?'${S.t('tv.code')} ${n.code}':n.name),
+            subtitle:n.name.trim().isEmpty?null:Text('${S.t('tv.code')} ${n.code}'),
+            trailing:FilledButton(onPressed:()=>_connectNearby(n),child:Text(S.t('tv.connect')))),
+        ],
+        // « Mes écrans » (lot 29.5), hidden when empty (choice 1).
+        if(_offline||list==null||list.isNotEmpty)section(S.t('tv.mine')),
         if(_offline)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.cloud_off),title:Text(S.t('event.offline')),
           trailing:OutlinedButton(onPressed:_load,child:Text(S.t('common.retry'))))
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))
-        else if(list.isEmpty)ListTile(contentPadding:EdgeInsets.zero,title:Text(S.t('tv.none')))
         else for(final d in list)Column(key:ValueKey('tv-screen-${d['id']}'),crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           ListTile(contentPadding:EdgeInsets.zero,
           leading:Icon(d['active']==true?(d['alert']==true?Icons.sos:Icons.tv):Icons.tv_off,
@@ -324,29 +364,29 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
                 PopupMenuItem(value:'sos',enabled:d['can_clear_alert']!=false,
                   child:menuEntry(context,icon:Icons.sos,done:d['can_clear_alert']==false,title:S.t('tv.clearSos'))),
               ],
-              PopupMenuItem(value:'revoke',child:menuEntry(context,icon:Icons.tv_off,color:Theme.of(context).colorScheme.error,title:S.t('tv.revoke'))),
             ]):null),
           if(d['active']==true)Padding(padding:const EdgeInsets.only(bottom:8),child:TvScreenButtons(screen:d,wide:wide,
             onAction:(a)=>_act(d,a==TvAction.theme?'nextTheme':a))),
+          // Choice 9: « Révoquer » in sight on each screen.
+          Align(alignment:Alignment.centerRight,child:TextButton.icon(key:ValueKey('tv-revoke-${d['id']}'),onPressed:()=>_act(d,'revoke'),
+            style:TextButton.styleFrom(foregroundColor:t.colorScheme.error),icon:const Icon(Icons.tv_off,size:18),label:Text(S.t('tv.revoke')))),
         ]),
-        // « Connecter un nouvel écran » in two numbered steps.
+        // « Connecter un nouvel écran »: one sentence (choice 6), one main
+        // button and « Saisir le code » as a link under it (choice 3); no
+        // copy of the address, typed on the TV (choice 4).
         section(S.t('tv.connectNew')),
-        step(1,S.t('tv.step1'),trailing:IconButton(tooltip:S.t('common.copy'),icon:const Icon(Icons.copy_outlined),
-          onPressed:(){Clipboard.setData(const ClipboardData(text:'https://tv.sarcade.org'));_say('common.copied');})),
-        step(2,S.t('tv.step2')),
-        Padding(padding:const EdgeInsets.only(left:34,top:4),child:Wrap(spacing:8,runSpacing:8,children:[
-          if(canScanTvQr)FilledButton.icon(onPressed:_scan,icon:const Icon(Icons.qr_code_scanner),label:Text(S.t('tv.scan'))),
-          OutlinedButton.icon(onPressed:_type,icon:const Icon(Icons.keyboard_outlined),label:Text(S.t('tv.type'))),
-        ])),
+        Text(S.t(canScanTvQr?'tv.howTo':'tv.howToType'),key:const ValueKey('tv-how-to')),
         const SizedBox(height:8),
-        // « Découverte automatique des écrans » (1 Nov 2026, 8 h 01): one line.
+        if(canScanTvQr)...[
+          FilledButton.icon(key:const ValueKey('tv-scan'),onPressed:_scan,icon:const Icon(Icons.qr_code_scanner),label:Text(S.t('tv.scan'))),
+          Align(alignment:Alignment.center,child:TextButton(key:const ValueKey('tv-type'),onPressed:_type,child:Text(S.t('tv.type')))),
+        ]else FilledButton.icon(key:const ValueKey('tv-type'),onPressed:_type,icon:const Icon(Icons.keyboard_outlined),label:Text(S.t('tv.type'))),
+        const SizedBox(height:8),
+        // « Découverte automatique des écrans » (1 Nov 2026, 8 h 01), at the
+        // bottom of the page (choice 2).
         ValueListenableBuilder<bool>(valueListenable:tvDiscovery,builder:(_,on,_)=>SwitchListTile(key:const ValueKey('tv-discovery'),
           dense:true,contentPadding:EdgeInsets.zero,value:on,onChanged:(v)=>tvDiscovery.value=v,
           title:Text(S.t('tv.discovery')),subtitle:Text(S.t('tv.discoveryShort')))),
-        // « Anciens écrans · 21 › » (expired or revoked).
-        if(old>0)ListTile(key:const ValueKey('tv-show-old'),dense:true,contentPadding:EdgeInsets.zero,
-          title:Text(_showOld?S.t('tv.hideOld'):S.t('tv.oldN',{'n':old})),
-          trailing:Icon(_showOld?Icons.expand_less:Icons.chevron_right),onTap:()=>setState(()=>_showOld=!_showOld)),
       ]));
   }
 }

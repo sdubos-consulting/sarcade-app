@@ -321,6 +321,15 @@ class SarcadeApi {
     if(r.statusCode!=200)return const [];
     return [for(final d in jsonDecode(r.body) as List)'${(d as Map)['code']}'];
   }
+  /// Same, with the default name of each TV (« TV Samsung · 1920×1080 »),
+  /// for the section « À proximité » of Écrans TV (11 Nov 2026).
+  Future<List<({String code,String name})>> tvNearbyScreens() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/tv/nearby'));
+    if(r.statusCode!=200)return const [];
+    final l=jsonDecode(r.body);
+    if(l is! List)return const [];
+    return [for(final d in l)if(d is Map&&d['code'] is String)(code:'${d['code']}',name:'${d['name']??''}')];
+  }
   Future<List<Map<String,dynamic>>> displays(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays'));
     if(r.statusCode!=200) throw SarcadeHttpException('displays',r.statusCode,r.body);
