@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 // Flutter now has its own appBuildNumber: only the clipboard from here.
 import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle;
@@ -8,6 +9,7 @@ import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart' show basemapNotices;
 import '../../operations/event_settings.dart' show StoreRelease;
 import '../../operations/version_state.dart';
+import '../../services/sarcade_api.dart';
 import 'notifications_panel.dart' show VersionStatus;
 import 'windows_update_box.dart';
 import '../../ui/link_status.dart';
@@ -41,14 +43,34 @@ String? serverPageUrl(String? serverUrl, String page) {
   return '$base/$page';
 }
 
-/// E-mail of « Signaler un problème », with the version and the build.
-String aboutFeedbackMailto({String version = appVersion, String build = appBuild, String number = appBuildNumber}) {
+/// « Android », « iPhone », « Windows »… of this device.
+String feedbackPlatform() => kIsWeb ? 'Web' : switch (defaultTargetPlatform) {
+  TargetPlatform.android => 'Android', TargetPlatform.iOS => 'iPhone', TargetPlatform.windows => 'Windows',
+  TargetPlatform.linux => 'Linux', TargetPlatform.macOS => 'macOS', TargetPlatform.fuchsia => 'Fuchsia'};
+
+/// E-mail of « Signaler un problème », with the version, the build and the
+/// platform (card of 11 Nov 2026, choice 1).
+String aboutFeedbackMailto({String version = appVersion, String build = appBuild, String number = appBuildNumber, String? platform}) {
   final v = number.isEmpty ? version : '$version ($number)';
   final subject = 'SARCADE $v : problème ou suggestion';
-  final body = '\n\n---\nSARCADE $v${build.isEmpty ? '' : ' · $build'}';
+  final body = '\n\n---\nSARCADE $v${build.isEmpty ? '' : ' · $build'} · ${platform ?? feedbackPlatform()}';
   return Uri(scheme: 'mailto', path: aboutFeedbackEmail,
       query: 'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}').toString();
 }
+
+/// New issue on the public repository [repo] (card « Signaler un problème :
+/// mail en principal, lien GitHub en second », 11 Nov 2026, choice 2):
+/// version and platform only, never a log or a position, with a reminder
+/// that the issue is public.
+String githubIssueUrl(String repo, {String version = appVersion, String number = appBuildNumber, String? platform}) {
+  final v = number.isEmpty ? version : '$version ($number)';
+  final body = '${S.t('about.issueBody')}\n\n---\nSARCADE $v · ${platform ?? feedbackPlatform()}\n${S.t('about.issuePublic')}';
+  return Uri.parse('$repo/issues/new').replace(queryParameters: {'title': 'SARCADE $v : ', 'body': body}).toString();
+}
+
+/// `public_repo` of each server, asked once per server and session.
+final Map<String, Future<String?>> _publicRepos = {};
+Future<String?> publicRepoOf(String serverUrl) => _publicRepos.putIfAbsent(serverUrl, () => SarcadeApi(baseUrl: serverUrl).publicRepo());
 
 /// Text of the licence of the application (file LICENSE, in the assets),
 /// shown in the application (no link to GitHub any more).
@@ -72,7 +94,9 @@ class SarcadeAboutContent extends StatelessWidget {
   /// Server of the session: « Télécharger et code source » and the privacy
   /// policy are its pages (/telechargements, /confidentialite).
   final String? serverUrl;
-  const SarcadeAboutContent({super.key, this.serverUrl});
+  /// Public repository of the server; replaceable in the tests.
+  final Future<String?> Function()? loadPublicRepo;
+  const SarcadeAboutContent({super.key, this.serverUrl, this.loadPublicRepo});
 
   Future<void> _open(BuildContext context, String url) async {
     bool opened;
@@ -153,6 +177,18 @@ class SarcadeAboutContent extends StatelessWidget {
           _link(context, Icons.download_outlined, 'about.downloadsShort', downloads, key: const ValueKey('about-downloads')),
         _link(context, Icons.feedback_outlined, 'about.feedbackShort', aboutFeedbackMailto(), site: aboutFeedbackEmail,
             key: const ValueKey('about-feedback')),
+        // Second, only when the server gives its public repository (choice 3).
+        if (loadPublicRepo != null || serverPageUrl(serverUrl, '') != null)
+          FutureBuilder<String?>(future: loadPublicRepo?.call() ?? publicRepoOf(serverUrl!), builder: (context, snap) {
+            final repo = snap.data;
+            if (repo == null) return const SizedBox.shrink();
+            final s = Theme.of(context).colorScheme;
+            return ListTile(key: const ValueKey('about-github-issue'), dense: true, visualDensity: const VisualDensity(vertical: -3),
+              contentPadding: const EdgeInsets.only(left: 40),
+              title: Text(S.t('about.feedbackGithub'), style: TextStyle(color: s.primary)),
+              subtitle: Text(S.t('about.feedbackGithubHelp'), style: TextStyle(color: s.onSurfaceVariant)),
+              onTap: () => _open(context, githubIssueUrl(repo)));
+          }),
         _link(context, Icons.privacy_tip_outlined, 'about.privacy', serverPageUrl(serverUrl, 'confidentialite') ?? aboutPrivacyFallback),
         _link(context, Icons.description_outlined, 'about.licenseShort', '', site: S.t('about.inApp'), key: const ValueKey('about-licence'),
             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AboutLicencePage()))),

@@ -330,6 +330,17 @@ class SarcadeApi {
     if(l is! List)return const [];
     return [for(final d in l)if(d is Map&&d['code'] is String)(code:'${d['code']}',name:'${d['name']??''}')];
   }
+  /// Public repository of the server (`public_repo` of /api/v0.1/version,
+  /// card « Signaler un problème », 11 Nov 2026, choice 3); null when the
+  /// server has none, is older or cannot be reached.
+  Future<String?> publicRepo() async {
+    try{
+      final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/version'));
+      if(r.statusCode!=200)return null;
+      final v=(jsonDecode(r.body) as Map)['public_repo'];
+      return v is String&&RegExp(r'^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$').hasMatch(v)?v:null;
+    }catch(_){return null;}
+  }
   Future<List<Map<String,dynamic>>> displays(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays'));
     if(r.statusCode!=200) throw SarcadeHttpException('displays',r.statusCode,r.body);
