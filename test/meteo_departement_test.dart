@@ -66,6 +66,18 @@ void main() {
       expect(lines[2].state, isNull);
     });
 
+    test('card of 11 Nov 2026, choice 4: the API to subscribe on the portal', () {
+      final d = sources(vigilance: 'refused');
+      ((d['weather_sources'] as Map)['sources'] as Map)['vigilance']['refused_reason'] = 'not_subscribed';
+      final lines = weatherSourceLines(d);
+      expect(lines[0].value, startsWith('radar actif, API Vigilance non souscrite sur le portail Météo-France, nouvel essai à '));
+      ((d['weather_sources'] as Map)['sources'] as Map)['vigilance']['refused_reason'] = 'key_refused';
+      expect(weatherSourceLines(d)[0].value, contains('vigilance refusée (clé non abonnée)'));
+      S.setLanguage('en');
+      ((d['weather_sources'] as Map)['sources'] as Map)['vigilance']['refused_reason'] = 'not_subscribed';
+      expect(weatherSourceLines(d)[0].value, contains('Vigilance API not subscribed on the Météo-France portal'));
+    });
+
     test('limit reached, error, idle, no key', () {
       expect(weatherSourceLines(sources(vigilance: 'rate_limited'))[0].state, 'orange');
       expect(weatherSourceLines(sources(vigilance: 'rate_limited'))[0].value, contains('vigilance en pause (limite atteinte)'));

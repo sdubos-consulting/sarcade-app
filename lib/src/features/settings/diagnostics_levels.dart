@@ -223,8 +223,12 @@ List<DiagLevelLine> weatherSourceLines(Map<String,dynamic> d){
   Map<String,dynamic> of(String k)=>Map<String,dynamic>.from(src[k] as Map? ?? const {});
   String clock(Object? iso){final t=DateTime.tryParse('${iso??''}')?.toLocal();return t==null?'—':'${_two(t.hour)}:${_two(t.minute)}';}
   String text(String k){
-    final s=of(k), st='${s['state']??'idle'}';
-    return S.t('diag.mf.$k.${const ['ok','idle','refused','rate_limited','error'].contains(st)?st:'idle'}',
+    final s=of(k);
+    var st='${s['state']??'idle'}';
+    // Card « Météo-France : vigilance refusée (clé non abonnée) », 11 Nov
+    // 2026, choice 4: say which API to subscribe on the portal.
+    if(st=='refused'&&s['refused_reason']=='not_subscribed'&&k!='forecast')st='not_subscribed';
+    return S.t('diag.mf.$k.${const ['ok','idle','refused','not_subscribed','rate_limited','error'].contains(st)?st:'idle'}',
       {'at':clock(s['paused_until']),'e':'${s['last_error']??''}'});
   }
   String? tone(List<String> keys){
