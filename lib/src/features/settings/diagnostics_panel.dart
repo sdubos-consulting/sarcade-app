@@ -75,6 +75,41 @@ String uptimeLabel(int s){
 }
 
 /// Resources line with the alert above 80 %.
+/// French number: decimal comma, narrow no-break space for the thousands
+/// (card « Diagnostic : rendre l'affichage du disque lisible », 11 Nov 2026,
+/// choice 1). English: decimal point and comma.
+String diagNumber(num v,{int decimals=1}){
+  final fr=S.lang=='fr';
+  var txt=v.toStringAsFixed(decimals);
+  if(decimals>0&&txt.endsWith('.${'0'*decimals}'))txt=txt.substring(0,txt.length-decimals-1);
+  final parts=txt.split('.');
+  final neg=parts[0].startsWith('-');
+  final digits=neg?parts[0].substring(1):parts[0];
+  final b=StringBuffer();
+  for(var i=0;i<digits.length;i++){
+    if(i>0&&(digits.length-i)%3==0)b.write(fr?'\u202F':',');
+    b.write(digits[i]);
+  }
+  return '${neg?'-':''}$b${parts.length>1?'${fr?',':'.'}${parts[1]}':''}';
+}
+
+/// « 36,8 / 69,1 To »: used and total in the unit of the total, which moves
+/// to the next unit from 1 000 (choices 2 and 3); no-break spaces so that
+/// the value stays on one line (choice 4). `units` from the smallest,
+/// `step` between two units (1024 for the memory in Mio, 1000 for the disk).
+String capacityLabel(num used,num total,{required List<String> units,required num step}){
+  var u=0; var a=used.toDouble(), t=total.toDouble();
+  while(t>=1000&&u<units.length-1){a/=step;t/=step;u++;}
+  final dec=t>=100?0:1;
+  return '${diagNumber(a,decimals:dec)}\u00A0/\u00A0${diagNumber(t,decimals:dec)}\u00A0${S.t(units[u])}';
+}
+
+/// A value that must stay on one line (choice 4): every space becomes a
+/// no-break space, and [DiagLineRow] shrinks it a little if the width is
+/// short rather than cutting it.
+String unbreakable(String v)=>v.replaceAll(' ','\u00A0');
+bool isUnbreakable(String v)=>v.contains('\u00A0')&&!v.contains(' ');
+
 String percentLabel(num? pct)=>pct==null?'—':'${pct.toStringAsFixed(0)} %${pct>80?' ⚠':''}';
 
 typedef DiagLine=({String block,String label,String value,String? state});
@@ -163,8 +198,8 @@ List<DiagLine> serverLines(Map<String,dynamic> d){
     for(final c in const ['database','realtime','tunnel','wakeup','aprs','weather'])
       (block:block,label:S.t('diag.comp.$c'),value:S.t('diag.c.${comps[c]??'off'}'),state:'${comps[c]??'off'}'),
     (block:block,label:S.t('diag.cpu'),value:percentLabel(res['cpu_pct'] as num?),state:pctState(res['cpu_pct'] as num?)),
-    (block:block,label:S.t('diag.memory'),value:mem==null?'—':'${percentLabel(mem['pct'] as num?)} · ${mem['used_mb']} / ${mem['total_mb']} Mo',state:pctState(mem?['pct'] as num?)),
-    (block:block,label:S.t('diag.disk'),value:disk==null?'—':'${percentLabel(disk['pct'] as num?)} · ${disk['used_gb']} / ${disk['total_gb']} Go',state:pctState(disk?['pct'] as num?)),
+    (block:block,label:S.t('diag.memory'),value:mem==null?'—':unbreakable('${percentLabel(mem['pct'] as num?)} · ${capacityLabel(mem['used_mb'] as num? ?? 0,mem['total_mb'] as num? ?? 0,units:const ['size.mb','size.gb','size.tb'],step:1024)}'),state:pctState(mem?['pct'] as num?)),
+    (block:block,label:S.t('diag.disk'),value:disk==null?'—':unbreakable('${percentLabel(disk['pct'] as num?)} · ${capacityLabel(disk['used_gb'] as num? ?? 0,disk['total_gb'] as num? ?? 0,units:const ['size.gb','size.tb'],step:1000)}'),state:pctState(disk?['pct'] as num?)),
     (block:block,label:S.t('diag.lastUpdate'),value:upd==null?S.t('diag.unknown'):'${upd['version']} · ${_date(upd['at'])} · ${upd['status']}',state:null),
     (block:block,label:S.t('diag.lastBackup'),value:bak==null?S.t('diag.unknown'):_date(bak['at']),state:null),
   ];
@@ -645,7 +680,10 @@ class DiagLineRow extends StatelessWidget {
           dot,
           Expanded(flex:2,child:Text(line.label)),
           const SizedBox(width:8),
-          Expanded(flex:3,child:SelectableText(line.value,textAlign:TextAlign.end)),
+          Expanded(flex:3,child:isUnbreakable(line.value)
+            ?Align(alignment:Alignment.topRight,child:FittedBox(key:const ValueKey('diag-value-one-line'),fit:BoxFit.scaleDown,
+              child:SelectableText(line.value,maxLines:1,textAlign:TextAlign.end)))
+            :SelectableText(line.value,textAlign:TextAlign.end)),
         ]),
         if(action!=null)Align(alignment:Alignment.centerRight,child:action),
       ]));

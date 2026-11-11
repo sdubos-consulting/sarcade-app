@@ -111,12 +111,12 @@ void main(){
     expect(m['État général']!.value,'Dégradé');
     expect(m['Depuis le redémarrage']!.value,'1 j 2 h');
     expect(m['Mémoire']!.state,'red');
-    expect(m['Mémoire']!.value,startsWith('88 % ⚠'));
+    expect(m['Mémoire']!.value,startsWith('88\u00A0%\u00A0⚠'));
     expect(m['Tunnel Cloudflare']!.value,'à surveiller');
     expect(m['Dernière sauvegarde']!.value,'inconnu');
     final report=diagnosticsReport(lines,at:DateTime(2026,10,30,3,20));
     expect(report,contains('SERVEUR'));
-    expect(report,contains('Mémoire : 88 %'));
+    expect(report,contains('Mémoire : 88\u00A0%'));
     expect(uptimeLabel(125),'2 min');
   });
 
